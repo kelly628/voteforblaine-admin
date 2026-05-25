@@ -818,6 +818,53 @@ function adminHTML() { return `<!DOCTYPE html>
   .drill-empty { text-align: center; padding: 40px 20px; color: var(--dim); font-style: italic; font-size: 13px; }
 
   @media(max-width:900px){ .snapshot-grid{grid-template-columns:1fr} }
+
+  /* ── Add Person Sidebar ── */
+  .ap-overlay { display:none; position:fixed; inset:0; background:rgba(6,15,30,0.45); z-index:200; }
+  .ap-overlay.open { display:block; }
+  .ap-drawer {
+    position:fixed; top:0; right:0; bottom:0; width:440px; max-width:100%;
+    background:var(--white); z-index:201; display:flex; flex-direction:column;
+    box-shadow:-4px 0 32px rgba(6,15,30,0.18);
+    transform:translateX(100%); transition:transform .25s cubic-bezier(.4,0,.2,1);
+  }
+  .ap-drawer.open { transform:translateX(0); }
+  .ap-drawer-hdr {
+    padding:24px 28px 20px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between; flex-shrink:0;
+  }
+  .ap-drawer-title { font-family:'Playfair Display',Georgia,serif; font-size:22px; color:var(--navy); }
+  .ap-drawer-close { background:none; border:none; font-size:22px; cursor:pointer; color:var(--dim); line-height:1; padding:4px; }
+  .ap-drawer-close:hover { color:var(--navy); }
+  .ap-drawer-body { flex:1; overflow-y:auto; padding:24px 28px; }
+  .ap-drawer-footer {
+    padding:16px 28px; border-top:1px solid var(--border); flex-shrink:0;
+    display:flex; gap:12px;
+  }
+  .ap-drawer-submit {
+    flex:1; background:#78E0C4; color:var(--navy); border:none; padding:13px;
+    font-size:11px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase;
+    font-family:'Montserrat',sans-serif; border-radius:2px; cursor:pointer;
+  }
+  .ap-drawer-submit:hover { background:#5fd4b0; }
+  .ap-drawer-submit:disabled { opacity:.6; cursor:not-allowed; }
+  .ap-drawer-cancel {
+    background:none; border:1px solid var(--border); color:var(--dim); padding:13px 20px;
+    font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase;
+    font-family:'Montserrat',sans-serif; border-radius:2px; cursor:pointer;
+  }
+  .ap-drawer-cancel:hover { border-color:var(--navy); color:var(--navy); }
+  .ap-field { margin-bottom:18px; }
+  .ap-label { font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); font-weight:700; margin-bottom:6px; display:block; }
+  .ap-input { width:100%; background:var(--bg); border:1px solid var(--border); border-radius:2px; padding:10px 12px; font-size:13px; font-family:'Montserrat',sans-serif; color:var(--text); outline:none; }
+  .ap-input:focus { border-color:#78E0C4; }
+  .ap-row { display:grid; gap:0 14px; }
+  .ap-row-2 { grid-template-columns:1fr 1fr; }
+  .ap-row-3 { grid-template-columns:1fr 1fr 1fr; }
+  .ap-check-group { display:flex; gap:20px; flex-wrap:wrap; padding:4px 0; }
+  .ap-check-label { display:flex; align-items:center; gap:7px; cursor:pointer; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); font-weight:700; font-family:'Montserrat',sans-serif; }
+  .ap-check-label input { width:14px; height:14px; cursor:pointer; flex-shrink:0; }
+  .ap-error { color:#f59e0b; font-size:12px; margin-bottom:12px; display:none; }
 </style>
 </head>
 <body>
@@ -985,71 +1032,72 @@ function adminHTML() { return `<!DOCTYPE html>
 
 <!-- ── Drill-down Modal ── -->
 <!-- ── Add Person Modal ── -->
-<div class="modal-overlay" id="add-person-overlay" onclick="if(event.target===this)closeAddPerson()">
-  <div class="modal" style="max-width:580px;">
-    <button class="modal-close" onclick="closeAddPerson()">&#215;</button>
-    <div class="modal-title">Add New Constituent</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
-      <div class="modal-field">
-        <label class="modal-label" for="ap-first">First Name</label>
-        <input class="modal-input" id="ap-first" type="text" placeholder="First name"/>
+<!-- ── Add Person Sidebar ── -->
+<div class="ap-overlay" id="ap-overlay" onclick="closeAddPerson()"></div>
+<div class="ap-drawer" id="ap-drawer">
+  <div class="ap-drawer-hdr">
+    <div class="ap-drawer-title">Add New Constituent</div>
+    <button class="ap-drawer-close" onclick="closeAddPerson()">&#215;</button>
+  </div>
+  <div class="ap-drawer-body">
+    <div class="ap-row ap-row-2">
+      <div class="ap-field">
+        <label class="ap-label" for="ap-first">First Name *</label>
+        <input class="ap-input" id="ap-first" type="text" placeholder="First name"/>
       </div>
-      <div class="modal-field">
-        <label class="modal-label" for="ap-last">Last Name *</label>
-        <input class="modal-input" id="ap-last" type="text" placeholder="Last name"/>
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
-      <div class="modal-field">
-        <label class="modal-label" for="ap-email">Email</label>
-        <input class="modal-input" id="ap-email" type="email" placeholder="email@example.com"/>
-      </div>
-      <div class="modal-field">
-        <label class="modal-label" for="ap-phone">Phone</label>
-        <input class="modal-input" id="ap-phone" type="tel" placeholder="(504) 555-0000"/>
+      <div class="ap-field">
+        <label class="ap-label" for="ap-last">Last Name *</label>
+        <input class="ap-input" id="ap-last" type="text" placeholder="Last name"/>
       </div>
     </div>
-    <div class="modal-field">
-      <label class="modal-label" for="ap-address">Street Address</label>
-      <input class="modal-input" id="ap-address" type="text" placeholder="123 Main St"/>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 16px;">
-      <div class="modal-field">
-        <label class="modal-label" for="ap-city">City</label>
-        <input class="modal-input" id="ap-city" type="text" placeholder="Metairie"/>
+    <div class="ap-row ap-row-2">
+      <div class="ap-field">
+        <label class="ap-label" for="ap-email">Email</label>
+        <input class="ap-input" id="ap-email" type="email" placeholder="email@example.com"/>
       </div>
-      <div class="modal-field">
-        <label class="modal-label" for="ap-state">State</label>
-        <select class="modal-input" id="ap-state">
+      <div class="ap-field">
+        <label class="ap-label" for="ap-phone">Phone</label>
+        <input class="ap-input" id="ap-phone" type="tel" placeholder="(504) 555-0000"/>
+      </div>
+    </div>
+    <div class="ap-field">
+      <label class="ap-label" for="ap-address">Street Address</label>
+      <input class="ap-input" id="ap-address" type="text" placeholder="123 Main St"/>
+    </div>
+    <div class="ap-row ap-row-3">
+      <div class="ap-field">
+        <label class="ap-label" for="ap-city">City</label>
+        <input class="ap-input" id="ap-city" type="text" placeholder="Metairie"/>
+      </div>
+      <div class="ap-field">
+        <label class="ap-label" for="ap-state">State</label>
+        <select class="ap-input" id="ap-state">
           <option value="LA" selected>Louisiana</option>
           <option value="AL">Alabama</option><option value="AK">Alaska</option><option value="AZ">Arizona</option><option value="AR">Arkansas</option><option value="CA">California</option><option value="CO">Colorado</option><option value="CT">Connecticut</option><option value="DE">Delaware</option><option value="FL">Florida</option><option value="GA">Georgia</option><option value="HI">Hawaii</option><option value="ID">Idaho</option><option value="IL">Illinois</option><option value="IN">Indiana</option><option value="IA">Iowa</option><option value="KS">Kansas</option><option value="KY">Kentucky</option><option value="ME">Maine</option><option value="MD">Maryland</option><option value="MA">Massachusetts</option><option value="MI">Michigan</option><option value="MN">Minnesota</option><option value="MS">Mississippi</option><option value="MO">Missouri</option><option value="MT">Montana</option><option value="NE">Nebraska</option><option value="NV">Nevada</option><option value="NH">New Hampshire</option><option value="NJ">New Jersey</option><option value="NM">New Mexico</option><option value="NY">New York</option><option value="NC">North Carolina</option><option value="ND">North Dakota</option><option value="OH">Ohio</option><option value="OK">Oklahoma</option><option value="OR">Oregon</option><option value="PA">Pennsylvania</option><option value="RI">Rhode Island</option><option value="SC">South Carolina</option><option value="SD">South Dakota</option><option value="TN">Tennessee</option><option value="TX">Texas</option><option value="UT">Utah</option><option value="VT">Vermont</option><option value="VA">Virginia</option><option value="WA">Washington</option><option value="WV">West Virginia</option><option value="WI">Wisconsin</option><option value="WY">Wyoming</option>
         </select>
       </div>
-      <div class="modal-field">
-        <label class="modal-label" for="ap-zip">Zip Code</label>
-        <input class="modal-input" id="ap-zip" type="text" placeholder="70001"/>
+      <div class="ap-field">
+        <label class="ap-label" for="ap-zip">Zip</label>
+        <input class="ap-input" id="ap-zip" type="text" placeholder="70001"/>
       </div>
     </div>
-    <div class="modal-field">
-      <label class="modal-label">Role</label>
-      <div style="display:flex;gap:24px;padding:4px 0;">
-        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);font-weight:700;font-family:'Montserrat',sans-serif;">
-          <input type="checkbox" id="ap-role-voter" style="width:14px;height:14px;accent-color:#78E0C4;cursor:pointer;flex-shrink:0;"/> Voter
-        </label>
-        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);font-weight:700;font-family:'Montserrat',sans-serif;">
-          <input type="checkbox" id="ap-role-committee" style="width:14px;height:14px;accent-color:#78E0C4;cursor:pointer;flex-shrink:0;"/> Committee Member
-        </label>
-        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);font-weight:700;font-family:'Montserrat',sans-serif;">
-          <input type="checkbox" id="ap-role-attorney" style="width:14px;height:14px;accent-color:#d4a843;cursor:pointer;flex-shrink:0;"/> Attorney
-        </label>
+    <div class="ap-field">
+      <label class="ap-label">Role</label>
+      <div class="ap-check-group">
+        <label class="ap-check-label"><input type="checkbox" id="ap-role-voter" style="accent-color:#78E0C4;"/> Voter</label>
+        <label class="ap-check-label"><input type="checkbox" id="ap-role-committee" style="accent-color:#78E0C4;"/> Committee Member</label>
+        <label class="ap-check-label"><input type="checkbox" id="ap-role-attorney" style="accent-color:#d4a843;"/> Attorney</label>
       </div>
     </div>
-    <div class="modal-field">
-      <label class="modal-label" for="ap-comment">Notes</label>
-      <textarea class="modal-input" id="ap-comment" placeholder="Optional notes…" style="height:80px;resize:vertical;line-height:1.5;"></textarea>
+    <div class="ap-field">
+      <label class="ap-label" for="ap-comment">Notes</label>
+      <textarea class="ap-input" id="ap-comment" placeholder="Optional notes…" style="height:90px;resize:vertical;line-height:1.5;"></textarea>
     </div>
-    <div id="ap-error" style="color:#f59e0b;font-size:12px;margin-bottom:12px;display:none;">Please enter at least a last name.</div>
-    <button class="modal-copy" id="ap-submit" onclick="submitAddPerson()">Add to Database</button>
+    <div class="ap-error" id="ap-error">Please enter first and last name.</div>
+  </div>
+  <div class="ap-drawer-footer">
+    <button class="ap-drawer-cancel" onclick="closeAddPerson()">Cancel</button>
+    <button class="ap-drawer-submit" id="ap-submit" onclick="submitAddPerson()">Add to Database</button>
   </div>
 </div>
 
@@ -1455,15 +1503,18 @@ function openAddPerson() {
   document.getElementById('ap-error').style.display = 'none';
   document.getElementById('ap-submit').disabled = false;
   document.getElementById('ap-submit').textContent = 'Add to Database';
-  document.getElementById('add-person-overlay').classList.add('open');
-  document.getElementById('ap-first').focus();
+  document.getElementById('ap-overlay').classList.add('open');
+  document.getElementById('ap-drawer').classList.add('open');
+  setTimeout(function(){ document.getElementById('ap-first').focus(); }, 260);
 }
 function closeAddPerson() {
-  document.getElementById('add-person-overlay').classList.remove('open');
+  document.getElementById('ap-overlay').classList.remove('open');
+  document.getElementById('ap-drawer').classList.remove('open');
 }
 function submitAddPerson() {
-  var last = document.getElementById('ap-last').value.trim();
-  if (!last) { document.getElementById('ap-error').style.display = 'block'; return; }
+  var first = document.getElementById('ap-first').value.trim();
+  var last  = document.getElementById('ap-last').value.trim();
+  if (!first || !last) { document.getElementById('ap-error').style.display = 'block'; return; }
   document.getElementById('ap-error').style.display = 'none';
   var btn = document.getElementById('ap-submit');
   btn.disabled = true; btn.textContent = 'Saving…';
@@ -1471,7 +1522,7 @@ function submitAddPerson() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      first_name: document.getElementById('ap-first').value.trim(),
+      first_name: first,
       last_name:  last,
       email:      document.getElementById('ap-email').value.trim(),
       phone:      document.getElementById('ap-phone').value.trim(),
@@ -1491,6 +1542,7 @@ function submitAddPerson() {
       loadData();  // refresh the table
     } else { btn.disabled = false; btn.textContent = 'Add to Database'; alert('Error saving. Please try again.'); }
   }).catch(function(){ btn.disabled = false; btn.textContent = 'Add to Database'; alert('Network error. Please try again.'); });
+}
 }
 
 function openModal() {

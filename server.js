@@ -1121,6 +1121,17 @@ function adminHTML() { return `<!DOCTYPE html>
   </div>
 </div>
 
+<!-- ── Campaign Pipeline Summary ── -->
+<div class="pipeline-section">
+  <div class="pipeline-section-hdr">
+    <span class="pipeline-section-title">Campaign Pipeline</span>
+    <span class="pipeline-total" id="pipeline-total"></span>
+  </div>
+  <div class="pipeline-track" id="pipeline-track">
+    <span style="font-size:13px;color:var(--dim);font-style:italic;">Loading&hellip;</span>
+  </div>
+</div>
+
 <!-- ── Snapshot ── -->
 <div class="snapshot">
   <div class="snapshot-hdr">Responses Snapshot</div>
@@ -1204,16 +1215,6 @@ function adminHTML() { return `<!DOCTYPE html>
   </div>
 </div>
 
-<!-- ── Campaign Pipeline Summary ── -->
-<div class="pipeline-section">
-  <div class="pipeline-section-hdr">
-    <span class="pipeline-section-title">Campaign Pipeline</span>
-    <span class="pipeline-total" id="pipeline-total"></span>
-  </div>
-  <div class="pipeline-track" id="pipeline-track">
-    <span style="font-size:13px;color:var(--dim);font-style:italic;">Loading&hellip;</span>
-  </div>
-</div>
 
 </div><!-- /view-dashboard -->
 

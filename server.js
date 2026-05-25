@@ -865,22 +865,116 @@ function adminHTML() { return `<!DOCTYPE html>
   .ap-check-label { display:flex; align-items:center; gap:7px; cursor:pointer; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); font-weight:700; font-family:'Montserrat',sans-serif; }
   .ap-check-label input { width:14px; height:14px; cursor:pointer; flex-shrink:0; }
   .ap-error { color:#f59e0b; font-size:12px; margin-bottom:12px; display:none; }
+
+  /* ── Left Sidebar Navigation ── */
+  .left-nav {
+    width: 220px; min-width: 220px; background: var(--navy);
+    display: flex; flex-direction: column;
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 50;
+    overflow-y: auto;
+  }
+  .left-nav-top {
+    padding: 20px 20px 18px;
+    border-bottom: 1px solid rgba(255,255,255,.10);
+    flex-shrink: 0;
+  }
+  .left-nav-logo-img { height: 22px; width: auto; display: block; }
+  .left-nav-role {
+    font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--mint); font-weight: 700; margin-top: 10px;
+  }
+  .left-nav-body { flex: 1; padding: 8px 0 20px; }
+  .left-nav-section-lbl {
+    font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+    color: rgba(255,255,255,.25); font-weight: 700;
+    padding: 14px 20px 5px;
+  }
+  .left-nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 20px 10px 17px; font-size: 11px; font-weight: 700;
+    letter-spacing: .8px; text-transform: uppercase;
+    color: rgba(255,255,255,.55); text-decoration: none;
+    cursor: pointer; background: none; border: none; border-left: 3px solid transparent;
+    width: 100%; text-align: left; font-family: 'Montserrat', sans-serif;
+    transition: color .15s, background .15s, border-color .15s;
+  }
+  .left-nav-item:hover { color: rgba(255,255,255,.9); background: rgba(255,255,255,.05); }
+  .left-nav-item.active { color: var(--mint); border-left-color: var(--mint); background: rgba(120,224,196,.08); }
+  .left-nav-item svg { flex-shrink: 0; opacity: .6; }
+  .left-nav-item.active svg, .left-nav-item:hover svg { opacity: 1; }
+  .left-nav-divider { height: 1px; background: rgba(255,255,255,.07); margin: 10px 0; }
+  .left-nav-add-btn {
+    display: block; margin: 6px 16px 4px; padding: 10px 14px;
+    background: var(--mint); color: var(--navy); border: none;
+    border-radius: 2px; font-size: 11px; font-weight: 800;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    font-family: 'Montserrat', sans-serif; cursor: pointer;
+    text-align: center; transition: background .15s;
+    width: calc(100% - 32px);
+  }
+  .left-nav-add-btn:hover { background: var(--mint-d); }
+  .admin-main { margin-left: 220px; min-height: 100vh; display: flex; flex-direction: column; }
+  .view-hidden { display: none !important; }
+  @media(max-width:900px){
+    .left-nav { display: none; }
+    .admin-main { margin-left: 0; }
+  }
 </style>
 </head>
 <body>
 
-<header class="hdr">
-  <a href="/admin" style="display:block;line-height:0;"><img class="hdr-logo" src="${LOGO_URL}" alt="Blaine Benge Moncrief"/></a>
+<!-- ══════════════════════════════════════════════
+     LEFT SIDEBAR NAVIGATION
+═══════════════════════════════════════════════ -->
+<nav class="left-nav">
+  <div class="left-nav-top">
+    <a href="/admin" style="line-height:0;display:block;">
+      <img class="left-nav-logo-img" src="${LOGO_URL}" alt="Blaine Benge Moncrief"/>
+    </a>
+    <div class="left-nav-role">Campaign Staff</div>
+  </div>
+  <div class="left-nav-body">
+    <div class="left-nav-section-lbl">Views</div>
+    <button class="left-nav-item active" id="nav-dashboard" onclick="switchView('dashboard')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Dashboard
+    </button>
+    <button class="left-nav-item" id="nav-constituents" onclick="switchView('constituents')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Constituents
+    </button>
+    <a class="left-nav-item" href="/admin/map">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+      Sign Map
+    </a>
+    <div class="left-nav-divider"></div>
+    <div class="left-nav-section-lbl">Actions</div>
+    <button class="left-nav-add-btn" onclick="openAddPerson()">&#xff0b; Add Person</button>
+    <button class="left-nav-item" onclick="openModal()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+      New Event Widget
+    </button>
+    <a class="left-nav-item" href="/admin/export.csv">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export CSV
+    </a>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════════════════
+     MAIN CONTENT AREA
+═══════════════════════════════════════════════ -->
+<div class="admin-main">
+
+<header class="hdr" style="position:sticky;top:0;z-index:40;">
+  <div id="hdr-page-title" style="font-size:11px;font-weight:700;color:rgba(255,255,255,.65);letter-spacing:2px;text-transform:uppercase;">Dashboard</div>
   <div class="hdr-right">
-    <span class="hdr-label">Campaign Staff</span>
-    <div class="hdr-divider"></div>
-    <a class="map-link" href="/admin/map">Sign Map</a>
-    <button class="new-evt-btn" onclick="openAddPerson()">&#xff0b; Add Person</button>
-    <button class="new-evt-btn" onclick="openModal()">&#xff0b; New Event</button>
-    <a class="csv-btn" href="/admin/export.csv">Export CSV</a>
+    <span class="hdr-label">Campaign Admin</span>
   </div>
 </header>
 
+<!-- ═══════════ DASHBOARD VIEW ═══════════ -->
+<div class="view" id="view-dashboard">
 <div class="stats">
   <div class="stat"><div class="stat-lbl">RSVPs</div><div class="stat-val" id="s-rsvp">—</div></div>
   <div class="stat stat-clickable" onclick="openSignsModal()" title="View yard sign tracker">
@@ -975,6 +1069,11 @@ function adminHTML() { return `<!DOCTYPE html>
   </div>
 </div>
 
+</div><!-- /view-dashboard -->
+
+<!-- ═══════════ CONSTITUENTS VIEW ═══════════ -->
+<div class="view view-hidden" id="view-constituents">
+
 <!-- ── Event Filter Tabs ── -->
 <div class="evt-tabs" id="evt-tabs"></div>
 
@@ -996,6 +1095,7 @@ function adminHTML() { return `<!DOCTYPE html>
 </table>
 <div class="empty" id="empty" style="display:none">No submissions yet — they'll appear here as RSVPs come in.</div>
 </div>
+</div><!-- /view-constituents -->
 
 <!-- ── Election Intelligence ── -->
 <div class="election-bar">
@@ -1029,6 +1129,7 @@ function adminHTML() { return `<!DOCTYPE html>
 <footer class="foot">
   Paid for by The Committee to Elect Blaine Benge Moncrief, Judge &nbsp;&middot;&nbsp; Election Day Nov 3, 2026
 </footer>
+</div><!-- /admin-main -->
 
 <!-- ── Drill-down Modal ── -->
 <!-- ── Add Person Modal ── -->
@@ -1187,11 +1288,14 @@ function adminHTML() { return `<!DOCTYPE html>
 var all = [];
 var activeEvent = null;
 
-fetch('/admin/data').then(r=>r.json()).then(function(d){
-  all = d;
-  buildTabs(d);
-  refresh();
-});
+function loadData() {
+  fetch('/admin/data').then(r=>r.json()).then(function(d){
+    all = d;
+    buildTabs(d);
+    refresh();
+  });
+}
+loadData();
 
 var HELP_OPTIONS = [
   'Yard Sign',
@@ -1248,7 +1352,7 @@ function selectTab(el) {
 
 function stats(d) {
   document.getElementById('s-rsvp').textContent    = d.length;
-  document.getElementById('s-guests').textContent  = d.reduce(function(s,r){ return s+(parseInt(r.guests)||1); },0);
+  var gEl = document.getElementById('s-guests'); if (gEl) gEl.textContent = d.reduce(function(s,r){ return s+(parseInt(r.guests)||1); },0);
   var signReqs = d.filter(function(r){ return r.yard_sign==='Yes'; });
   var signDel  = signReqs.filter(function(r){ return r.yard_sign_delivered==='Yes'; });
   document.getElementById('s-signs').textContent   = signReqs.length;
@@ -1488,6 +1592,23 @@ function exportDrillCSV() {
 
 function x(s){ return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''; }
 function fmtPhone(p){ if(!p) return ''; var d=String(p).replace(/\D/g,''); if(d.length===10) return d.slice(0,3)+'-'+d.slice(3,6)+'-'+d.slice(6); return p; }
+
+function switchView(name) {
+  var views = ['dashboard', 'constituents'];
+  views.forEach(function(v) {
+    var el = document.getElementById('view-' + v);
+    if (el) {
+      if (v === name) el.classList.remove('view-hidden');
+      else el.classList.add('view-hidden');
+    }
+  });
+  document.querySelectorAll('.left-nav-item').forEach(function(el){ el.classList.remove('active'); });
+  var navEl = document.getElementById('nav-' + name);
+  if (navEl) navEl.classList.add('active');
+  var titles = { dashboard: 'Dashboard', constituents: 'Constituents' };
+  var titleEl = document.getElementById('hdr-page-title');
+  if (titleEl) titleEl.textContent = titles[name] || name;
+}
 
 document.getElementById('q').addEventListener('input',function(){
   refresh();

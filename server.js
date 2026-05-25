@@ -1105,11 +1105,11 @@ function adminHTML() { return `<!DOCTYPE html>
 <!-- ═══════════ DASHBOARD VIEW ═══════════ -->
 <div class="view" id="view-dashboard">
 <div class="stats">
-  <div class="stat stat-clickable" onclick="goToConstituents('all')" title="View all constituents">
-    <div class="stat-lbl">Constituents</div><div class="stat-val" id="s-rsvp">—</div><div class="stat-sub" id="s-rsvp-sub"></div>
-  </div>
   <div class="stat stat-clickable" onclick="goToConstituents('voters')" title="View potential voters">
     <div class="stat-lbl">Potential Voters</div><div class="stat-val accent" id="s-voters">—</div><div class="stat-sub" style="font-size:10px;color:var(--dim);margin-top:4px;">Jefferson Parish</div>
+  </div>
+  <div class="stat stat-clickable" onclick="goToConstituents('all')" title="View all constituents">
+    <div class="stat-lbl">Constituents</div><div class="stat-val" id="s-rsvp">—</div><div class="stat-sub" id="s-rsvp-sub"></div>
   </div>
   <div class="stat stat-clickable" onclick="openSignsModal()" title="View yard sign tracker">
     <div class="stat-lbl">Yard Signs Requested</div>

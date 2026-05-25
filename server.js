@@ -112,6 +112,22 @@ app.patch('/rsvp/:id/endorse', (req, res) => {
   }
 });
 
+// ── Manual constituent add ────────────────────────────────────────────
+app.post('/admin/constituent', (req, res) => {
+  const { first_name, last_name, email, phone, address, zip, how_to_help, yard_sign, endorse, comment, role } = req.body;
+  try {
+    db.prepare(`
+      INSERT INTO rsvps (first_name, last_name, email, phone, address, zip, how_to_help, yard_sign, endorse, comment, role, event)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(first_name||'', last_name||'', email||'', phone||'', address||'', zip||'',
+           how_to_help||'', yard_sign||'No', endorse||'No', comment||'', role||'Voter', 'Manual Entry');
+    res.json({ result: 'success' });
+  } catch(err) {
+    console.error('DB error:', err.message);
+    res.status(500).json({ result: 'error' });
+  }
+});
+
 // ── Auth middleware factory ───────────────────────────────────────────
 function auth(role) {
   return (req, res, next) => {
@@ -812,6 +828,7 @@ function adminHTML() { return `<!DOCTYPE html>
     <span class="hdr-label">Campaign Staff</span>
     <div class="hdr-divider"></div>
     <a class="map-link" href="/admin/map">Sign Map</a>
+    <button class="new-evt-btn" onclick="openAddPerson()">&#xff0b; Add Person</button>
     <button class="new-evt-btn" onclick="openModal()">&#xff0b; New Event</button>
     <a class="csv-btn" href="/admin/export.csv">Export CSV</a>
   </div>
@@ -967,6 +984,59 @@ function adminHTML() { return `<!DOCTYPE html>
 </footer>
 
 <!-- ── Drill-down Modal ── -->
+<!-- ── Add Person Modal ── -->
+<div class="modal-overlay" id="add-person-overlay" onclick="if(event.target===this)closeAddPerson()">
+  <div class="modal" style="max-width:580px;">
+    <button class="modal-close" onclick="closeAddPerson()">&#215;</button>
+    <div class="modal-title">Add New Constituent</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+      <div class="modal-field">
+        <label class="modal-label" for="ap-first">First Name</label>
+        <input class="modal-input" id="ap-first" type="text" placeholder="First name"/>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label" for="ap-last">Last Name *</label>
+        <input class="modal-input" id="ap-last" type="text" placeholder="Last name"/>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+      <div class="modal-field">
+        <label class="modal-label" for="ap-email">Email</label>
+        <input class="modal-input" id="ap-email" type="email" placeholder="email@example.com"/>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label" for="ap-phone">Phone</label>
+        <input class="modal-input" id="ap-phone" type="tel" placeholder="(504) 555-0000"/>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+      <div class="modal-field">
+        <label class="modal-label" for="ap-address">Street Address</label>
+        <input class="modal-input" id="ap-address" type="text" placeholder="123 Main St"/>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label" for="ap-zip">Zip Code</label>
+        <input class="modal-input" id="ap-zip" type="text" placeholder="70001"/>
+      </div>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label" for="ap-role">Role</label>
+      <select class="modal-input" id="ap-role">
+        <option value="Voter">Voter</option>
+        <option value="Committee Member">Committee Member</option>
+        <option value="Voter, Committee Member">Voter + Committee Member</option>
+        <option value="Attorney">Attorney</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label" for="ap-comment">Notes</label>
+      <input class="modal-input" id="ap-comment" type="text" placeholder="Optional notes…"/>
+    </div>
+    <div id="ap-error" style="color:#f59e0b;font-size:12px;margin-bottom:12px;display:none;">Please enter at least a last name.</div>
+    <button class="modal-copy" id="ap-submit" onclick="submitAddPerson()">Add to Database</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="drill-overlay" onclick="handleDrillOverlayClick(event)">
   <div class="modal" style="max-width:700px;">
     <button class="modal-close" onclick="closeDrill()">&#215;</button>
@@ -1360,6 +1430,45 @@ document.getElementById('q').addEventListener('input',function(){
 });
 
 // ── Modal ──
+function openAddPerson() {
+  ['ap-first','ap-last','ap-email','ap-phone','ap-address','ap-zip','ap-comment'].forEach(function(id){ document.getElementById(id).value = ''; });
+  document.getElementById('ap-role').value = 'Voter';
+  document.getElementById('ap-error').style.display = 'none';
+  document.getElementById('ap-submit').disabled = false;
+  document.getElementById('ap-submit').textContent = 'Add to Database';
+  document.getElementById('add-person-overlay').classList.add('open');
+  document.getElementById('ap-first').focus();
+}
+function closeAddPerson() {
+  document.getElementById('add-person-overlay').classList.remove('open');
+}
+function submitAddPerson() {
+  var last = document.getElementById('ap-last').value.trim();
+  if (!last) { document.getElementById('ap-error').style.display = 'block'; return; }
+  document.getElementById('ap-error').style.display = 'none';
+  var btn = document.getElementById('ap-submit');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  fetch('/admin/constituent', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      first_name: document.getElementById('ap-first').value.trim(),
+      last_name:  last,
+      email:      document.getElementById('ap-email').value.trim(),
+      phone:      document.getElementById('ap-phone').value.trim(),
+      address:    document.getElementById('ap-address').value.trim(),
+      zip:        document.getElementById('ap-zip').value.trim(),
+      role:       document.getElementById('ap-role').value,
+      comment:    document.getElementById('ap-comment').value.trim()
+    })
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if (d.result === 'success') {
+      closeAddPerson();
+      loadData();  // refresh the table
+    } else { btn.disabled = false; btn.textContent = 'Add to Database'; alert('Error saving. Please try again.'); }
+  }).catch(function(){ btn.disabled = false; btn.textContent = 'Add to Database'; alert('Network error. Please try again.'); });
+}
+
 function openModal() {
   document.getElementById('modal-overlay').classList.add('open');
   updateWidget();

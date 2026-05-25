@@ -912,7 +912,7 @@ function adminHTML() { return `<!DOCTYPE html>
   .ap-input:focus { border-color:#78E0C4; }
   .ap-row { display:grid; gap:0 14px; }
   .ap-row-2 { grid-template-columns:1fr 1fr; }
-  .ap-row-3 { grid-template-columns:1fr 1fr 1fr; }
+  .ap-row-3 { grid-template-columns:3fr 1fr 1.5fr; }
   .ap-check-group { display:flex; gap:20px; flex-wrap:wrap; padding:4px 0; }
   .ap-check-label { display:flex; align-items:center; gap:7px; cursor:pointer; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); font-weight:700; font-family:'Montserrat',sans-serif; }
   .ap-check-label input { width:14px; height:14px; cursor:pointer; flex-shrink:0; }
@@ -1968,7 +1968,8 @@ document.getElementById('q').addEventListener('input',function(){
     focusIdx = -1;
     s.innerHTML = items.map(function(r, i) {
       var parts = r.display_name.split(',');
-      var main  = parts.slice(0, 2).join(',').trim();
+      var addr  = r.address || {};
+      var main  = ((addr.house_number ? addr.house_number + ' ' : '') + (addr.road || '')).trim() || parts.slice(0, 2).join(' ').trim();
       var sub   = parts.slice(2, 4).join(',').trim();
       return '<div class="ap-suggest-item" data-idx="' + i + '">' +
         '<div style="font-weight:600;color:var(--navy);">' + main + '</div>' +

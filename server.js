@@ -871,59 +871,66 @@ function adminHTML() { return `<!DOCTYPE html>
 
   @media(max-width:900px){ .snapshot-grid{grid-template-columns:1fr} }
 
-  /* ── Add Person Drawer ── */
-  .ap-overlay { display:none; position:fixed; inset:0; background:rgba(6,15,30,0.5); z-index:200; backdrop-filter:blur(2px); }
+  /* ── Add Person Sidebar ── */
+  .ap-overlay { display:none; position:fixed; inset:0; background:rgba(6,15,30,0.45); z-index:200; }
   .ap-overlay.open { display:block; }
   .ap-drawer {
-    position:fixed; top:0; right:0; bottom:0; width:400px; max-width:100%;
+    position:fixed; top:0; right:0; bottom:0; width:440px; max-width:100%;
     background:var(--white); z-index:201; display:flex; flex-direction:column;
-    box-shadow:-6px 0 40px rgba(6,15,30,.2);
-    transform:translateX(100%); transition:transform .28s cubic-bezier(.4,0,.2,1);
-    border-top:3px solid #78E0C4;
+    box-shadow:-4px 0 32px rgba(6,15,30,0.18);
+    transform:translateX(100%); transition:transform .25s cubic-bezier(.4,0,.2,1);
   }
   .ap-drawer.open { transform:translateX(0); }
   .ap-drawer-hdr {
-    padding:18px 24px 14px; border-bottom:1px solid var(--border);
+    padding:24px 28px 20px; border-bottom:1px solid var(--border);
     display:flex; align-items:center; justify-content:space-between; flex-shrink:0;
   }
-  .ap-drawer-title { font-size:10px; font-weight:800; letter-spacing:2.5px; text-transform:uppercase; color:var(--navy); font-family:'Montserrat',sans-serif; }
-  .ap-drawer-close { background:none; border:none; font-size:16px; cursor:pointer; color:var(--dim); line-height:1; padding:5px 7px; border-radius:3px; transition:all .15s; }
-  .ap-drawer-close:hover { color:var(--navy); background:var(--bg); }
-  .ap-drawer-body { flex:1; overflow-y:auto; }
-  .ap-section { padding:20px 24px; border-bottom:1px solid var(--border); }
-  .ap-section:last-child { border-bottom:none; }
-  .ap-section-lbl { font-size:9px; font-weight:800; letter-spacing:2px; text-transform:uppercase; color:var(--dim); margin-bottom:14px; }
-  .ap-row { display:grid; gap:0 16px; }
+  .ap-drawer-title { font-family:'Playfair Display',Georgia,serif; font-size:22px; color:var(--navy); }
+  .ap-drawer-close { background:none; border:none; font-size:22px; cursor:pointer; color:var(--dim); line-height:1; padding:4px; }
+  .ap-drawer-close:hover { color:var(--navy); }
+  .ap-drawer-body { flex:1; overflow-y:auto; padding:24px 28px; }
+  .ap-drawer-footer {
+    padding:16px 28px; border-top:1px solid var(--border); flex-shrink:0;
+    display:flex; gap:12px;
+  }
+  .ap-drawer-submit {
+    flex:1; background:#78E0C4; color:var(--navy); border:none; padding:13px;
+    font-size:11px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase;
+    font-family:'Montserrat',sans-serif; border-radius:2px; cursor:pointer;
+  }
+  .ap-drawer-submit:hover { background:#5fd4b0; }
+  .ap-drawer-submit:disabled { opacity:.6; cursor:not-allowed; }
+  .ap-drawer-cancel {
+    background:none; border:1px solid var(--border); color:var(--dim); padding:13px 20px;
+    font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase;
+    font-family:'Montserrat',sans-serif; border-radius:2px; cursor:pointer;
+  }
+  .ap-drawer-cancel:hover { border-color:var(--navy); color:var(--navy); }
+  .ap-field { margin-bottom:18px; }
+  .ap-label { font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); font-weight:700; margin-bottom:6px; display:block; }
+  .ap-input { width:100%; background:var(--bg); border:1px solid var(--border); border-radius:2px; padding:10px 12px; font-size:13px; font-family:'Montserrat',sans-serif; color:var(--text); outline:none; }
+  .ap-input:focus { border-color:#78E0C4; }
+  .ap-row { display:grid; gap:0 14px; }
   .ap-row-2 { grid-template-columns:1fr 1fr; }
-  .ap-row-3 { grid-template-columns:2fr 1fr 1fr; }
-  .ap-field { margin-bottom:16px; position:relative; }
-  .ap-field:last-child { margin-bottom:0; }
-  .ap-label { font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:var(--dim); font-weight:700; margin-bottom:5px; display:block; }
-  .ap-input { width:100%; background:transparent; border:none; border-bottom:1px solid var(--border); padding:7px 0; font-size:13px; font-family:'Montserrat',sans-serif; color:var(--text); outline:none; transition:border-color .15s; border-radius:0; }
-  .ap-input:focus { border-bottom-color:#78E0C4; }
-  select.ap-input { cursor:pointer; }
+  .ap-row-3 { grid-template-columns:1fr 1fr 1fr; }
+  .ap-check-group { display:flex; gap:20px; flex-wrap:wrap; padding:4px 0; }
+  .ap-check-label { display:flex; align-items:center; gap:7px; cursor:pointer; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); font-weight:700; font-family:'Montserrat',sans-serif; }
+  .ap-check-label input { width:14px; height:14px; cursor:pointer; flex-shrink:0; }
+  .ap-error { color:#f59e0b; font-size:12px; margin-bottom:12px; display:none; }
   .ap-addr-wrap { position:relative; }
   .ap-suggest {
     display:none; position:absolute; top:100%; left:0; right:0; z-index:400;
     background:var(--white); border:1px solid var(--border); border-top:none;
-    border-radius:0 0 6px 6px; box-shadow:0 8px 24px rgba(6,15,30,.12);
-    max-height:220px; overflow-y:auto;
+    border-radius:0 0 4px 4px; box-shadow:0 6px 20px rgba(6,15,30,.13);
+    max-height:240px; overflow-y:auto;
   }
-  .ap-suggest-item { padding:10px 14px; font-size:12px; color:var(--text); cursor:pointer; border-bottom:1px solid #f0f2f5; line-height:1.45; }
+  .ap-suggest-item {
+    padding:10px 13px; font-size:12px; color:var(--text); cursor:pointer;
+    border-bottom:1px solid #f0f2f5; line-height:1.45;
+  }
   .ap-suggest-item:last-child { border-bottom:none; }
   .ap-suggest-item:hover, .ap-suggest-item.ap-focused { background:#eaf9f5; color:var(--navy); }
-  .ap-suggest-searching { padding:10px 14px; font-size:12px; color:var(--dim); font-style:italic; }
-  .ap-role-group { display:flex; gap:8px; flex-wrap:wrap; }
-  .ap-role-pill { padding:6px 14px; border-radius:100px; font-size:10px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; cursor:pointer; background:var(--bg); border:1.5px solid var(--border); color:var(--dim); transition:all .15s; font-family:'Montserrat',sans-serif; user-select:none; }
-  .ap-role-pill:hover { border-color:var(--navy); color:var(--navy); }
-  .ap-role-pill.active { background:var(--navy); color:#fff; border-color:var(--navy); }
-  .ap-error { font-size:11px; margin:0; padding:10px 16px 10px 14px; background:#fff8ed; border-left:3px solid #d97706; color:#92400e; display:none; }
-  .ap-drawer-footer { padding:16px 24px; border-top:1px solid var(--border); flex-shrink:0; }
-  .ap-drawer-submit { width:100%; background:#78E0C4; color:var(--navy); border:none; padding:13px; font-size:11px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase; font-family:'Montserrat',sans-serif; border-radius:2px; cursor:pointer; transition:background .15s; }
-  .ap-drawer-submit:hover { background:#5fd4b0; }
-  .ap-drawer-submit:disabled { opacity:.5; cursor:not-allowed; }
-  .ap-drawer-cancel { display:block; text-align:center; margin-top:10px; font-size:10px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; color:var(--dim); cursor:pointer; background:none; border:none; width:100%; font-family:'Montserrat',sans-serif; padding:4px; transition:color .15s; }
-  .ap-drawer-cancel:hover { color:var(--navy); }
+  .ap-suggest-searching { padding:10px 13px; font-size:12px; color:var(--dim); font-style:italic; }
 
   /* ── Pipeline Summary Strip ── */
   .pipeline-section {
@@ -1305,91 +1312,73 @@ function adminHTML() { return `<!DOCTYPE html>
 
 <!-- ── Drill-down Modal ── -->
 <!-- ── Add Person Modal ── -->
-<!-- ── Add Person Drawer ── -->
+<!-- ── Add Person Sidebar ── -->
 <div class="ap-overlay" id="ap-overlay" onclick="closeAddPerson()"></div>
 <div class="ap-drawer" id="ap-drawer">
   <div class="ap-drawer-hdr">
-    <div class="ap-drawer-title">New Constituent</div>
+    <div class="ap-drawer-title">Add New Constituent</div>
     <button class="ap-drawer-close" onclick="closeAddPerson()">&#215;</button>
   </div>
-  <div id="ap-error" class="ap-error">First and last name are required.</div>
   <div class="ap-drawer-body">
-
-    <div class="ap-section">
-      <div class="ap-section-lbl">Name</div>
-      <div class="ap-row ap-row-2">
-        <div class="ap-field">
-          <label class="ap-label" for="ap-first">First *</label>
-          <input class="ap-input" id="ap-first" type="text" placeholder="First"/>
-        </div>
-        <div class="ap-field">
-          <label class="ap-label" for="ap-last">Last *</label>
-          <input class="ap-input" id="ap-last" type="text" placeholder="Last"/>
-        </div>
-      </div>
-    </div>
-
-    <div class="ap-section">
-      <div class="ap-section-lbl">Contact</div>
-      <div class="ap-row ap-row-2">
-        <div class="ap-field">
-          <label class="ap-label" for="ap-email">Email</label>
-          <input class="ap-input" id="ap-email" type="email" placeholder="email@example.com"/>
-        </div>
-        <div class="ap-field">
-          <label class="ap-label" for="ap-phone">Phone</label>
-          <input class="ap-input" id="ap-phone" type="tel" placeholder="(504) 555-0000"/>
-        </div>
-      </div>
-    </div>
-
-    <div class="ap-section">
-      <div class="ap-section-lbl">Address</div>
-      <div class="ap-field ap-addr-wrap">
-        <label class="ap-label" for="ap-address">Street</label>
-        <input class="ap-input" id="ap-address" type="text" placeholder="123 Main St" autocomplete="off"/>
-        <div class="ap-suggest" id="ap-addr-suggest"></div>
-      </div>
-      <div class="ap-row ap-row-3">
-        <div class="ap-field">
-          <label class="ap-label" for="ap-city">City</label>
-          <input class="ap-input" id="ap-city" type="text" placeholder="Metairie"/>
-        </div>
-        <div class="ap-field">
-          <label class="ap-label" for="ap-state">State</label>
-          <select class="ap-input" id="ap-state">
-            <option value="LA" selected>LA</option>
-            <option value="AL">AL</option><option value="AK">AK</option><option value="AZ">AZ</option><option value="AR">AR</option><option value="CA">CA</option><option value="CO">CO</option><option value="CT">CT</option><option value="DE">DE</option><option value="FL">FL</option><option value="GA">GA</option><option value="HI">HI</option><option value="ID">ID</option><option value="IL">IL</option><option value="IN">IN</option><option value="IA">IA</option><option value="KS">KS</option><option value="KY">KY</option><option value="ME">ME</option><option value="MD">MD</option><option value="MA">MA</option><option value="MI">MI</option><option value="MN">MN</option><option value="MS">MS</option><option value="MO">MO</option><option value="MT">MT</option><option value="NE">NE</option><option value="NV">NV</option><option value="NH">NH</option><option value="NJ">NJ</option><option value="NM">NM</option><option value="NY">NY</option><option value="NC">NC</option><option value="ND">ND</option><option value="OH">OH</option><option value="OK">OK</option><option value="OR">OR</option><option value="PA">PA</option><option value="RI">RI</option><option value="SC">SC</option><option value="SD">SD</option><option value="TN">TN</option><option value="TX">TX</option><option value="UT">UT</option><option value="VT">VT</option><option value="VA">VA</option><option value="WA">WA</option><option value="WV">WV</option><option value="WI">WI</option><option value="WY">WY</option>
-          </select>
-        </div>
-        <div class="ap-field">
-          <label class="ap-label" for="ap-zip">Zip</label>
-          <input class="ap-input" id="ap-zip" type="text" placeholder="70001"/>
-        </div>
-      </div>
-    </div>
-
-    <div class="ap-section">
-      <div class="ap-section-lbl">Role</div>
-      <div class="ap-role-group">
-        <div class="ap-role-pill active" data-role="Voter" onclick="toggleRole(this)">Voter</div>
-        <div class="ap-role-pill" data-role="Committee Member" onclick="toggleRole(this)">Committee</div>
-        <div class="ap-role-pill" data-role="Attorney" onclick="toggleRole(this)">Attorney</div>
-        <div class="ap-role-pill" data-role="Donor" onclick="toggleRole(this)">Donor</div>
-      </div>
-    </div>
-
-    <div class="ap-section">
-      <div class="ap-section-lbl">Notes</div>
+    <div class="ap-row ap-row-2">
       <div class="ap-field">
-        <textarea class="ap-input" id="ap-comment" placeholder="Optional notes…" style="height:72px;resize:none;line-height:1.6;padding-top:4px;"></textarea>
+        <label class="ap-label" for="ap-first">First Name *</label>
+        <input class="ap-input" id="ap-first" type="text" placeholder="First name"/>
+      </div>
+      <div class="ap-field">
+        <label class="ap-label" for="ap-last">Last Name *</label>
+        <input class="ap-input" id="ap-last" type="text" placeholder="Last name"/>
       </div>
     </div>
-
+    <div class="ap-row ap-row-2">
+      <div class="ap-field">
+        <label class="ap-label" for="ap-email">Email</label>
+        <input class="ap-input" id="ap-email" type="email" placeholder="email@example.com"/>
+      </div>
+      <div class="ap-field">
+        <label class="ap-label" for="ap-phone">Phone</label>
+        <input class="ap-input" id="ap-phone" type="tel" placeholder="(504) 555-0000"/>
+      </div>
+    </div>
+    <div class="ap-field ap-addr-wrap">
+      <label class="ap-label" for="ap-address">Street Address</label>
+      <input class="ap-input" id="ap-address" type="text" placeholder="123 Main St" autocomplete="off"/>
+      <div class="ap-suggest" id="ap-addr-suggest"></div>
+    </div>
+    <div class="ap-row ap-row-3">
+      <div class="ap-field">
+        <label class="ap-label" for="ap-city">City</label>
+        <input class="ap-input" id="ap-city" type="text" placeholder="Metairie"/>
+      </div>
+      <div class="ap-field">
+        <label class="ap-label" for="ap-state">State</label>
+        <select class="ap-input" id="ap-state">
+          <option value="LA" selected>Louisiana</option>
+          <option value="AL">Alabama</option><option value="AK">Alaska</option><option value="AZ">Arizona</option><option value="AR">Arkansas</option><option value="CA">California</option><option value="CO">Colorado</option><option value="CT">Connecticut</option><option value="DE">Delaware</option><option value="FL">Florida</option><option value="GA">Georgia</option><option value="HI">Hawaii</option><option value="ID">Idaho</option><option value="IL">Illinois</option><option value="IN">Indiana</option><option value="IA">Iowa</option><option value="KS">Kansas</option><option value="KY">Kentucky</option><option value="ME">Maine</option><option value="MD">Maryland</option><option value="MA">Massachusetts</option><option value="MI">Michigan</option><option value="MN">Minnesota</option><option value="MS">Mississippi</option><option value="MO">Missouri</option><option value="MT">Montana</option><option value="NE">Nebraska</option><option value="NV">Nevada</option><option value="NH">New Hampshire</option><option value="NJ">New Jersey</option><option value="NM">New Mexico</option><option value="NY">New York</option><option value="NC">North Carolina</option><option value="ND">North Dakota</option><option value="OH">Ohio</option><option value="OK">Oklahoma</option><option value="OR">Oregon</option><option value="PA">Pennsylvania</option><option value="RI">Rhode Island</option><option value="SC">South Carolina</option><option value="SD">South Dakota</option><option value="TN">Tennessee</option><option value="TX">Texas</option><option value="UT">Utah</option><option value="VT">Vermont</option><option value="VA">Virginia</option><option value="WA">Washington</option><option value="WV">West Virginia</option><option value="WI">Wisconsin</option><option value="WY">Wyoming</option>
+        </select>
+      </div>
+      <div class="ap-field">
+        <label class="ap-label" for="ap-zip">Zip</label>
+        <input class="ap-input" id="ap-zip" type="text" placeholder="70001"/>
+      </div>
+    </div>
+    <div class="ap-field">
+      <label class="ap-label">Role</label>
+      <div class="ap-check-group">
+        <label class="ap-check-label"><input type="checkbox" id="ap-role-voter" style="accent-color:#78E0C4;"/> Voter</label>
+        <label class="ap-check-label"><input type="checkbox" id="ap-role-committee" style="accent-color:#78E0C4;"/> Committee Member</label>
+        <label class="ap-check-label"><input type="checkbox" id="ap-role-attorney" style="accent-color:#d4a843;"/> Attorney</label>
+      </div>
+    </div>
+    <div class="ap-field">
+      <label class="ap-label" for="ap-comment">Notes</label>
+      <textarea class="ap-input" id="ap-comment" placeholder="Optional notes…" style="height:90px;resize:vertical;line-height:1.5;"></textarea>
+    </div>
+    <div class="ap-error" id="ap-error">Please enter first and last name.</div>
   </div>
   <div class="ap-drawer-footer">
-    <button class="ap-drawer-submit" id="ap-submit" onclick="submitAddPerson()">Save Constituent</button>
     <button class="ap-drawer-cancel" onclick="closeAddPerson()">Cancel</button>
+    <button class="ap-drawer-submit" id="ap-submit" onclick="submitAddPerson()">Add to Database</button>
   </div>
 </div>
 
@@ -1660,7 +1649,7 @@ function render(d) {
           (r.parish && r.parish !== 'Jefferson' ? '<span class="badge-ood" title="Lives in '+x(r.parish)+' Parish — outside the 24th JDC">Out of District</span>' : '')+
           '<div class="c-sub">'+x(r.email)+'</div></td>'+
       '<td class="c-phone">'+fmtPhone(r.phone)+'</td>'+
-      '<td class="c-sub" style="font-size:12px;color:var(--muted);">'+x(r.address)+(r.city?'<br>'+x(r.city)+', '+x(r.state||'')+(r.parish?' &nbsp;·&nbsp; '+x(r.parish)+' Parish':''):'')+'</td>'+
+      '<td style="font-size:12px;color:var(--muted);line-height:1.5;">'+x(r.address)+(r.city?'<br>'+x(r.city)+(r.state?', '+x(r.state):'')+(r.zip?' '+x(r.zip):''):'')+'</td>'+
       '<td class="c-zip">'+x(r.zip)+'</td>'+
       '<td><span class="badge badge-guests">'+x(r.guests)+'</span></td>'+
       '<td class="c-sub" style="font-size:12px;color:var(--muted);max-width:160px;line-height:1.5;">'+x(r.guest_names)+'</td>'+
@@ -2056,18 +2045,15 @@ document.getElementById('q').addEventListener('input',function(){
 })();
 
 // ── Modal ──
-function toggleRole(el) {
-  el.classList.toggle('active');
-}
 function openAddPerson() {
   ['ap-first','ap-last','ap-email','ap-phone','ap-address','ap-city','ap-zip','ap-comment'].forEach(function(id){ document.getElementById(id).value = ''; });
   document.getElementById('ap-state').value = 'LA';
-  document.querySelectorAll('.ap-role-pill').forEach(function(p){
-    p.classList.toggle('active', p.getAttribute('data-role') === 'Voter');
-  });
+  document.getElementById('ap-role-voter').checked     = false;
+  document.getElementById('ap-role-committee').checked = false;
+  document.getElementById('ap-role-attorney').checked  = false;
   document.getElementById('ap-error').style.display = 'none';
   document.getElementById('ap-submit').disabled = false;
-  document.getElementById('ap-submit').textContent = 'Save Constituent';
+  document.getElementById('ap-submit').textContent = 'Add to Database';
   document.getElementById('ap-overlay').classList.add('open');
   document.getElementById('ap-drawer').classList.add('open');
   setTimeout(function(){ document.getElementById('ap-first').focus(); }, 260);
@@ -2095,15 +2081,18 @@ function submitAddPerson() {
       city:       document.getElementById('ap-city').value.trim(),
       state:      document.getElementById('ap-state').value,
       zip:        document.getElementById('ap-zip').value.trim(),
-      role:       Array.from(document.querySelectorAll('.ap-role-pill.active')).map(function(p){ return p.getAttribute('data-role'); }).join(', ') || 'Voter',
+      role:       [document.getElementById('ap-role-voter').checked ? 'Voter' : '',
+                   document.getElementById('ap-role-committee').checked ? 'Committee Member' : '',
+                   document.getElementById('ap-role-attorney').checked ? 'Attorney' : '']
+                  .filter(Boolean).join(', ') || 'Voter',
       comment:    document.getElementById('ap-comment').value.trim()
     })
   }).then(function(r){ return r.json(); }).then(function(d){
     if (d.result === 'success') {
       closeAddPerson();
       loadData();  // refresh the table
-    } else { btn.disabled = false; btn.textContent = 'Save Constituent'; alert('Error saving. Please try again.'); }
-  }).catch(function(){ btn.disabled = false; btn.textContent = 'Save Constituent'; alert('Network error. Please try again.'); });
+    } else { btn.disabled = false; btn.textContent = 'Add to Database'; alert('Error saving. Please try again.'); }
+  }).catch(function(){ btn.disabled = false; btn.textContent = 'Add to Database'; alert('Network error. Please try again.'); });
 }
 
 function openModal() {

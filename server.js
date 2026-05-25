@@ -733,6 +733,29 @@ function adminHTML() { return `<!DOCTYPE html>
   }
 
   /* Event tabs */
+  /* District filter bar */
+  .district-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 32px; background: var(--white);
+    border-bottom: 1px solid var(--border);
+  }
+  .dist-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 100px;
+    font-size: 11px; font-weight: 700; letter-spacing: .5px;
+    text-transform: uppercase; cursor: pointer; transition: all .15s;
+    background: var(--bg); color: var(--dim);
+    border: 1px solid var(--border); font-family: 'Montserrat', sans-serif;
+  }
+  .dist-chip:hover { border-color: var(--navy); color: var(--navy); }
+  .dist-chip.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .dist-chip-count {
+    font-size: 10px; font-weight: 700;
+    background: rgba(255,255,255,.25); color: inherit;
+    padding: 1px 7px; border-radius: 100px;
+  }
+  .dist-chip:not(.active) .dist-chip-count { background: var(--border); color: var(--muted); }
+
   .evt-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--white); padding: 0 32px; overflow-x: auto; }
   .evt-tab { padding: 12px 20px; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 700; cursor: pointer; border-bottom: 2px solid transparent; color: var(--dim); white-space: nowrap; user-select: none; }
   .evt-tab.active { color: var(--navy); border-bottom-color: var(--navy); }
@@ -1201,6 +1224,23 @@ function adminHTML() { return `<!DOCTYPE html>
 <!-- ═══════════ CONSTITUENTS VIEW ═══════════ -->
 <div class="view view-hidden" id="view-constituents">
 
+<!-- ── District Filter ── -->
+<div class="district-bar">
+  <button class="dist-chip active" id="dist-voters"    onclick="setDistrict('voters')">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+    Potential Voters
+    <span class="dist-chip-count" id="dist-count-voters">—</span>
+  </button>
+  <button class="dist-chip" id="dist-ood" onclick="setDistrict('ood')">
+    Out of District
+    <span class="dist-chip-count" id="dist-count-ood">—</span>
+  </button>
+  <button class="dist-chip" id="dist-all" onclick="setDistrict('all')">
+    All Constituents
+    <span class="dist-chip-count" id="dist-count-all">—</span>
+  </button>
+</div>
+
 <!-- ── Event Filter Tabs ── -->
 <div class="evt-tabs" id="evt-tabs"></div>
 
@@ -1414,7 +1454,19 @@ function adminHTML() { return `<!DOCTYPE html>
 
 <script>
 var all = [];
-var activeEvent = null;
+var activeEvent    = null;
+var activeDistrict = 'voters'; // 'voters' | 'ood' | 'all'
+
+function isVoter(r)  { return r.parish === 'Jefferson'; }
+function isOOD(r)    { return r.parish && r.parish !== 'Jefferson'; }
+
+function setDistrict(d) {
+  activeDistrict = d;
+  ['voters','ood','all'].forEach(function(k){
+    document.getElementById('dist-'+k).classList.toggle('active', k === d);
+  });
+  refresh();
+}
 
 function loadData() {
   fetch('/admin/data').then(r=>r.json()).then(function(d){
@@ -1437,21 +1489,30 @@ var HELP_OPTIONS = [
 ];
 
 function filtered() {
-  if (!activeEvent) return all;
-  return all.filter(function(r){ return r.event === activeEvent; });
+  var base = activeEvent ? all.filter(function(r){ return r.event === activeEvent; }) : all;
+  if (activeDistrict === 'voters') return base.filter(isVoter);
+  if (activeDistrict === 'ood')    return base.filter(isOOD);
+  return base;
 }
 
 function refresh() {
-  var d = filtered();
-  var q = document.getElementById('q').value.toLowerCase();
+  // Update district chip counts (always off the full set, ignoring event filter)
+  var voterCount = all.filter(isVoter).length;
+  var oodCount   = all.filter(isOOD).length;
+  document.getElementById('dist-count-voters').textContent = voterCount;
+  document.getElementById('dist-count-ood').textContent    = oodCount;
+  document.getElementById('dist-count-all').textContent    = all.length;
+
+  var d  = filtered();
+  var q  = document.getElementById('q').value.toLowerCase();
   var fd = q ? d.filter(function(r){
     return ['first_name','last_name','email','phone','zip','comment']
       .some(function(f){ return r[f]&&r[f].toLowerCase().includes(q); });
   }) : d;
-  stats(d);
+  stats(all);                    // dashboard stats always use full dataset
   snapshot(d);
-  buildPipelineSummary(d);
-  buildPipelineBoard(d);
+  buildPipelineSummary(all.filter(isVoter));   // pipeline summary = voters only
+  buildPipelineBoard(all.filter(isVoter));     // pipeline board   = voters only
   render(fd);
 }
 

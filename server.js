@@ -266,10 +266,8 @@ const PIPELINE_STAGES = [
   { key: 'new',        label: 'New Contact',     color: '#9aaabb' },
   { key: 'contacted',  label: 'Contacted',        color: '#3b82f6' },
   { key: 'engaged',    label: 'In Conversation',  color: '#8b5cf6' },
-  { key: 'lunch',      label: 'Needs Lunch',      color: '#f59e0b' },
   { key: 'met',        label: 'Met with Blaine',  color: '#fb923c' },
   { key: 'committed',  label: 'Vote Committed',   color: '#10b981' },
-  { key: 'confirmed',  label: 'Vote Confirmed',   color: '#78E0C4' },
 ];
 const PIPELINE_JSON = JSON.stringify(PIPELINE_STAGES);
 
@@ -915,28 +913,29 @@ function adminHTML() { return `<!DOCTYPE html>
   .pipe-stage-fill { height: 100%; border-radius: 100px; transition: width .4s; }
   .pipe-arrow { color: var(--dim); padding: 0 5px; font-size: 14px; flex-shrink: 0; opacity: .5; }
 
-  /* ── Pipeline Kanban Board ── */
-  .pipeline-board-container { padding: 24px 32px 32px; overflow-x: auto; }
-  .pipeline-board { display: flex; gap: 12px; min-width: max-content; }
-  .pipe-col {
-    width: 210px; flex-shrink: 0; display: flex; flex-direction: column;
-    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
-    max-height: calc(100vh - 200px);
+  /* ── Pipeline Horizontal Lane Layout ── */
+  .pipeline-board-container { padding: 24px 32px 32px; }
+  .pipeline-board { display: flex; flex-direction: column; gap: 10px; }
+  .pipe-lane {
+    background: var(--white); border: 1px solid var(--border); border-radius: 6px;
+    overflow: hidden;
   }
-  .pipe-col-hdr {
-    padding: 10px 13px; border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; gap: 7px; flex-shrink: 0;
+  .pipe-lane-hdr {
+    padding: 12px 20px; background: var(--bg); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
   }
-  .pipe-col-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .pipe-col-title { font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; font-weight: 700; color: var(--navy); flex: 1; line-height: 1.3; }
-  .pipe-col-count { font-size: 11px; font-weight: 700; color: var(--dim); background: var(--border); padding: 1px 7px; border-radius: 100px; }
-  .pipe-col-cards { overflow-y: auto; padding: 10px 10px 12px; flex: 1; display: flex; flex-direction: column; gap: 7px; }
+  .pipe-lane-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .pipe-lane-title { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 700; color: var(--navy); flex: 1; }
+  .pipe-lane-count { font-size: 11px; font-weight: 700; color: var(--dim); background: var(--border); padding: 2px 9px; border-radius: 100px; }
+  .pipe-lane-cards { display: flex; flex-wrap: wrap; gap: 10px; padding: 14px 18px; align-items: flex-start; }
+  .pipe-lane-empty { padding: 14px 20px; font-size: 12px; color: var(--dim); font-style: italic; }
   .pipe-card {
-    background: var(--white); border: 1px solid var(--border); border-radius: 3px;
-    padding: 10px 12px; cursor: pointer; transition: border-color .12s, box-shadow .12s;
+    width: 240px; flex-shrink: 0;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 10px 12px; cursor: pointer; transition: border-color .12s, box-shadow .12s, background .12s;
     text-decoration: none; display: block;
   }
-  .pipe-card:hover { border-color: #78E0C4; box-shadow: 0 2px 6px rgba(6,15,30,.07); }
+  .pipe-card:hover { border-color: #78E0C4; box-shadow: 0 2px 8px rgba(6,15,30,.07); background: var(--white); }
   .pipe-card-name { font-size: 13px; font-weight: 700; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pipe-card-meta { font-size: 11px; color: var(--dim); margin-top: 2px; }
   .pipe-card-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
@@ -944,11 +943,10 @@ function adminHTML() { return `<!DOCTYPE html>
   .pipe-card-sel {
     width: 100%; margin-top: 8px; font-size: 10px; letter-spacing: .4px;
     text-transform: uppercase; font-family: 'Montserrat', sans-serif; font-weight: 700;
-    color: var(--navy); background: var(--bg); border: 1px solid var(--border);
+    color: var(--navy); background: var(--white); border: 1px solid var(--border);
     border-radius: 2px; padding: 5px 7px; cursor: pointer; outline: none;
   }
   .pipe-card-sel:focus { border-color: #78E0C4; }
-  .pipe-col-empty { padding: 20px 10px; font-size: 12px; color: var(--dim); font-style: italic; text-align: center; }
 
   /* ── Left Sidebar Navigation ── */
   .left-nav {
@@ -1767,8 +1765,8 @@ function buildPipelineBoard(d) {
   });
   board.innerHTML = PIPELINE_STAGES.map(function(s) {
     var cards = byStage[s.key] || [];
-    var cardsHTML = cards.length
-      ? cards.map(function(r) {
+    var bodyHTML = cards.length
+      ? '<div class="pipe-lane-cards">' + cards.map(function(r) {
           var tags = [];
           if (r.yard_sign === 'Yes') tags.push('Yard Sign');
           if (r.endorse === 'Yes') tags.push('Endorses');
@@ -1783,15 +1781,15 @@ function buildPipelineBoard(d) {
             (tags.length ? '<div class="pipe-card-tags">' + tags.map(function(t){ return '<span class="pipe-card-tag">'+t+'</span>'; }).join('') + '</div>' : '') +
             '<select class="pipe-card-sel" onclick="event.stopPropagation()" onchange="setPipelineStage(' + r.id + ',this.value)">' + stageOpts + '</select>' +
           '</div>';
-        }).join('')
-      : '<div class="pipe-col-empty">Empty</div>';
-    return '<div class="pipe-col">' +
-      '<div class="pipe-col-hdr">' +
-        '<div class="pipe-col-dot" style="background:' + s.color + '"></div>' +
-        '<div class="pipe-col-title">' + s.label + '</div>' +
-        '<div class="pipe-col-count">' + cards.length + '</div>' +
+        }).join('') + '</div>'
+      : '<div class="pipe-lane-empty">No one here yet</div>';
+    return '<div class="pipe-lane">' +
+      '<div class="pipe-lane-hdr">' +
+        '<div class="pipe-lane-dot" style="background:' + s.color + '"></div>' +
+        '<div class="pipe-lane-title">' + s.label + '</div>' +
+        '<div class="pipe-lane-count">' + cards.length + '</div>' +
       '</div>' +
-      '<div class="pipe-col-cards">' + cardsHTML + '</div>' +
+      bodyHTML +
     '</div>';
   }).join('');
 }

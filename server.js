@@ -1009,10 +1009,21 @@ function adminHTML() { return `<!DOCTYPE html>
         <input class="modal-input" id="ap-phone" type="tel" placeholder="(504) 555-0000"/>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+    <div class="modal-field">
+      <label class="modal-label" for="ap-address">Street Address</label>
+      <input class="modal-input" id="ap-address" type="text" placeholder="123 Main St"/>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 16px;">
       <div class="modal-field">
-        <label class="modal-label" for="ap-address">Street Address</label>
-        <input class="modal-input" id="ap-address" type="text" placeholder="123 Main St"/>
+        <label class="modal-label" for="ap-city">City</label>
+        <input class="modal-input" id="ap-city" type="text" placeholder="Metairie"/>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label" for="ap-state">State</label>
+        <select class="modal-input" id="ap-state">
+          <option value="LA" selected>Louisiana</option>
+          <option value="AL">Alabama</option><option value="AK">Alaska</option><option value="AZ">Arizona</option><option value="AR">Arkansas</option><option value="CA">California</option><option value="CO">Colorado</option><option value="CT">Connecticut</option><option value="DE">Delaware</option><option value="FL">Florida</option><option value="GA">Georgia</option><option value="HI">Hawaii</option><option value="ID">Idaho</option><option value="IL">Illinois</option><option value="IN">Indiana</option><option value="IA">Iowa</option><option value="KS">Kansas</option><option value="KY">Kentucky</option><option value="ME">Maine</option><option value="MD">Maryland</option><option value="MA">Massachusetts</option><option value="MI">Michigan</option><option value="MN">Minnesota</option><option value="MS">Mississippi</option><option value="MO">Missouri</option><option value="MT">Montana</option><option value="NE">Nebraska</option><option value="NV">Nevada</option><option value="NH">New Hampshire</option><option value="NJ">New Jersey</option><option value="NM">New Mexico</option><option value="NY">New York</option><option value="NC">North Carolina</option><option value="ND">North Dakota</option><option value="OH">Ohio</option><option value="OK">Oklahoma</option><option value="OR">Oregon</option><option value="PA">Pennsylvania</option><option value="RI">Rhode Island</option><option value="SC">South Carolina</option><option value="SD">South Dakota</option><option value="TN">Tennessee</option><option value="TX">Texas</option><option value="UT">Utah</option><option value="VT">Vermont</option><option value="VA">Virginia</option><option value="WA">Washington</option><option value="WV">West Virginia</option><option value="WI">Wisconsin</option><option value="WY">Wyoming</option>
+        </select>
       </div>
       <div class="modal-field">
         <label class="modal-label" for="ap-zip">Zip Code</label>
@@ -1021,21 +1032,21 @@ function adminHTML() { return `<!DOCTYPE html>
     </div>
     <div class="modal-field">
       <label class="modal-label">Role</label>
-      <div style="display:flex;gap:20px;padding:4px 0;">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text);font-weight:600;">
-          <input type="checkbox" id="ap-role-voter" style="width:15px;height:15px;accent-color:#78E0C4;cursor:pointer;"/> Voter
+      <div style="display:flex;gap:24px;padding:4px 0;">
+        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);font-weight:700;font-family:'Montserrat',sans-serif;">
+          <input type="checkbox" id="ap-role-voter" style="width:14px;height:14px;accent-color:#78E0C4;cursor:pointer;flex-shrink:0;"/> Voter
         </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text);font-weight:600;">
-          <input type="checkbox" id="ap-role-committee" style="width:15px;height:15px;accent-color:#78E0C4;cursor:pointer;"/> Committee Member
+        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);font-weight:700;font-family:'Montserrat',sans-serif;">
+          <input type="checkbox" id="ap-role-committee" style="width:14px;height:14px;accent-color:#78E0C4;cursor:pointer;flex-shrink:0;"/> Committee Member
         </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text);font-weight:600;">
-          <input type="checkbox" id="ap-role-attorney" style="width:15px;height:15px;accent-color:#d4a843;cursor:pointer;"/> ⚖ Attorney
+        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);font-weight:700;font-family:'Montserrat',sans-serif;">
+          <input type="checkbox" id="ap-role-attorney" style="width:14px;height:14px;accent-color:#d4a843;cursor:pointer;flex-shrink:0;"/> Attorney
         </label>
       </div>
     </div>
     <div class="modal-field">
       <label class="modal-label" for="ap-comment">Notes</label>
-      <input class="modal-input" id="ap-comment" type="text" placeholder="Optional notes…"/>
+      <textarea class="modal-input" id="ap-comment" placeholder="Optional notes…" style="height:80px;resize:vertical;line-height:1.5;"></textarea>
     </div>
     <div id="ap-error" style="color:#f59e0b;font-size:12px;margin-bottom:12px;display:none;">Please enter at least a last name.</div>
     <button class="modal-copy" id="ap-submit" onclick="submitAddPerson()">Add to Database</button>
@@ -1436,7 +1447,8 @@ document.getElementById('q').addEventListener('input',function(){
 
 // ── Modal ──
 function openAddPerson() {
-  ['ap-first','ap-last','ap-email','ap-phone','ap-address','ap-zip','ap-comment'].forEach(function(id){ document.getElementById(id).value = ''; });
+  ['ap-first','ap-last','ap-email','ap-phone','ap-address','ap-city','ap-zip','ap-comment'].forEach(function(id){ document.getElementById(id).value = ''; });
+  document.getElementById('ap-state').value = 'LA';
   document.getElementById('ap-role-voter').checked     = false;
   document.getElementById('ap-role-committee').checked = false;
   document.getElementById('ap-role-attorney').checked  = false;
@@ -1464,6 +1476,8 @@ function submitAddPerson() {
       email:      document.getElementById('ap-email').value.trim(),
       phone:      document.getElementById('ap-phone').value.trim(),
       address:    document.getElementById('ap-address').value.trim(),
+      city:       document.getElementById('ap-city').value.trim(),
+      state:      document.getElementById('ap-state').value,
       zip:        document.getElementById('ap-zip').value.trim(),
       role:       [document.getElementById('ap-role-voter').checked ? 'Voter' : '',
                    document.getElementById('ap-role-committee').checked ? 'Committee Member' : '',

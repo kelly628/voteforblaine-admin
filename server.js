@@ -2273,15 +2273,18 @@ function constituentHTML(id) {
   .ct-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
   .ct-field { display: flex; flex-direction: column; gap: 4px; }
   .ct-lbl { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--dim); font-weight: 600; }
-  .ct-val { font-size: 14px; color: var(--navy); font-weight: 500; min-height: 20px; }
-  .ct-input { font-size: 14px; color: var(--navy); border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px; font-family: 'Montserrat', sans-serif; width: 100%; background: #fff; outline: none; display: none; }
-  .ct-input:focus { border-color: var(--mint); }
+  .ct-val { display: none; }
+  .ct-input { font-size: 14px; color: var(--navy); border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px; font-family: 'Montserrat', sans-serif; width: 100%; background: #fff; outline: none; display: block; }
+  .ct-input:focus { border-color: var(--mint); box-shadow: 0 0 0 2px rgba(120,224,196,.18); }
   .edit-row { display: flex; gap: 10px; align-items: center; margin-top: 20px; }
-  .btn-main { background: var(--navy); color: #fff; border: none; padding: 9px 20px; border-radius: 3px; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; font-family: 'Montserrat', sans-serif; transition: opacity .15s; }
-  .btn-main:hover { opacity: .85; }
-  .btn-save { background: var(--mint); color: var(--navy); border: none; padding: 9px 20px; border-radius: 3px; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; font-family: 'Montserrat', sans-serif; display: none; }
-  .btn-ghost { background: none; color: var(--dim); border: 1px solid var(--border); padding: 8px 16px; border-radius: 3px; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; font-family: 'Montserrat', sans-serif; display: none; }
-  .save-msg { font-size: 11px; color: #2e9e7e; font-weight: 600; display: none; }
+  .btn-main { display: none; }
+  .btn-save { background: var(--mint); color: var(--navy); border: none; padding: 10px 24px; border-radius: 3px; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer; font-family: 'Montserrat', sans-serif; transition: background .15s; display: inline-block; }
+  .btn-save:hover { background: #5fd4b0; }
+  .btn-save:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-ghost { display: none; }
+  .save-msg { font-size: 11px; color: #2e9e7e; font-weight: 700; display: none; letter-spacing: .5px; }
+  .edit-textarea { font-size: 14px; color: var(--text); border: 1px solid var(--border); border-radius: 3px; padding: 10px 12px; font-family: 'Montserrat', sans-serif; width: 100%; background: #fff; outline: none; resize: vertical; min-height: 90px; line-height: 1.5; display: block; margin-top: 4px; }
+  .edit-textarea:focus { border-color: var(--mint); box-shadow: 0 0 0 2px rgba(120,224,196,.18); }
   .tags { display: flex; flex-wrap: wrap; gap: 8px; }
   .ptag { background: rgba(120,224,196,.12); border: 1px solid rgba(120,224,196,.25); color: var(--navy); font-size: 11px; font-weight: 600; padding: 5px 12px; border-radius: 100px; }
   .ptag-none { font-size: 13px; color: var(--dim); font-style: italic; }
@@ -2334,9 +2337,12 @@ function constituentHTML(id) {
 </head>
 <body>
 
-<header class="hdr">
+<header class="hdr" style="position:sticky;top:0;z-index:40;">
   <a href="/admin" style="display:block;line-height:0;"><img src="${LOGO_URL}" class="hdr-logo" alt="Blaine Moncrief"/></a>
   <div class="hdr-right">
+    <button id="hdr-save-btn" onclick="saveEdit()" style="background:var(--mint);color:var(--navy);border:none;padding:8px 20px;border-radius:2px;font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;font-family:'Montserrat',sans-serif;cursor:pointer;transition:background .15s;">Save Changes</button>
+    <span id="hdr-save-msg" style="font-size:11px;color:#78E0C4;font-weight:700;display:none;letter-spacing:.5px;">&#10003; Saved</span>
+    <div class="hdr-divider"></div>
     <span class="hdr-label">Constituent Profile</span>
   </div>
 </header>
@@ -2446,17 +2452,15 @@ function constituentHTML(id) {
     </div>
   </div>
   <div class="edit-row">
-    <button class="btn-main" id="btn-edit" onclick="startEdit()">Edit Profile</button>
     <button class="btn-save" id="btn-save" onclick="saveEdit()">Save Changes</button>
-    <button class="btn-ghost" id="btn-cancel" onclick="cancelEdit()">Cancel</button>
     <span class="save-msg" id="save-msg">&#10003; Saved</span>
   </div>
 </div>
 
 <div class="s-card">
   <div class="s-label">How They Want to Help</div>
-  <div class="tags" id="p-helps"></div>
-  <div id="edit-helps-wrap" style="display:none;">
+  <div class="tags" id="p-helps" style="display:none;"></div>
+  <div id="edit-helps-wrap">
     <div class="edit-checks">
       <label class="edit-check-item"><input type="checkbox" id="eh-yardsign"/><span class="edit-check-label">Deliver me a yard sign</span></label>
       <label class="edit-check-item"><input type="checkbox" id="eh-location"/><span class="edit-check-label">Provide Sign Location</span></label>
@@ -2874,19 +2878,28 @@ function saveEdit() {
     endorse:     rec ? rec.endorse : "No",
     comment:     document.getElementById("i-comment").value.trim()
   };
+  var hdrBtn = document.getElementById("hdr-save-btn");
+  var hdrMsg = document.getElementById("hdr-save-msg");
+  var inlineBtn = document.getElementById("btn-save");
+  if (hdrBtn) { hdrBtn.disabled = true; hdrBtn.textContent = "Saving…"; }
+  if (inlineBtn) { inlineBtn.disabled = true; inlineBtn.textContent = "Saving…"; }
   fetch("/admin/constituent/" + CID, {
     method: "PATCH",
     headers: {"Content-Type":"application/json"},
     body: JSON.stringify(body)
   }).then(function(r){ return r.json(); }).then(function(res){
+    if (hdrBtn) { hdrBtn.disabled = false; hdrBtn.textContent = "Save Changes"; }
+    if (inlineBtn) { inlineBtn.disabled = false; inlineBtn.textContent = "Save Changes"; }
     if (res.result === "success") {
       Object.assign(rec, body);
-      cancelEdit();
       paint(rec);
       var m = document.getElementById("save-msg");
-      m.style.display = "inline";
-      setTimeout(function(){ m.style.display = "none"; }, 2500);
+      if (m) { m.style.display = "inline"; setTimeout(function(){ m.style.display = "none"; }, 2500); }
+      if (hdrMsg) { hdrMsg.style.display = "inline"; setTimeout(function(){ hdrMsg.style.display = "none"; }, 2500); }
     }
+  }).catch(function(){
+    if (hdrBtn) { hdrBtn.disabled = false; hdrBtn.textContent = "Save Changes"; }
+    if (inlineBtn) { inlineBtn.disabled = false; inlineBtn.textContent = "Save Changes"; }
   });
 }
 </script>

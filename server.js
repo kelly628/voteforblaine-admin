@@ -1020,13 +1020,18 @@ function adminHTML() { return `<!DOCTYPE html>
       </div>
     </div>
     <div class="modal-field">
-      <label class="modal-label" for="ap-role">Role</label>
-      <select class="modal-input" id="ap-role">
-        <option value="Voter">Voter</option>
-        <option value="Committee Member">Committee Member</option>
-        <option value="Voter, Committee Member">Voter + Committee Member</option>
-        <option value="Attorney">Attorney</option>
-      </select>
+      <label class="modal-label">Role</label>
+      <div style="display:flex;gap:20px;padding:4px 0;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text);font-weight:600;">
+          <input type="checkbox" id="ap-role-voter" style="width:15px;height:15px;accent-color:#78E0C4;cursor:pointer;"/> Voter
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text);font-weight:600;">
+          <input type="checkbox" id="ap-role-committee" style="width:15px;height:15px;accent-color:#78E0C4;cursor:pointer;"/> Committee Member
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text);font-weight:600;">
+          <input type="checkbox" id="ap-role-attorney" style="width:15px;height:15px;accent-color:#d4a843;cursor:pointer;"/> ⚖ Attorney
+        </label>
+      </div>
     </div>
     <div class="modal-field">
       <label class="modal-label" for="ap-comment">Notes</label>
@@ -1432,7 +1437,9 @@ document.getElementById('q').addEventListener('input',function(){
 // ── Modal ──
 function openAddPerson() {
   ['ap-first','ap-last','ap-email','ap-phone','ap-address','ap-zip','ap-comment'].forEach(function(id){ document.getElementById(id).value = ''; });
-  document.getElementById('ap-role').value = 'Voter';
+  document.getElementById('ap-role-voter').checked     = false;
+  document.getElementById('ap-role-committee').checked = false;
+  document.getElementById('ap-role-attorney').checked  = false;
   document.getElementById('ap-error').style.display = 'none';
   document.getElementById('ap-submit').disabled = false;
   document.getElementById('ap-submit').textContent = 'Add to Database';
@@ -1458,7 +1465,10 @@ function submitAddPerson() {
       phone:      document.getElementById('ap-phone').value.trim(),
       address:    document.getElementById('ap-address').value.trim(),
       zip:        document.getElementById('ap-zip').value.trim(),
-      role:       document.getElementById('ap-role').value,
+      role:       [document.getElementById('ap-role-voter').checked ? 'Voter' : '',
+                   document.getElementById('ap-role-committee').checked ? 'Committee Member' : '',
+                   document.getElementById('ap-role-attorney').checked ? 'Attorney' : '']
+                  .filter(Boolean).join(', ') || 'Voter',
       comment:    document.getElementById('ap-comment').value.trim()
     })
   }).then(function(r){ return r.json(); }).then(function(d){

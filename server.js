@@ -2340,6 +2340,8 @@ function autoParish(zip) {
   if (el && (!el.value || ZIP_PARISH[zip])) el.value = p;
 }
 
+var PROFILE_PIPELINE = ${PIPELINE_JSON};
+
 try {
   var d = ${_data};
   if (!d) { document.getElementById("p-name").textContent = "Constituent not found."; }
@@ -2506,8 +2508,6 @@ function paint(d) {
 }
 
 // ── Pipeline stage on profile ──────────────────────────────────────────
-var PROFILE_PIPELINE = ${PIPELINE_JSON};
-
 function renderProfilePipeline(stage) {
   var activeKey = (stage && stage !== '') ? stage : 'new';
   var activeIdx = PROFILE_PIPELINE.findIndex(function(s){ return s.key === activeKey; });

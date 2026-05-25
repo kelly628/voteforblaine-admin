@@ -132,7 +132,7 @@ app.post('/admin/constituent', (req, res) => {
   try {
     db.prepare(`
       INSERT INTO rsvps (first_name, last_name, email, phone, address, city, state, zip, parish, how_to_help, yard_sign, endorse, comment, role, event)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(first_name||'', last_name||'', email||'', phone||'', address||'', city||'', state||'', zip||'', parish,
            how_to_help||'', yard_sign||'No', endorse||'No', comment||'', role||'Voter', 'Manual Entry');
     res.json({ result: 'success' });

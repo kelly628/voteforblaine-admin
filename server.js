@@ -1098,6 +1098,8 @@ function adminHTML() { return `<!DOCTYPE html>
 <header class="hdr" style="position:sticky;top:0;z-index:40;">
   <div id="hdr-page-title" style="font-size:11px;font-weight:700;color:rgba(255,255,255,.65);letter-spacing:2px;text-transform:uppercase;">Dashboard</div>
   <div class="hdr-right">
+    <button onclick="openAddPerson()" style="background:var(--mint);color:var(--navy);border:none;padding:8px 18px;border-radius:2px;font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;font-family:'Montserrat',sans-serif;cursor:pointer;">&#xff0b; Add Person</button>
+    <div class="hdr-divider"></div>
     <span class="hdr-label">Campaign Admin</span>
   </div>
 </header>

@@ -1064,7 +1064,7 @@ function adminHTML() { return `<!DOCTYPE html>
 <!-- ═══════════ DASHBOARD VIEW ═══════════ -->
 <div class="view" id="view-dashboard">
 <div class="stats">
-  <div class="stat"><div class="stat-lbl">RSVPs</div><div class="stat-val" id="s-rsvp">—</div></div>
+  <div class="stat"><div class="stat-lbl">Constituents</div><div class="stat-val" id="s-rsvp">—</div></div>
   <div class="stat stat-clickable" onclick="openSignsModal()" title="View yard sign tracker">
     <div class="stat-lbl">Yard Signs Requested</div>
     <div class="stat-val" id="s-signs">—</div>

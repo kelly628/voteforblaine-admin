@@ -1,0 +1,16 @@
+{
+  "name": "voteforblaine-admin",
+  "version": "1.0.0",
+  "description": "RSVP admin server for Blaine Moncrief campaign",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2"
+  }
+}

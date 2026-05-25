@@ -1,0 +1,5 @@
+node_modules/
+rsvp.db
+*.db-shm
+*.db-wal
+.env

@@ -47,6 +47,7 @@ try { db.exec(`ALTER TABLE rsvps ADD COLUMN city TEXT`); } catch(e) {}
 try { db.exec(`ALTER TABLE rsvps ADD COLUMN state TEXT`); } catch(e) {}
 try { db.exec(`ALTER TABLE rsvps ADD COLUMN parish TEXT`); } catch(e) {}
 try { db.exec(`ALTER TABLE rsvps ADD COLUMN role TEXT`); } catch(e) {}
+try { db.exec(`ALTER TABLE rsvps ADD COLUMN pipeline_stage TEXT`); } catch(e) {}
 db.prepare("UPDATE rsvps SET role='Voter' WHERE role IS NULL OR role=''").run();
 
 // ── Backfill parish from zip for existing records ─────────────────────
@@ -95,6 +96,16 @@ app.patch('/rsvp/:id/role', (req, res) => {
   const { role } = req.body;
   try {
     db.prepare('UPDATE rsvps SET role=? WHERE id=?').run(role, req.params.id);
+    res.json({ result: 'success' });
+  } catch(err) {
+    res.status(500).json({ result: 'error' });
+  }
+});
+
+app.patch('/rsvp/:id/pipeline', (req, res) => {
+  const { pipeline_stage } = req.body;
+  try {
+    db.prepare('UPDATE rsvps SET pipeline_stage=? WHERE id=?').run(pipeline_stage, req.params.id);
     res.json({ result: 'success' });
   } catch(err) {
     res.status(500).json({ result: 'error' });
@@ -250,6 +261,17 @@ app.listen(PORT, () => {
 //  SHARED STYLES
 // ════════════════════════════════════════════════════════════════════════
 const LOGO_URL = 'https://lirp.cdn-website.com/57867f60/dms3rep/multi/opt/Logo+for+White-1920w.png';
+
+const PIPELINE_STAGES = [
+  { key: 'new',        label: 'New Contact',     color: '#9aaabb' },
+  { key: 'contacted',  label: 'Contacted',        color: '#3b82f6' },
+  { key: 'engaged',    label: 'In Conversation',  color: '#8b5cf6' },
+  { key: 'lunch',      label: 'Needs Lunch',      color: '#f59e0b' },
+  { key: 'met',        label: 'Met with Blaine',  color: '#fb923c' },
+  { key: 'committed',  label: 'Vote Committed',   color: '#10b981' },
+  { key: 'confirmed',  label: 'Vote Confirmed',   color: '#78E0C4' },
+];
+const PIPELINE_JSON = JSON.stringify(PIPELINE_STAGES);
 
 const BASE_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Playfair+Display:wght@700&display=swap');
@@ -866,6 +888,68 @@ function adminHTML() { return `<!DOCTYPE html>
   .ap-check-label input { width:14px; height:14px; cursor:pointer; flex-shrink:0; }
   .ap-error { color:#f59e0b; font-size:12px; margin-bottom:12px; display:none; }
 
+  /* ── Pipeline Summary Strip ── */
+  .pipeline-section {
+    padding: 22px 32px 26px;
+    border-bottom: 1px solid var(--border);
+    background: var(--white);
+  }
+  .pipeline-section-hdr {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;
+  }
+  .pipeline-section-title { font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--dim); font-weight: 700; }
+  .pipeline-total { font-size: 11px; color: var(--dim); }
+  .pipeline-track { display: flex; align-items: stretch; gap: 0; }
+  .pipe-stage-wrap { display: flex; align-items: center; flex: 1; min-width: 0; }
+  .pipe-stage {
+    flex: 1; min-width: 0;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 13px 14px 11px; cursor: pointer;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .pipe-stage:hover { border-color: #78E0C4; box-shadow: 0 2px 8px rgba(6,15,30,.05); }
+  .pipe-stage-dot { width: 9px; height: 9px; border-radius: 50%; margin-bottom: 9px; }
+  .pipe-stage-count { font-family: 'Playfair Display', Georgia, serif; font-size: 22px; color: var(--navy); line-height: 1; }
+  .pipe-stage-label { font-size: 9px; letter-spacing: .8px; text-transform: uppercase; color: var(--dim); font-weight: 700; margin-top: 5px; line-height: 1.3; }
+  .pipe-stage-bar { height: 3px; background: var(--border); border-radius: 100px; margin-top: 8px; overflow: hidden; }
+  .pipe-stage-fill { height: 100%; border-radius: 100px; transition: width .4s; }
+  .pipe-arrow { color: var(--dim); padding: 0 5px; font-size: 14px; flex-shrink: 0; opacity: .5; }
+
+  /* ── Pipeline Kanban Board ── */
+  .pipeline-board-container { padding: 24px 32px 32px; overflow-x: auto; }
+  .pipeline-board { display: flex; gap: 12px; min-width: max-content; }
+  .pipe-col {
+    width: 210px; flex-shrink: 0; display: flex; flex-direction: column;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    max-height: calc(100vh - 200px);
+  }
+  .pipe-col-hdr {
+    padding: 10px 13px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 7px; flex-shrink: 0;
+  }
+  .pipe-col-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .pipe-col-title { font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; font-weight: 700; color: var(--navy); flex: 1; line-height: 1.3; }
+  .pipe-col-count { font-size: 11px; font-weight: 700; color: var(--dim); background: var(--border); padding: 1px 7px; border-radius: 100px; }
+  .pipe-col-cards { overflow-y: auto; padding: 10px 10px 12px; flex: 1; display: flex; flex-direction: column; gap: 7px; }
+  .pipe-card {
+    background: var(--white); border: 1px solid var(--border); border-radius: 3px;
+    padding: 10px 12px; cursor: pointer; transition: border-color .12s, box-shadow .12s;
+    text-decoration: none; display: block;
+  }
+  .pipe-card:hover { border-color: #78E0C4; box-shadow: 0 2px 6px rgba(6,15,30,.07); }
+  .pipe-card-name { font-size: 13px; font-weight: 700; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pipe-card-meta { font-size: 11px; color: var(--dim); margin-top: 2px; }
+  .pipe-card-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+  .pipe-card-tag { font-size: 10px; color: var(--muted); background: #edf0f5; padding: 1px 5px; border-radius: 2px; }
+  .pipe-card-sel {
+    width: 100%; margin-top: 8px; font-size: 10px; letter-spacing: .4px;
+    text-transform: uppercase; font-family: 'Montserrat', sans-serif; font-weight: 700;
+    color: var(--navy); background: var(--bg); border: 1px solid var(--border);
+    border-radius: 2px; padding: 5px 7px; cursor: pointer; outline: none;
+  }
+  .pipe-card-sel:focus { border-color: #78E0C4; }
+  .pipe-col-empty { padding: 20px 10px; font-size: 12px; color: var(--dim); font-style: italic; text-align: center; }
+
   /* ── Left Sidebar Navigation ── */
   .left-nav {
     width: 220px; min-width: 220px; background: var(--navy);
@@ -942,6 +1026,10 @@ function adminHTML() { return `<!DOCTYPE html>
     <button class="left-nav-item" id="nav-constituents" onclick="switchView('constituents')">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       Constituents
+    </button>
+    <button class="left-nav-item" id="nav-pipeline" onclick="switchView('pipeline')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 3H2l8 9.46V19l4 2V12.46L22 3z"/></svg>
+      Pipeline
     </button>
     <a class="left-nav-item" href="/admin/map">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
@@ -1069,7 +1157,27 @@ function adminHTML() { return `<!DOCTYPE html>
   </div>
 </div>
 
+<!-- ── Campaign Pipeline Summary ── -->
+<div class="pipeline-section">
+  <div class="pipeline-section-hdr">
+    <span class="pipeline-section-title">Campaign Pipeline</span>
+    <span class="pipeline-total" id="pipeline-total"></span>
+  </div>
+  <div class="pipeline-track" id="pipeline-track">
+    <span style="font-size:13px;color:var(--dim);font-style:italic;">Loading&hellip;</span>
+  </div>
+</div>
+
 </div><!-- /view-dashboard -->
+
+<!-- ═══════════ PIPELINE VIEW ═══════════ -->
+<div class="view view-hidden" id="view-pipeline">
+  <div class="pipeline-board-container">
+    <div class="pipeline-board" id="pipeline-board">
+      <span style="font-size:13px;color:var(--dim);font-style:italic;">Loading&hellip;</span>
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════ CONSTITUENTS VIEW ═══════════ -->
 <div class="view view-hidden" id="view-constituents">
@@ -1322,6 +1430,8 @@ function refresh() {
   }) : d;
   stats(d);
   snapshot(d);
+  buildPipelineSummary(d);
+  buildPipelineBoard(d);
   render(fd);
 }
 
@@ -1594,8 +1704,7 @@ function x(s){ return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 function fmtPhone(p){ if(!p) return ''; var d=String(p).replace(/\D/g,''); if(d.length===10) return d.slice(0,3)+'-'+d.slice(3,6)+'-'+d.slice(6); return p; }
 
 function switchView(name) {
-  var views = ['dashboard', 'constituents'];
-  views.forEach(function(v) {
+  ['dashboard', 'pipeline', 'constituents'].forEach(function(v) {
     var el = document.getElementById('view-' + v);
     if (el) {
       if (v === name) el.classList.remove('view-hidden');
@@ -1605,10 +1714,111 @@ function switchView(name) {
   document.querySelectorAll('.left-nav-item').forEach(function(el){ el.classList.remove('active'); });
   var navEl = document.getElementById('nav-' + name);
   if (navEl) navEl.classList.add('active');
-  var titles = { dashboard: 'Dashboard', constituents: 'Constituents' };
+  var titles = { dashboard: 'Dashboard', constituents: 'Constituents', pipeline: 'Pipeline' };
   var titleEl = document.getElementById('hdr-page-title');
   if (titleEl) titleEl.textContent = titles[name] || name;
 }
+
+// ── Pipeline ──────────────────────────────────────────────────────────
+var PIPELINE_STAGES = ${PIPELINE_JSON};
+
+function getStage(r) {
+  return (r.pipeline_stage && r.pipeline_stage !== '') ? r.pipeline_stage : 'new';
+}
+
+function buildPipelineSummary(d) {
+  var counts = {};
+  PIPELINE_STAGES.forEach(function(s){ counts[s.key] = 0; });
+  d.forEach(function(r){
+    var k = getStage(r);
+    if (counts.hasOwnProperty(k)) counts[k]++;
+    else counts['new']++;
+  });
+  var total = d.length;
+  var maxC = Math.max.apply(null, Object.values(counts)) || 1;
+  var totEl = document.getElementById('pipeline-total');
+  if (totEl) totEl.textContent = total + ' constituent' + (total !== 1 ? 's' : '');
+  var track = document.getElementById('pipeline-track');
+  if (!track) return;
+  track.innerHTML = PIPELINE_STAGES.map(function(s, i) {
+    var c = counts[s.key];
+    var w = Math.round((c / maxC) * 100);
+    var arrow = i < PIPELINE_STAGES.length - 1 ? '<div class="pipe-arrow">&#8250;</div>' : '';
+    return '<div class="pipe-stage-wrap">' +
+      '<div class="pipe-stage" data-sw="pipeline" title="Click to view pipeline">' +
+        '<div class="pipe-stage-dot" style="background:' + s.color + '"></div>' +
+        '<div class="pipe-stage-count">' + c + '</div>' +
+        '<div class="pipe-stage-label">' + s.label + '</div>' +
+        '<div class="pipe-stage-bar"><div class="pipe-stage-fill" style="width:' + w + '%;background:' + s.color + '"></div></div>' +
+      '</div>' + arrow +
+    '</div>';
+  }).join('');
+}
+
+function buildPipelineBoard(d) {
+  var board = document.getElementById('pipeline-board');
+  if (!board) return;
+  var byStage = {};
+  PIPELINE_STAGES.forEach(function(s){ byStage[s.key] = []; });
+  d.forEach(function(r){
+    var k = getStage(r);
+    if (byStage.hasOwnProperty(k)) byStage[k].push(r);
+    else byStage['new'].push(r);
+  });
+  board.innerHTML = PIPELINE_STAGES.map(function(s) {
+    var cards = byStage[s.key] || [];
+    var cardsHTML = cards.length
+      ? cards.map(function(r) {
+          var tags = [];
+          if (r.yard_sign === 'Yes') tags.push('Yard Sign');
+          if (r.endorse === 'Yes') tags.push('Endorses');
+          if ((r.role||'').indexOf('Committee Member') > -1) tags.push('Committee');
+          if ((r.role||'').indexOf('Attorney') > -1) tags.push('Attorney');
+          var stageOpts = PIPELINE_STAGES.map(function(ps) {
+            return '<option value="' + ps.key + '"' + (ps.key === s.key ? ' selected' : '') + '>' + ps.label + '</option>';
+          }).join('');
+          return '<div class="pipe-card" data-href="/admin/constituent/' + r.id + '">' +
+            '<div class="pipe-card-name">' + x(r.first_name) + ' ' + x(r.last_name) + '</div>' +
+            '<div class="pipe-card-meta">' + x(r.zip||'') + (r.city ? ' &middot; ' + x(r.city) : '') + '</div>' +
+            (tags.length ? '<div class="pipe-card-tags">' + tags.map(function(t){ return '<span class="pipe-card-tag">'+t+'</span>'; }).join('') + '</div>' : '') +
+            '<select class="pipe-card-sel" onclick="event.stopPropagation()" onchange="setPipelineStage(' + r.id + ',this.value)">' + stageOpts + '</select>' +
+          '</div>';
+        }).join('')
+      : '<div class="pipe-col-empty">Empty</div>';
+    return '<div class="pipe-col">' +
+      '<div class="pipe-col-hdr">' +
+        '<div class="pipe-col-dot" style="background:' + s.color + '"></div>' +
+        '<div class="pipe-col-title">' + s.label + '</div>' +
+        '<div class="pipe-col-count">' + cards.length + '</div>' +
+      '</div>' +
+      '<div class="pipe-col-cards">' + cardsHTML + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function setPipelineStage(id, stage) {
+  fetch('/rsvp/' + id + '/pipeline', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pipeline_stage: stage })
+  }).then(function(r){ return r.json(); }).then(function(){
+    var rec = all.find(function(r){ return r.id === id; });
+    if (rec) rec.pipeline_stage = stage;
+    buildPipelineSummary(all);
+    buildPipelineBoard(all);
+  });
+}
+
+// Delegated: pipeline summary stage click → switch to Pipeline view
+document.addEventListener('click', function(e) {
+  var sw = e.target.closest('[data-sw]');
+  if (sw) switchView(sw.getAttribute('data-sw'));
+});
+// Delegated: kanban card click → navigate to constituent profile
+document.addEventListener('click', function(e) {
+  var card = e.target.closest('[data-href]');
+  if (card) window.location = card.getAttribute('data-href');
+});
 
 document.getElementById('q').addEventListener('input',function(){
   refresh();
@@ -1871,6 +2081,28 @@ function constituentHTML(id) {
   .edit-textarea:focus { border-color: var(--mint-d); }
   .edit-select { width: 100%; font-size: 14px; color: var(--navy); border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px; font-family: 'Montserrat', sans-serif; background: #fff; outline: none; margin-bottom: 8px; }
   .edit-select:focus { border-color: var(--mint-d); }
+  /* Pipeline stage on profile */
+  .pipe-progress { display: flex; align-items: flex-start; flex-wrap: nowrap; overflow-x: auto; gap: 0; padding: 4px 0 8px; }
+  .pipe-step-wrap { display: flex; align-items: flex-start; flex: 1; min-width: 60px; }
+  .pipe-step {
+    flex: 1; text-align: center; cursor: pointer; padding: 8px 4px;
+    border-radius: 4px; transition: background .12s;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .pipe-step:hover { background: var(--bg); }
+  .pipe-step-dot {
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 2.5px solid var(--border); background: var(--white);
+    transition: all .2s; flex-shrink: 0;
+  }
+  .pipe-step.past .pipe-step-dot  { border-color: currentColor; background: currentColor; opacity: .5; }
+  .pipe-step.active .pipe-step-dot { border-color: currentColor; border-width: 3px; box-shadow: 0 0 0 3px rgba(0,0,0,.08); background: var(--white); }
+  .pipe-step-label { font-size: 9px; letter-spacing: .7px; text-transform: uppercase; font-weight: 700; color: var(--dim); line-height: 1.3; margin-top: 6px; }
+  .pipe-step.past .pipe-step-label { opacity: .6; }
+  .pipe-step.active .pipe-step-label { color: var(--navy); font-weight: 800; }
+  .pipe-connector { width: 20px; height: 2px; background: var(--border); margin-top: 17px; flex-shrink: 0; transition: background .2s; }
+  .pipe-connector.filled { background: var(--mint-d); opacity: .45; }
+
   /* Donation history card */
   .don-hist-preview { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; background: rgba(120,224,196,.12); color: var(--mint-d); border: 1px solid rgba(120,224,196,.25); padding: 3px 10px; border-radius: 100px; margin-left: 10px; vertical-align: middle; }
   .don-hist-summary { display: flex; gap: 28px; margin-bottom: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
@@ -2021,6 +2253,11 @@ function constituentHTML(id) {
       <label class="edit-check-item"><input type="checkbox" id="eh-inkind"/><span class="edit-check-label">In-Kind Contribution or Venue Space</span></label>
     </div>
   </div>
+</div>
+
+<div class="s-card">
+  <div class="s-label">Campaign Pipeline Stage</div>
+  <div class="pipe-progress" id="pp-track"></div>
 </div>
 
 <div class="s-card">
@@ -2264,7 +2501,48 @@ function paint(d) {
     : "No contributions yet";
   document.getElementById("p-giving-bar").style.width      = pct + "%";
   document.getElementById("p-giving-bar").style.background = pct >= 80 ? "#f59e0b" : "#78E0C4";
+
+  renderProfilePipeline(d.pipeline_stage);
 }
+
+// ── Pipeline stage on profile ──────────────────────────────────────────
+var PROFILE_PIPELINE = ${PIPELINE_JSON};
+
+function renderProfilePipeline(stage) {
+  var activeKey = (stage && stage !== '') ? stage : 'new';
+  var activeIdx = PROFILE_PIPELINE.findIndex(function(s){ return s.key === activeKey; });
+  var wrap = document.getElementById('pp-track');
+  if (!wrap) return;
+  wrap.innerHTML = PROFILE_PIPELINE.map(function(s, i) {
+    var cls = i < activeIdx ? 'past' : (i === activeIdx ? 'active' : '');
+    var connector = i < PROFILE_PIPELINE.length - 1
+      ? '<div class="pipe-connector' + (i < activeIdx ? ' filled' : '') + '"></div>'
+      : '';
+    return '<div class="pipe-step-wrap">' +
+      '<div class="pipe-step ' + cls + '" style="color:' + s.color + '" title="Move to: ' + s.label + '" data-stage="' + s.key + '">' +
+        '<div class="pipe-step-dot"></div>' +
+        '<div class="pipe-step-label">' + s.label + '</div>' +
+      '</div>' + connector +
+    '</div>';
+  }).join('');
+}
+
+function setProfileStage(stage) {
+  fetch('/rsvp/' + CID + '/pipeline', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pipeline_stage: stage })
+  }).then(function(r){ return r.json(); }).then(function(){
+    rec.pipeline_stage = stage;
+    renderProfilePipeline(stage);
+  });
+}
+
+// Delegated: pipeline step click → set stage
+document.addEventListener('click', function(e) {
+  var step = e.target.closest('[data-stage]');
+  if (step) setProfileStage(step.getAttribute('data-stage'));
+});
 
 function toggleSign() {
   if (!rec || rec.yard_sign !== "Yes") return;

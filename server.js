@@ -2924,7 +2924,7 @@ function mapHTML() { return `<!DOCTYPE html>
 
   .sb-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
   .sb-stat-box { background: var(--white); border: 1px solid var(--border); border-radius: 4px; padding: 14px 10px; text-align: center; }
-  .sb-stat-num { font-family: 'Playfair Display', Georgia, serif; font-size: 26px; color: var(--navy); line-height: 1; margin-bottom: 4px; }
+  .sb-stat-num { font-family: 'Montserrat', sans-serif; font-size: 28px; font-weight: 800; color: var(--navy); line-height: 1; margin-bottom: 4px; }
   .sb-stat-num.accent { color: var(--mint-d); }
   .sb-stat-lbl { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim); font-weight: 600; }
 
@@ -3006,6 +3006,22 @@ function mapHTML() { return `<!DOCTYPE html>
     .map-sidebar { width: 100%; }
     .map-main { height: 480px; }
   }
+
+  /* ── Leaflet overrides ── */
+  .leaflet-control-zoom { border: 1px solid var(--border) !important; border-radius: 4px !important; box-shadow: 0 2px 8px rgba(6,15,30,.1) !important; overflow: hidden; }
+  .leaflet-control-zoom a { font-family: 'Montserrat', sans-serif !important; font-weight: 700 !important; color: var(--navy) !important; background: var(--white) !important; border-bottom-color: var(--border) !important; width: 30px !important; height: 30px !important; line-height: 30px !important; font-size: 16px !important; }
+  .leaflet-control-zoom a:hover { background: #eaf9f5 !important; color: var(--navy) !important; }
+  .leaflet-bar a:last-child { border-bottom: none !important; }
+  .leaflet-popup-content-wrapper { border-radius: 6px !important; box-shadow: 0 6px 24px rgba(6,15,30,.14) !important; border: 1px solid var(--border) !important; padding: 0 !important; }
+  .leaflet-popup-content { margin: 14px 16px !important; font-family: 'Montserrat', sans-serif !important; }
+  .leaflet-popup-close-button { top: 8px !important; right: 10px !important; color: var(--dim) !important; font-size: 16px !important; }
+  .leaflet-popup-close-button:hover { color: var(--navy) !important; }
+  .leaflet-control-attribution { font-size: 10px !important; background: rgba(255,255,255,.8) !important; }
+  .leaflet-attribution-flag { display: none !important; }
+
+  /* ── Map legend ── */
+  .map-legend { border-radius: 6px !important; box-shadow: 0 4px 16px rgba(6,15,30,.12) !important; border: 1px solid var(--border) !important; }
+  .map-legend-title { font-size: 9px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); margin-bottom: 10px; }
 </style>
 </head>
 <body>
@@ -3080,6 +3096,7 @@ function mapHTML() { return `<!DOCTYPE html>
   <div class="map-main">
     <div id="lmap"></div>
     <div class="map-legend">
+      <div class="map-legend-title">Signs</div>
       <div class="leg-row"><div class="leg-dot del"></div>Delivered</div>
       <div class="leg-row"><div class="leg-dot pen"></div>Pending</div>
       <div class="leg-row"><div class="leg-dot cov"></div>Coverage zone</div>
@@ -3129,9 +3146,11 @@ var GAP_RECS = [
 
 function xe(s){ return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
 
-var map = L.map('lmap').setView([29.955,-90.130],12);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom:19
+var map = L.map('lmap', { zoomControl: false }).setView([29.955,-90.130],12);
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  subdomains:'abcd', maxZoom:20
 }).addTo(map);
 var layers = L.layerGroup().addTo(map);
 var noSignLayers = L.layerGroup().addTo(map);
@@ -3139,14 +3158,14 @@ var noSignCache = null;
 
 function pinIcon(color){
   return L.divIcon({className:'',
-    html:'<div style="width:15px;height:15px;border-radius:50%;background:'+color+';border:2.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.4);"></div>',
-    iconSize:[15,15],iconAnchor:[7,7],popupAnchor:[0,-9]});
+    html:'<div style="width:18px;height:18px;border-radius:50%;background:'+color+';border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);"></div>',
+    iconSize:[18,18],iconAnchor:[9,9],popupAnchor:[0,-11]});
 }
 
 function ringIcon(){
   return L.divIcon({className:'',
-    html:'<div style="width:11px;height:11px;border-radius:50%;background:rgba(255,255,255,.85);border:2.5px solid #8fa7c8;box-shadow:0 1px 4px rgba(0,0,0,.3);"></div>',
-    iconSize:[11,11],iconAnchor:[5,5],popupAnchor:[0,-7]});
+    html:'<div style="width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,.9);border:2px solid #8fa7c8;box-shadow:0 1px 5px rgba(0,0,0,.25);"></div>',
+    iconSize:[12,12],iconAnchor:[6,6],popupAnchor:[0,-8]});
 }
 
 function toggleNoSign(on) {
@@ -3209,7 +3228,7 @@ function buildMap(data){
   data.forEach(function(r){if(r.zip)zipCounts[r.zip]=(zipCounts[r.zip]||0)+1;});
   Object.keys(zipCounts).forEach(function(z){
     var c=ZIP_COORDS[z]; if(!c)return;
-    L.circle(c,{radius:300,fillColor:'#78E0C4',fillOpacity:0.15,color:'#78E0C4',weight:1.5}).addTo(layers);
+    L.circle(c,{radius:400,fillColor:'#78E0C4',fillOpacity:0.18,color:'#5fd4b0',weight:1.5}).addTo(layers);
   });
   var seed=42;
   function rnd(){seed=(seed*9301+49297)%233280;return seed/233280;}

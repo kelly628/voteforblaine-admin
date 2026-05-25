@@ -685,54 +685,47 @@ function adminHTML() { return `<!DOCTYPE html>
   /* Election Intelligence bar */
   .election-bar {
     background: var(--navy);
-    padding: 20px 32px;
     display: flex;
     align-items: stretch;
-    gap: 0;
-  }
-  .elec-block {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 0 24px 0 0;
-    border-right: 1px solid rgba(255,255,255,.1);
-    margin-right: 24px;
-  }
-  .elec-block:last-of-type { border-right: none; margin-right: 0; padding-right: 0; }
-  .elec-lbl {
-    font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
-    color: rgba(255,255,255,.4); font-weight: 700;
-  }
-  .elec-val {
-    font-family: 'Montserrat', sans-serif; font-size: 22px; font-weight: 800;
-    color: #fff; line-height: 1;
-  }
-  .elec-val.accent { color: var(--mint); }
-  .elec-sub {
-    font-size: 10px; color: rgba(255,255,255,.35); margin-top: 2px; line-height: 1.4;
+    border-top: 1px solid rgba(255,255,255,.08);
   }
   .elec-title-block {
     display: flex; flex-direction: column; justify-content: center;
-    padding-right: 28px; margin-right: 4px; border-right: 1px solid rgba(255,255,255,.1);
-    min-width: 160px;
+    padding: 20px 28px; border-right: 1px solid rgba(255,255,255,.1);
+    min-width: 175px; flex-shrink: 0;
   }
   .elec-title-eyebrow {
-    font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
-    color: var(--mint); font-weight: 700; margin-bottom: 4px;
+    font-size: 8px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--mint); font-weight: 700; margin-bottom: 5px;
   }
   .elec-title-name {
-    font-size: 12px; font-weight: 700; color: #fff; line-height: 1.3;
+    font-size: 13px; font-weight: 700; color: #fff; line-height: 1.4;
   }
+  .elec-block {
+    flex: 1; display: flex; flex-direction: column; justify-content: center;
+    gap: 3px; padding: 20px 24px;
+    border-right: 1px solid rgba(255,255,255,.08);
+  }
+  .elec-block:last-of-type { border-right: none; }
+  .elec-lbl {
+    font-size: 8px; letter-spacing: 2px; text-transform: uppercase;
+    color: rgba(255,255,255,.4); font-weight: 700; white-space: nowrap;
+  }
+  .elec-val {
+    font-family: 'Montserrat', sans-serif; font-size: 26px; font-weight: 800;
+    color: #fff; line-height: 1; white-space: nowrap;
+  }
+  .elec-val.accent { color: var(--mint); }
+  .elec-sub { font-size: 10px; color: rgba(255,255,255,.35); line-height: 1.4; }
   .elec-source {
-    font-size: 9px; color: rgba(255,255,255,.22); margin-top: 16px;
-    align-self: flex-end; white-space: nowrap;
+    font-size: 9px; color: rgba(255,255,255,.2); white-space: nowrap;
+    display: flex; align-items: flex-end; padding: 0 20px 16px 0; flex-shrink: 0;
   }
   @media(max-width:900px){
-    .election-bar { flex-wrap: wrap; gap: 16px; }
-    .elec-block { border-right: none; margin-right: 0; }
-    .elec-title-block { min-width: 100%; border-right: none; padding-right: 0; }
-    .elec-source { margin-top: 8px; }
+    .election-bar { flex-wrap: wrap; }
+    .elec-block { border-right: none; border-bottom: 1px solid rgba(255,255,255,.08); min-width: 45%; }
+    .elec-title-block { min-width: 100%; border-right: none; border-bottom: 1px solid rgba(255,255,255,.08); }
+    .elec-source { padding: 12px 20px; }
   }
 
   /* Event tabs */
@@ -1279,8 +1272,8 @@ function adminHTML() { return `<!DOCTYPE html>
 <!-- ── Election Intelligence ── -->
 <div class="election-bar">
   <div class="elec-title-block">
-    <div class="elec-title-eyebrow">Election</div>
-    <div class="elec-title-name">Judge, Div H<br>24th JDC &middot; Jefferson Parish</div>
+    <div class="elec-title-eyebrow">24th JDC &middot; Jefferson Parish</div>
+    <div class="elec-title-name">Judge, Division H</div>
   </div>
   <div class="elec-block">
     <div class="elec-lbl">Registered Voters</div>
@@ -1288,21 +1281,21 @@ function adminHTML() { return `<!DOCTYPE html>
     <div class="elec-sub">Jefferson Parish electorate</div>
   </div>
   <div class="elec-block">
-    <div class="elec-lbl">Est. Turnout (Nov General)</div>
-    <div class="elec-val">~30&ndash;40%</div>
-    <div class="elec-sub">~82k&ndash;109k votes expected</div>
+    <div class="elec-lbl">Est. Turnout</div>
+    <div class="elec-val">30&ndash;40%</div>
+    <div class="elec-sub">~82k&ndash;109k votes &middot; Nov General</div>
   </div>
   <div class="elec-block">
-    <div class="elec-lbl">Est. Votes to Win</div>
-    <div class="elec-val accent">~41,000+</div>
-    <div class="elec-sub">Majority of est. votes cast</div>
+    <div class="elec-lbl">Votes to Win</div>
+    <div class="elec-val accent">~41,000</div>
+    <div class="elec-sub">Simple majority of votes cast</div>
   </div>
   <div class="elec-block">
     <div class="elec-lbl">Election Day</div>
     <div class="elec-val">Nov 3</div>
     <div class="elec-sub">2026 General Election</div>
   </div>
-  <div class="elec-source">Source: LA Secretary of State &nbsp;&middot;&nbsp; Oct 2024</div>
+  <div class="elec-source">LA Sec. of State &middot; Oct 2024</div>
 </div>
 
 <footer class="foot">

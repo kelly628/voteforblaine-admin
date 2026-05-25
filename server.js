@@ -668,7 +668,7 @@ function adminHTML() { return `<!DOCTYPE html>
   .donation-preview-badge { font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; background: rgba(120,224,196,.15); color: var(--mint-d); border: 1px solid rgba(120,224,196,.3); padding: 3px 10px; border-radius: 100px; }
   .donation-summary { display: flex; gap: 32px; margin-bottom: 20px; }
   .don-sum { }
-  .don-sum-num { font-family: 'Playfair Display', Georgia, serif; font-size: 28px; color: var(--navy); line-height: 1; }
+  .don-sum-num { font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif; font-size: 28px; font-weight: 800; color: var(--navy); line-height: 1; }
   .don-sum-num.accent { color: var(--mint-d); }
   .don-sum-lbl { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); font-weight: 700; margin-top: 5px; }
   .don-table-wrap { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
@@ -2329,7 +2329,7 @@ function constituentHTML(id) {
   .don-row { display: flex; align-items: center; gap: 14px; padding: 10px 0; border-bottom: 1px solid #f0f2f5; }
   .don-row:last-child { border-bottom: none; }
   .don-row-date { font-size: 11px; color: var(--dim); min-width: 90px; }
-  .don-row-amt { font-family: 'Playfair Display', Georgia, serif; font-size: 20px; color: var(--navy); min-width: 70px; }
+  .don-row-amt { font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif; font-size: 18px; font-weight: 800; color: var(--navy); min-width: 70px; }
   .don-row-badge { font-size: 10px; font-weight: 600; padding: 2px 9px; border-radius: 100px; background: rgba(120,224,196,.12); color: var(--navy); border: 1px solid rgba(120,224,196,.2); }
   .don-row-method { font-size: 11px; color: var(--dim); margin-left: auto; }
   @media(max-width:640px) { .p-cards{grid-template-columns:1fr 1fr;} .ct-grid{grid-template-columns:1fr;} .p-hero{padding:24px 20px; flex-direction:column;} .p-hero-map{width:100%; height:180px;} .page-body{padding:16px 16px 40px;} .edit-checks{grid-template-columns:1fr;} }

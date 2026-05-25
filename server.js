@@ -885,6 +885,20 @@ function adminHTML() { return `<!DOCTYPE html>
   .ap-check-label { display:flex; align-items:center; gap:7px; cursor:pointer; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); font-weight:700; font-family:'Montserrat',sans-serif; }
   .ap-check-label input { width:14px; height:14px; cursor:pointer; flex-shrink:0; }
   .ap-error { color:#f59e0b; font-size:12px; margin-bottom:12px; display:none; }
+  .ap-addr-wrap { position:relative; }
+  .ap-suggest {
+    display:none; position:absolute; top:100%; left:0; right:0; z-index:400;
+    background:var(--white); border:1px solid var(--border); border-top:none;
+    border-radius:0 0 4px 4px; box-shadow:0 6px 20px rgba(6,15,30,.13);
+    max-height:240px; overflow-y:auto;
+  }
+  .ap-suggest-item {
+    padding:10px 13px; font-size:12px; color:var(--text); cursor:pointer;
+    border-bottom:1px solid #f0f2f5; line-height:1.45;
+  }
+  .ap-suggest-item:last-child { border-bottom:none; }
+  .ap-suggest-item:hover, .ap-suggest-item.ap-focused { background:#eaf9f5; color:var(--navy); }
+  .ap-suggest-searching { padding:10px 13px; font-size:12px; color:var(--dim); font-style:italic; }
 
   /* ── Pipeline Summary Strip ── */
   .pipeline-section {
@@ -1267,9 +1281,10 @@ function adminHTML() { return `<!DOCTYPE html>
         <input class="ap-input" id="ap-phone" type="tel" placeholder="(504) 555-0000"/>
       </div>
     </div>
-    <div class="ap-field">
+    <div class="ap-field ap-addr-wrap">
       <label class="ap-label" for="ap-address">Street Address</label>
-      <input class="ap-input" id="ap-address" type="text" placeholder="123 Main St"/>
+      <input class="ap-input" id="ap-address" type="text" placeholder="123 Main St" autocomplete="off"/>
+      <div class="ap-suggest" id="ap-addr-suggest"></div>
     </div>
     <div class="ap-row ap-row-3">
       <div class="ap-field">
@@ -1821,6 +1836,115 @@ document.addEventListener('click', function(e) {
 document.getElementById('q').addEventListener('input',function(){
   refresh();
 });
+
+// ── Address autocomplete ──────────────────────────────────────────────
+(function() {
+  var timer = null;
+  var results = [];
+  var focusIdx = -1;
+  var STATE_MAP = {
+    'Alabama':'AL','Alaska':'AK','Arizona':'AZ','Arkansas':'AR','California':'CA',
+    'Colorado':'CO','Connecticut':'CT','Delaware':'DE','Florida':'FL','Georgia':'GA',
+    'Hawaii':'HI','Idaho':'ID','Illinois':'IL','Indiana':'IN','Iowa':'IA','Kansas':'KS',
+    'Kentucky':'KY','Louisiana':'LA','Maine':'ME','Maryland':'MD','Massachusetts':'MA',
+    'Michigan':'MI','Minnesota':'MN','Mississippi':'MS','Missouri':'MO','Montana':'MT',
+    'Nebraska':'NE','Nevada':'NV','New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM',
+    'New York':'NY','North Carolina':'NC','North Dakota':'ND','Ohio':'OH','Oklahoma':'OK',
+    'Oregon':'OR','Pennsylvania':'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD',
+    'Tennessee':'TN','Texas':'TX','Utah':'UT','Vermont':'VT','Virginia':'VA','Washington':'WA',
+    'West Virginia':'WV','Wisconsin':'WI','Wyoming':'WY'
+  };
+
+  function getInput()   { return document.getElementById('ap-address'); }
+  function getSuggest() { return document.getElementById('ap-addr-suggest'); }
+
+  function closeSuggest() {
+    var s = getSuggest(); if (s) s.style.display = 'none';
+    focusIdx = -1;
+  }
+
+  function showSuggest(items) {
+    var s = getSuggest(); if (!s) return;
+    if (!items.length) { closeSuggest(); return; }
+    results = items;
+    focusIdx = -1;
+    s.innerHTML = items.map(function(r, i) {
+      var parts = r.display_name.split(',');
+      var main  = parts.slice(0, 2).join(',').trim();
+      var sub   = parts.slice(2, 4).join(',').trim();
+      return '<div class="ap-suggest-item" data-idx="' + i + '">' +
+        '<div style="font-weight:600;color:var(--navy);">' + main + '</div>' +
+        (sub ? '<div style="font-size:11px;color:var(--dim);margin-top:2px;">' + sub + '</div>' : '') +
+      '</div>';
+    }).join('');
+    s.style.display = 'block';
+    s.querySelectorAll('.ap-suggest-item').forEach(function(el) {
+      el.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        selectResult(parseInt(el.getAttribute('data-idx')));
+      });
+    });
+  }
+
+  function selectResult(idx) {
+    var r = results[idx]; if (!r || !r.address) return;
+    var a  = r.address;
+    var st = ((a.house_number ? a.house_number + ' ' : '') + (a.road || '')).trim();
+    var ci = a.city || a.town || a.village || a.municipality || a.hamlet || '';
+    var abbr = STATE_MAP[a.state] || (a.state ? a.state.slice(0,2).toUpperCase() : 'LA');
+    var zp = (a.postcode || '').slice(0, 5);
+    var parish = (a.county || '').replace(/ Parish$/i,'').replace(/ County$/i,'');
+    if (st) document.getElementById('ap-address').value = st;
+    if (ci) document.getElementById('ap-city').value    = ci;
+    document.getElementById('ap-state').value           = abbr;
+    if (zp) document.getElementById('ap-zip').value     = zp;
+    closeSuggest();
+    document.getElementById('ap-city').focus();
+  }
+
+  function doSearch(q) {
+    var s = getSuggest(); if (!s) return;
+    s.innerHTML = '<div class="ap-suggest-searching">Searching…</div>';
+    s.style.display = 'block';
+    fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=us&q=' + encodeURIComponent(q), {
+      headers: { 'Accept-Language': 'en' }
+    }).then(function(r){ return r.json(); })
+      .then(function(data){ showSuggest(data || []); })
+      .catch(function(){ closeSuggest(); });
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    var inp = getInput(); if (!inp) return;
+    inp.addEventListener('input', function() {
+      clearTimeout(timer);
+      var q = this.value.trim();
+      if (q.length < 5) { closeSuggest(); return; }
+      timer = setTimeout(function(){ doSearch(q); }, 450);
+    });
+    inp.addEventListener('keydown', function(e) {
+      var s = getSuggest();
+      if (!s || s.style.display === 'none') return;
+      var items = s.querySelectorAll('.ap-suggest-item');
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        focusIdx = Math.min(focusIdx + 1, items.length - 1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        focusIdx = Math.max(focusIdx - 1, 0);
+      } else if (e.key === 'Enter' && focusIdx >= 0) {
+        e.preventDefault();
+        selectResult(focusIdx);
+        return;
+      } else if (e.key === 'Escape') {
+        closeSuggest(); return;
+      }
+      items.forEach(function(el, i){
+        el.classList.toggle('ap-focused', i === focusIdx);
+      });
+    });
+    inp.addEventListener('blur', function(){ setTimeout(closeSuggest, 150); });
+  });
+})();
 
 // ── Modal ──
 function openAddPerson() {

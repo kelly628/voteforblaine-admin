@@ -649,7 +649,13 @@ function adminHTML() { return `<!DOCTYPE html>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Campaign Admin — Blaine Moncrief</title>
 <style>${BASE_CSS}
-  .stats { grid-template-columns: repeat(4,1fr); }
+  .stats { grid-template-columns: repeat(5,1fr); }
+  .badge-ood {
+    display:inline-block; font-size:9px; font-weight:700; letter-spacing:.8px;
+    text-transform:uppercase; color:#9aaabb; background:#f0f2f5;
+    padding:2px 7px; border-radius:100px; margin-left:6px; white-space:nowrap;
+    vertical-align:middle;
+  }
 
   /* Donation section */
   .donation-section { padding: 28px 32px; background: var(--white); border-bottom: 1px solid var(--border); }
@@ -1076,7 +1082,8 @@ function adminHTML() { return `<!DOCTYPE html>
 <!-- ═══════════ DASHBOARD VIEW ═══════════ -->
 <div class="view" id="view-dashboard">
 <div class="stats">
-  <div class="stat"><div class="stat-lbl">Constituents</div><div class="stat-val" id="s-rsvp">—</div></div>
+  <div class="stat"><div class="stat-lbl">Constituents</div><div class="stat-val" id="s-rsvp">—</div><div class="stat-sub" id="s-rsvp-sub"></div></div>
+  <div class="stat"><div class="stat-lbl">Potential Voters</div><div class="stat-val accent" id="s-voters">—</div><div class="stat-sub" id="s-voters-sub" style="font-size:10px;color:var(--dim);margin-top:4px;">Jefferson Parish</div></div>
   <div class="stat stat-clickable" onclick="openSignsModal()" title="View yard sign tracker">
     <div class="stat-lbl">Yard Signs Requested</div>
     <div class="stat-val" id="s-signs">—</div>
@@ -1475,6 +1482,11 @@ function selectTab(el) {
 
 function stats(d) {
   document.getElementById('s-rsvp').textContent    = d.length;
+  var voters  = d.filter(function(r){ return r.parish === 'Jefferson'; });
+  var ood     = d.filter(function(r){ return r.parish && r.parish !== 'Jefferson'; });
+  document.getElementById('s-voters').textContent  = voters.length;
+  var oodEl = document.getElementById('s-rsvp-sub');
+  if (oodEl) oodEl.textContent = ood.length ? ood.length + ' out of district' : '';
   var gEl = document.getElementById('s-guests'); if (gEl) gEl.textContent = d.reduce(function(s,r){ return s+(parseInt(r.guests)||1); },0);
   var signReqs = d.filter(function(r){ return r.yard_sign==='Yes'; });
   var signDel  = signReqs.filter(function(r){ return r.yard_sign_delivered==='Yes'; });
@@ -1561,6 +1573,7 @@ function render(d) {
       '<td class="c-id">'+r.id+'</td>'+
       '<td class="c-date">'+date+'</td>'+
       '<td><a href="/admin/constituent/'+r.id+'" class="c-name" style="text-decoration:none;">'+x(r.first_name)+' '+x(r.last_name)+'</a>'+
+          (r.parish && r.parish !== 'Jefferson' ? '<span class="badge-ood" title="Lives in '+x(r.parish)+' Parish — outside the 24th JDC">Out of District</span>' : '')+
           '<div class="c-sub">'+x(r.email)+'</div></td>'+
       '<td class="c-phone">'+fmtPhone(r.phone)+'</td>'+
       '<td class="c-sub" style="font-size:12px;color:var(--muted);">'+x(r.address)+(r.city?'<br>'+x(r.city)+', '+x(r.state||'')+(r.parish?' &nbsp;·&nbsp; '+x(r.parish)+' Parish':''):'')+'</td>'+
@@ -2260,6 +2273,7 @@ function constituentHTML(id) {
   <div class="p-hero-left">
     <div class="p-eyebrow">Constituent Profile</div>
     <div class="p-name" id="p-name">Loading&#8230;</div>
+    <div id="p-district-badge" style="display:none;margin-top:10px;"></div>
     <div id="p-event" class="p-event-badge" style="display:none;"></div>
     <div id="p-role"></div>
   </div>
@@ -2483,6 +2497,19 @@ function paint(d) {
     var eb = document.getElementById("p-event");
     eb.textContent  = d.event;
     eb.style.display = "inline-block";
+  }
+  // District eligibility badge
+  var dbEl = document.getElementById("p-district-badge");
+  if (dbEl) {
+    if (d.parish && d.parish !== "Jefferson") {
+      dbEl.innerHTML = "<span style='display:inline-block;background:rgba(154,170,187,.18);border:1px solid rgba(154,170,187,.35);color:#9aaabb;font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:4px 12px;border-radius:100px;'>Out of District &mdash; " + xe(d.parish) + " Parish</span>";
+      dbEl.style.display = "block";
+    } else if (d.parish === "Jefferson") {
+      dbEl.innerHTML = "<span style='display:inline-block;background:rgba(120,224,196,.15);border:1px solid rgba(120,224,196,.3);color:#78E0C4;font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:4px 12px;border-radius:100px;'>&#10003; Jefferson Parish &mdash; Eligible Voter</span>";
+      dbEl.style.display = "block";
+    } else {
+      dbEl.style.display = "none";
+    }
   }
   // Role pills — multi-select, both can be active simultaneously
   var _roles = (d.role || "").split(",").map(function(r){ return r.trim(); });

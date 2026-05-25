@@ -1543,7 +1543,6 @@ function submitAddPerson() {
     } else { btn.disabled = false; btn.textContent = 'Add to Database'; alert('Error saving. Please try again.'); }
   }).catch(function(){ btn.disabled = false; btn.textContent = 'Add to Database'; alert('Network error. Please try again.'); });
 }
-}
 
 function openModal() {
   document.getElementById('modal-overlay').classList.add('open');

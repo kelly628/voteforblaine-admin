@@ -1052,7 +1052,6 @@ function adminHTML() { return `<!DOCTYPE html>
     <a href="/admin" style="line-height:0;display:block;">
       <img class="left-nav-logo-img" src="${LOGO_URL}" alt="Blaine Benge Moncrief"/>
     </a>
-    <div class="left-nav-role">Campaign Staff</div>
   </div>
   <div class="left-nav-body">
     <div class="left-nav-section-lbl">Views</div>

@@ -336,8 +336,8 @@ const BASE_CSS = `
     color: var(--dim); font-weight: 700; margin-bottom: 8px;
   }
   .stat-val {
-    font-family: 'Playfair Display', Georgia, serif;
-    font-size: 40px; color: var(--navy); line-height: 1;
+    font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 38px; font-weight: 800; color: var(--navy); line-height: 1;
   }
   .stat-val.accent { color: var(--mint-d); }
 
@@ -1105,15 +1105,23 @@ function adminHTML() { return `<!DOCTYPE html>
 <!-- ═══════════ DASHBOARD VIEW ═══════════ -->
 <div class="view" id="view-dashboard">
 <div class="stats">
-  <div class="stat"><div class="stat-lbl">Constituents</div><div class="stat-val" id="s-rsvp">—</div><div class="stat-sub" id="s-rsvp-sub"></div></div>
-  <div class="stat"><div class="stat-lbl">Potential Voters</div><div class="stat-val accent" id="s-voters">—</div><div class="stat-sub" id="s-voters-sub" style="font-size:10px;color:var(--dim);margin-top:4px;">Jefferson Parish</div></div>
+  <div class="stat stat-clickable" onclick="goToConstituents('all')" title="View all constituents">
+    <div class="stat-lbl">Constituents</div><div class="stat-val" id="s-rsvp">—</div><div class="stat-sub" id="s-rsvp-sub"></div>
+  </div>
+  <div class="stat stat-clickable" onclick="goToConstituents('voters')" title="View potential voters">
+    <div class="stat-lbl">Potential Voters</div><div class="stat-val accent" id="s-voters">—</div><div class="stat-sub" style="font-size:10px;color:var(--dim);margin-top:4px;">Jefferson Parish</div>
+  </div>
   <div class="stat stat-clickable" onclick="openSignsModal()" title="View yard sign tracker">
     <div class="stat-lbl">Yard Signs Requested</div>
     <div class="stat-val" id="s-signs">—</div>
     <div class="stat-sub" id="s-signs-del"></div>
   </div>
-  <div class="stat"><div class="stat-lbl">Endorsements</div><div class="stat-val" id="s-endorse">—</div></div>
-  <div class="stat stat-raised"><div class="stat-lbl">Total Raised</div><div class="stat-val">$2,000</div><div class="stat-sub" style="font-size:10px;color:var(--dim);margin-top:4px;">5 donors &nbsp;&middot;&nbsp; Preview</div></div>
+  <div class="stat stat-clickable" onclick="drilldown('Endorsement')" title="View endorsers">
+    <div class="stat-lbl">Endorsements</div><div class="stat-val" id="s-endorse">—</div>
+  </div>
+  <div class="stat stat-clickable stat-raised" onclick="scrollToDonations()" title="View donations">
+    <div class="stat-lbl">Total Raised</div><div class="stat-val">$2,000</div><div class="stat-sub" style="font-size:10px;color:var(--dim);margin-top:4px;">5 donors &nbsp;&middot;&nbsp; Preview</div>
+  </div>
 </div>
 
 <!-- ── Snapshot ── -->
@@ -1729,13 +1737,25 @@ function exportSignsCSV() {
 var drillOption = null;
 var drillData   = [];
 
+function goToConstituents(district) {
+  switchView('constituents');
+  setDistrict(district);
+}
+
+function scrollToDonations() {
+  var el = document.querySelector('.donation-section');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function drilldown(option) {
   drillOption = option;
-  var d = filtered();
-  if (option === 'Yard Sign') {
+  var d = all; // stat cards always drill into full dataset
+  if (option === 'Endorsement') {
+    drillData = d.filter(function(r){ return r.endorse === 'Yes'; });
+  } else if (option === 'Yard Sign') {
     drillData = d.filter(function(r){ return r.yard_sign === 'Yes'; });
   } else {
-    drillData = d.filter(function(r){
+    drillData = filtered().filter(function(r){
       if (!r.how_to_help || r.how_to_help === 'None selected') return false;
       return r.how_to_help.split(',').map(function(h){ return h.trim(); }).indexOf(option) > -1;
     });

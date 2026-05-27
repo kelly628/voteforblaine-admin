@@ -80,6 +80,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS events (
   created_at  TEXT DEFAULT (datetime('now','localtime'))
 )`);
 
+try { db.exec(`ALTER TABLE events ADD COLUMN fields TEXT`); } catch(e) {}
+
 // ── Walk lists & doors tables ─────────────────────────────────────────
 db.exec(`CREATE TABLE IF NOT EXISTS walk_lists (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -451,19 +453,20 @@ app.get('/admin/events-list', auth('admin'), (req, res) => {
 });
 
 app.post('/admin/event', auth('admin'), (req, res) => {
-  const { title, date, time, location, description, capacity } = req.body;
+  const { title, date, time, location, description, capacity, fields } = req.body;
   try {
-    const r = db.prepare(`INSERT INTO events (title, date, time, location, description, capacity) VALUES (?,?,?,?,?,?)`)
-      .run(title||'', date||'', time||'', location||'', description||'', capacity||null);
+    const r = db.prepare(`INSERT INTO events (title, date, time, location, description, capacity, fields) VALUES (?,?,?,?,?,?,?)`)
+      .run(title||'', date||'', time||'', location||'', description||'', capacity||null, fields ? JSON.stringify(fields) : null);
     res.json({ result: 'ok', id: r.lastInsertRowid });
   } catch(e) { res.status(500).json({ result: 'error', error: e.message }); }
 });
 
 app.patch('/admin/event/:id', auth('admin'), (req, res) => {
-  const { title, date, time, location, description, capacity, status } = req.body;
+  const { title, date, time, location, description, capacity, status, fields } = req.body;
   try {
-    db.prepare(`UPDATE events SET title=?, date=?, time=?, location=?, description=?, capacity=?, status=? WHERE id=?`)
-      .run(title||'', date||'', time||'', location||'', description||'', capacity||null, status||'active', req.params.id);
+    db.prepare(`UPDATE events SET title=?, date=?, time=?, location=?, description=?, capacity=?, status=?, fields=? WHERE id=?`)
+      .run(title||'', date||'', time||'', location||'', description||'', capacity||null, status||'active',
+          fields ? JSON.stringify(fields) : null, req.params.id);
     res.json({ result: 'ok' });
   } catch(e) { res.status(500).json({ result: 'error', error: e.message }); }
 });
@@ -1036,7 +1039,7 @@ const BASE_CSS = `
 // ════════════════════════════════════════════════════════════════════════
 //  WIDGET GENERATOR — defined here so .toString() preserves escape seqs
 // ════════════════════════════════════════════════════════════════════════
-function generateWidget(label, displayDate, time, location) {
+function generateWidget(label, displayDate, time, location, fields) {
   var BM_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxBW4GzNFR9rb3kmqYjS93wxw43XH2q4c-kb-gqQBAuqQCIEgJHggtyNWp1Kvouured/exec';
   var BM_CRM_URL = window.BM_CRM_BASE_URL || 'http://localhost:3002';
   var safeLabel = label || 'New Event';
@@ -1045,6 +1048,16 @@ function generateWidget(label, displayDate, time, location) {
   var safeLoc   = location || '';
   var eyebrow   = 'Join Us';
   var heading   = safeLabel;
+  // Field config — defaults to on for common fields
+  var f = fields || {};
+  var showEmail    = f.email    !== false;
+  var showPhone    = f.phone    !== false;
+  var showAddress  = !!f.address;
+  var showGuests   = f.guests   !== false;
+  var showYardSign = f.yard_sign !== false;
+  var showEndorse  = !!f.endorse;
+  var showHelp     = f.how_to_help !== false;
+  var showComment  = !!f.comment;
 
   return [
 '<!-- RSVP Widget — ' + safeLabel + ' -->',
@@ -1097,79 +1110,44 @@ function generateWidget(label, displayDate, time, location) {
 '    </p>',
 '',
 '    <div class="bm-rsvp-form" id="bmRsvpForm">',
+// Name — always shown
 '      <div class="bm-rsvp-row">',
-'        <div class="bm-rsvp-field">',
-'          <label class="bm-rsvp-label" for="bm-first">First Name</label>',
-'          <input class="bm-rsvp-input" type="text" id="bm-first" placeholder="First name"/>',
-'        </div>',
-'        <div class="bm-rsvp-field">',
-'          <label class="bm-rsvp-label" for="bm-last">Last Name</label>',
-'          <input class="bm-rsvp-input" type="text" id="bm-last" placeholder="Last name"/>',
-'        </div>',
+'        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-first">First Name</label><input class="bm-rsvp-input" type="text" id="bm-first" placeholder="First name"/></div>',
+'        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-last">Last Name</label><input class="bm-rsvp-input" type="text" id="bm-last" placeholder="Last name"/></div>',
 '      </div>',
+// Email + Phone
+(showEmail || showPhone) ? '      <div class="bm-rsvp-row">' : '',
+showEmail ? '        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-email">Email Address</label><input class="bm-rsvp-input" type="email" id="bm-email" placeholder="your@email.com"/></div>' : '',
+showPhone ? '        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-phone">Cell Number</label><input class="bm-rsvp-input" type="tel" id="bm-phone" placeholder="(504) 555-0000"/></div>' : '',
+(showEmail || showPhone) ? '      </div>' : '',
+// Zip (always, for parish) + Guests
 '      <div class="bm-rsvp-row">',
-'        <div class="bm-rsvp-field">',
-'          <label class="bm-rsvp-label" for="bm-email">Email Address</label>',
-'          <input class="bm-rsvp-input" type="email" id="bm-email" placeholder="your@email.com"/>',
-'        </div>',
-'        <div class="bm-rsvp-field">',
-'          <label class="bm-rsvp-label" for="bm-phone">Cell Number</label>',
-'          <input class="bm-rsvp-input" type="tel" id="bm-phone" placeholder="(504) 555-0000"/>',
-'        </div>',
+'        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-zip">Zip Code</label><input class="bm-rsvp-input" type="text" id="bm-zip" placeholder="70001" maxlength="10" oninput="bmAutoParish(this.value)"/></div>',
+showGuests ? '        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-guests">Number of Guests (including yourself)</label><select class="bm-rsvp-select" id="bm-guests"><option value="1">1 — Just me</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5+">5 or more</option></select></div>' : '',
 '      </div>',
-'      <div class="bm-rsvp-row">',
-'        <div class="bm-rsvp-field">',
-'          <label class="bm-rsvp-label" for="bm-zip">Zip Code</label>',
-'          <input class="bm-rsvp-input" type="text" id="bm-zip" placeholder="70001" maxlength="10" oninput="bmAutoParish(this.value)"/>',
-'        </div>',
-'        <div class="bm-rsvp-field">',
-'          <label class="bm-rsvp-label" for="bm-guests">Number of Guests (including yourself)</label>',
-'          <select class="bm-rsvp-select" id="bm-guests">',
-'            <option value="1">1 — Just me</option>',
-'            <option value="2">2</option>',
-'            <option value="3">3</option>',
-'            <option value="4">4</option>',
-'            <option value="5+">5 or more</option>',
-'          </select>',
-'        </div>',
-'      </div>',
-'      <div class="bm-rsvp-field">',
-'        <label class="bm-rsvp-label" for="bm-address">Street Address</label>',
-'        <input class="bm-rsvp-input" type="text" id="bm-address" placeholder="123 Main St"/>',
-'      </div>',
-'      <div class="bm-rsvp-row">',
-'        <div class="bm-rsvp-field">',
-'          <label class="bm-rsvp-label" for="bm-city">City</label>',
-'          <input class="bm-rsvp-input" type="text" id="bm-city" placeholder="Metairie"/>',
-'        </div>',
-'        <div class="bm-rsvp-field">',
-'          <label class="bm-rsvp-label" for="bm-state">State</label>',
-'          <input class="bm-rsvp-input" type="text" id="bm-state" placeholder="LA" maxlength="2" value="LA"/>',
-'        </div>',
-'      </div>',
+// Address
+showAddress ? '      <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-address">Street Address</label><input class="bm-rsvp-input" type="text" id="bm-address" placeholder="123 Main St"/></div>' : '',
+showAddress ? '      <div class="bm-rsvp-row"><div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-city">City</label><input class="bm-rsvp-input" type="text" id="bm-city" placeholder="Metairie"/></div><div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-state">State</label><input class="bm-rsvp-input" type="text" id="bm-state" placeholder="LA" maxlength="2" value="LA"/></div></div>' : '',
 '      <input type="hidden" id="bm-parish"/>',
-'      <div class="bm-rsvp-help-group">',
-'        <span class="bm-rsvp-help-group-label">How would you like to help? (select all that apply)</span>',
-'        <div class="bm-rsvp-help-grid">',
-'          <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-yardsign"/><span class="bm-rsvp-help-option-text">Deliver me a yard sign</span></label>',
-'          <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-sign-location"/><span class="bm-rsvp-help-option-text">Provide a sign location</span></label>',
-'          <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-phone-calls"/><span class="bm-rsvp-help-option-text">Make phone calls</span></label>',
-'          <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-knock"/><span class="bm-rsvp-help-option-text">Knock on doors</span></label>',
-'          <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-sign-wave"/><span class="bm-rsvp-help-option-text">Sign Wave</span></label>',
-'          <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-errands"/><span class="bm-rsvp-help-option-text">Run errands for the committee</span></label>',
-'          <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-host-event"/><span class="bm-rsvp-help-option-text">Host a meet &amp; greet or other event</span></label>',
-'          <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-inkind"/><span class="bm-rsvp-help-option-text">In-kind contribution or venue space</span></label>',
-'        </div>',
-'      </div>',
-'      <hr class="bm-rsvp-divider"/>',
-'      <label class="bm-rsvp-checkbox-row">',
-'        <input type="checkbox" id="bm-endorse"/>',
-'        <span class="bm-rsvp-checkbox-label">I would like to officially endorse Blaine Benge Moncrief for Judge, Division H, 24th Judicial District Court.</span>',
-'      </label>',
-'      <div class="bm-rsvp-field">',
-'        <label class="bm-rsvp-label" for="bm-comment">Comments or Questions</label>',
-'        <textarea class="bm-rsvp-textarea" id="bm-comment" placeholder="Anything you\'d like us to know…"></textarea>',
-'      </div>',
+// Ways to get involved
+showHelp ? '      <div class="bm-rsvp-help-group"><span class="bm-rsvp-help-group-label">How would you like to help? (select all that apply)</span><div class="bm-rsvp-help-grid">' : '',
+(showHelp && showYardSign) ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-yardsign"/><span class="bm-rsvp-help-option-text">Deliver me a yard sign</span></label>' : '',
+showHelp ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-sign-location"/><span class="bm-rsvp-help-option-text">Provide a sign location</span></label>' : '',
+showHelp ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-phone-calls"/><span class="bm-rsvp-help-option-text">Make phone calls</span></label>' : '',
+showHelp ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-knock"/><span class="bm-rsvp-help-option-text">Knock on doors</span></label>' : '',
+showHelp ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-sign-wave"/><span class="bm-rsvp-help-option-text">Sign Wave</span></label>' : '',
+showHelp ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-errands"/><span class="bm-rsvp-help-option-text">Run errands for the committee</span></label>' : '',
+showHelp ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-host-event"/><span class="bm-rsvp-help-option-text">Host a meet &amp; greet or other event</span></label>' : '',
+showHelp ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-inkind"/><span class="bm-rsvp-help-option-text">In-kind contribution or venue space</span></label>' : '',
+showHelp ? '      </div></div>' : '',
+// Standalone yard sign (if help is off but yard_sign is on)
+(!showHelp && showYardSign) ? '      <label class="bm-rsvp-checkbox-row"><input type="checkbox" id="bm-yardsign"/><span class="bm-rsvp-checkbox-label">I would like a yard sign.</span></label>' : '',
+// Divider before endorse/comment
+(showEndorse || showComment) ? '      <hr class="bm-rsvp-divider"/>' : '',
+// Endorse
+showEndorse ? '      <label class="bm-rsvp-checkbox-row"><input type="checkbox" id="bm-endorse"/><span class="bm-rsvp-checkbox-label">I would like to officially endorse Blaine Benge Moncrief for Judge, Division H, 24th Judicial District Court.</span></label>' : '',
+// Comment
+showComment ? '      <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-comment">Comments or Questions</label><textarea class="bm-rsvp-textarea" id="bm-comment" placeholder="Anything you\'d like us to know…"></textarea></div>' : '',
 '      <button class="bm-rsvp-submit" id="bmRsvpSubmit" onclick="bmSubmitRsvp()">Reserve My Spot</button>',
 '    </div>',
 '',
@@ -1188,20 +1166,22 @@ function generateWidget(label, displayDate, time, location) {
 '  var BM_SCRIPT_URL = \'' + BM_SCRIPT_URL + '\';',
 '  var BM_CRM_URL = \'' + BM_CRM_URL + '\';',
 '',
+'  function bmVal(id) { var el = document.getElementById(id); return el ? el.value.trim() : \'\'; }',
+'  function bmChk(id) { var el = document.getElementById(id); return el ? el.checked : false; }',
 '  function bmSubmitRsvp() {',
-'    var first    = document.getElementById(\'bm-first\').value.trim();',
-'    var last     = document.getElementById(\'bm-last\').value.trim();',
-'    var email    = document.getElementById(\'bm-email\').value.trim();',
-'    var phone    = document.getElementById(\'bm-phone\').value.trim();',
-'    var address  = document.getElementById(\'bm-address\').value.trim();',
-'    var city     = document.getElementById(\'bm-city\').value.trim();',
-'    var state    = document.getElementById(\'bm-state\').value.trim();',
-'    var zip      = document.getElementById(\'bm-zip\').value.trim();',
-'    var parish   = document.getElementById(\'bm-parish\').value;',
-'    var guests   = document.getElementById(\'bm-guests\').value;',
-'    var yardsign = document.getElementById(\'bm-yardsign\').checked ? \'Yes\' : \'No\';',
-'    var endorse  = document.getElementById(\'bm-endorse\').checked ? \'Yes\' : \'No\';',
-'    var comment  = document.getElementById(\'bm-comment\').value.trim();',
+'    var first    = bmVal(\'bm-first\');',
+'    var last     = bmVal(\'bm-last\');',
+'    var email    = bmVal(\'bm-email\');',
+'    var phone    = bmVal(\'bm-phone\');',
+'    var address  = bmVal(\'bm-address\');',
+'    var city     = bmVal(\'bm-city\');',
+'    var state    = bmVal(\'bm-state\');',
+'    var zip      = bmVal(\'bm-zip\');',
+'    var parish   = bmVal(\'bm-parish\');',
+'    var guests   = bmVal(\'bm-guests\') || \'1\';',
+'    var yardsign = bmChk(\'bm-yardsign\') ? \'Yes\' : \'No\';',
+'    var endorse  = bmChk(\'bm-endorse\') ? \'Yes\' : \'No\';',
+'    var comment  = bmVal(\'bm-comment\');',
 '    var helpOptions = [',
 '      { id: \'bm-help-sign-location\', label: \'Provide Sign Location\' },',
 '      { id: \'bm-help-phone-calls\',   label: \'Make Phone Calls\' },',
@@ -1212,11 +1192,11 @@ function generateWidget(label, displayDate, time, location) {
 '      { id: \'bm-help-inkind\',        label: \'In-Kind Contribution or Venue Space\' }',
 '    ];',
 '    var howToHelp = helpOptions',
-'      .filter(function(o) { return document.getElementById(o.id).checked; })',
+'      .filter(function(o) { return bmChk(o.id); })',
 '      .map(function(o) { return o.label; })',
 '      .join(\', \');',
 '    if (!howToHelp) howToHelp = \'None selected\';',
-'    if (!first || !last || !email) { alert(\'Please fill in your first name, last name, and email.\'); return; }',
+'    if (!first || !last) { alert(\'Please fill in your first and last name.\'); return; }',
 '    var btn = document.getElementById(\'bmRsvpSubmit\');',
 '    btn.disabled = true; btn.textContent = \'Submitting…\';',
 '    var payload = { firstName: first, lastName: last, email: email, phone: phone, address: address, city: city, state: state, zip: zip, parish: parish, guests: guests, howToHelp: howToHelp, yardSign: yardsign, endorse: endorse, comment: comment, event: \'' + safeLabel.replace(/'/g, "\\'") + '\' };',
@@ -2124,7 +2104,47 @@ function adminHTML() { return `<!DOCTYPE html>
       <input class="modal-input" id="evt-f-capacity" type="number" min="1" placeholder="Leave blank for unlimited"/>
     </div>
 
-    <div style="display:flex;gap:10px;margin-top:8px;">
+    <!-- Registration Form Fields -->
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+      <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:12px;">Registration Form Fields</div>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:12px;">Name is always collected. Select additional fields to show on the registration form.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
+          <input type="checkbox" id="ef-email" checked style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
+          Email Address
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
+          <input type="checkbox" id="ef-phone" checked style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
+          Phone Number
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
+          <input type="checkbox" id="ef-address" style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
+          Home Address
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
+          <input type="checkbox" id="ef-guests" checked style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
+          Number of Guests
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
+          <input type="checkbox" id="ef-yard_sign" checked style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
+          Yard Sign Interest
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
+          <input type="checkbox" id="ef-endorse" style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
+          Willing to Endorse
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
+          <input type="checkbox" id="ef-how_to_help" checked style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
+          Ways to Get Involved
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
+          <input type="checkbox" id="ef-comment" style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
+          Message / Comment
+        </label>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:20px;">
       <button class="modal-btn" onclick="saveEvent()">Save Event</button>
       <button class="modal-btn secondary" onclick="closeEventModal()">Cancel</button>
     </div>
@@ -3613,7 +3633,7 @@ function buildEventsView(d) {
             (metaParts.length ? '<div style="font-size:11px;color:var(--muted);">' + x(metaParts.join(' · ')) + '</div>' : '') +
             '<div style="display:flex;gap:8px;margin-top:4px;">' +
               '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;" data-evtid="' + ev.id + '" onclick="openEditEventModal(this.dataset.evtid)">Edit</button>' +
-              '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;" data-title="' + x(ev.title) + '" data-date="' + x(ev.date||'') + '" data-time="' + x(ev.time||'') + '" data-loc="' + x(ev.location||'') + '" onclick="showEmbedCode(this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc)">Embed Code</button>' +
+              '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;" data-title="' + x(ev.title) + '" data-date="' + x(ev.date||'') + '" data-time="' + x(ev.time||'') + '" data-loc="' + x(ev.location||'') + '" data-fields="' + x(ev.fields||'{}') + '" onclick="var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f)">Embed Code</button>' +
               '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;color:#9a3412;border-color:#fca5a5;" data-evtid="' + ev.id + '" data-title="' + x(ev.title) + '" onclick="deleteEvent(this.dataset.evtid,this.dataset.title)">Delete</button>' +
             '</div>' +
           '</div>';
@@ -3643,6 +3663,25 @@ function buildEventsView(d) {
 }
 
 // ── Event Management Functions ─────────────────────────────────────────
+var EVT_FIELD_KEYS = ['email','phone','address','guests','yard_sign','endorse','how_to_help','comment'];
+var EVT_FIELD_DEFAULTS = { email:true, phone:true, address:false, guests:true, yard_sign:true, endorse:false, how_to_help:true, comment:false };
+
+function evtSetFieldCheckboxes(fields) {
+  var cfg = fields || EVT_FIELD_DEFAULTS;
+  EVT_FIELD_KEYS.forEach(function(k) {
+    var el = document.getElementById('ef-' + k);
+    if (el) el.checked = cfg[k] !== undefined ? !!cfg[k] : !!EVT_FIELD_DEFAULTS[k];
+  });
+}
+function evtReadFieldCheckboxes() {
+  var cfg = {};
+  EVT_FIELD_KEYS.forEach(function(k) {
+    var el = document.getElementById('ef-' + k);
+    cfg[k] = el ? el.checked : !!EVT_FIELD_DEFAULTS[k];
+  });
+  return cfg;
+}
+
 function openNewEventModal() {
   document.getElementById('evt-modal-title').textContent = 'New Event';
   document.getElementById('evt-edit-id').value = '';
@@ -3652,6 +3691,7 @@ function openNewEventModal() {
   document.getElementById('evt-f-location').value = '';
   document.getElementById('evt-f-desc').value = '';
   document.getElementById('evt-f-capacity').value = '';
+  evtSetFieldCheckboxes(null);
   document.getElementById('evt-modal-overlay').classList.add('open');
   setTimeout(function(){ document.getElementById('evt-f-title').focus(); }, 80);
 }
@@ -3670,6 +3710,9 @@ function openEditEventModal(id) {
       document.getElementById('evt-f-location').value = ev.location || '';
       document.getElementById('evt-f-desc').value = ev.description || '';
       document.getElementById('evt-f-capacity').value = ev.capacity || '';
+      var fields = null;
+      try { if (ev.fields) fields = JSON.parse(ev.fields); } catch(e) {}
+      evtSetFieldCheckboxes(fields);
       document.getElementById('evt-modal-overlay').classList.add('open');
     });
 }
@@ -3692,10 +3735,11 @@ function saveEvent() {
   var method = id ? 'PATCH' : 'POST';
   var url    = id ? '/admin/event/' + id : '/admin/event';
 
+  var fields = evtReadFieldCheckboxes();
   fetch(url, {
     method: method,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: title, date: date, time: time, location: location, description: desc, capacity: capacity ? parseInt(capacity) : null })
+    body: JSON.stringify({ title: title, date: date, time: time, location: location, description: desc, capacity: capacity ? parseInt(capacity) : null, fields: fields })
   })
     .then(function(r){ return r.json(); })
     .then(function(data) {
@@ -3723,11 +3767,11 @@ function deleteEvent(id, title) {
     .catch(function(){ alert('Network error.'); });
 }
 
-function showEmbedCode(title, date, time, location) {
+function showEmbedCode(title, date, time, location, fields) {
   var labelEl = document.getElementById('evt-embed-label');
   var codeEl  = document.getElementById('evt-embed-code');
   if (labelEl) labelEl.textContent = title + (date ? '  —  ' + date : '');
-  if (codeEl)  codeEl.value = generateWidget(title, date, time, location);
+  if (codeEl)  codeEl.value = generateWidget(title, date, time, location, fields);
   document.getElementById('evt-embed-overlay').classList.add('open');
 }
 

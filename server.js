@@ -2118,7 +2118,7 @@ function adminHTML() { return `<!DOCTYPE html>
           Phone Number
         </label>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
-          <input type="checkbox" id="ef-address" style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
+          <input type="checkbox" id="ef-address" checked style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
           Home Address
         </label>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
@@ -2130,7 +2130,7 @@ function adminHTML() { return `<!DOCTYPE html>
           Yard Sign Interest
         </label>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
-          <input type="checkbox" id="ef-endorse" style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
+          <input type="checkbox" id="ef-endorse" checked style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
           Willing to Endorse
         </label>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
@@ -2138,7 +2138,7 @@ function adminHTML() { return `<!DOCTYPE html>
           Ways to Get Involved
         </label>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
-          <input type="checkbox" id="ef-comment" style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
+          <input type="checkbox" id="ef-comment" checked style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
           Message / Comment
         </label>
       </div>
@@ -3664,7 +3664,7 @@ function buildEventsView(d) {
 
 // ── Event Management Functions ─────────────────────────────────────────
 var EVT_FIELD_KEYS = ['email','phone','address','guests','yard_sign','endorse','how_to_help','comment'];
-var EVT_FIELD_DEFAULTS = { email:true, phone:true, address:false, guests:true, yard_sign:true, endorse:false, how_to_help:true, comment:false };
+var EVT_FIELD_DEFAULTS = { email:true, phone:true, address:true, guests:true, yard_sign:true, endorse:true, how_to_help:true, comment:true };
 
 function evtSetFieldCheckboxes(fields) {
   var cfg = fields || EVT_FIELD_DEFAULTS;

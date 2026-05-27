@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0E356C">
+  <title>Canvassing — Vote For Blaine</title>
+  <style>
+    :root {
+      --navy: #0E356C;
+      --navy-l: #1a4a8a;
+      --mint: #78E0C4;
+      --mint-d: #3CB99B;
+      --white: #fff;
+      --bg: #F5F7FA;
+      --border: #E2E8F0;
+      --dim: #64748B;
+      --text: #1E293B;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); min-height: 100vh; overflow-x: hidden; }
+
+    /* ── Header ── */
+    .c-header {
+      background: var(--navy);
+      padding: 14px 20px 12px;
+      display: flex;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .c-brand { flex: 1; }
+    .c-logo { font-size: 12px; font-weight: 900; letter-spacing: 2.5px; color: var(--mint); text-transform: uppercase; }
+    .c-tag  { font-size: 9px; color: rgba(255,255,255,0.45); letter-spacing: 1.5px; text-transform: uppercase; font-weight: 600; margin-top: 1px; }
+    .c-session-badge { text-align: right; }
+    .c-vol-name { font-size: 12px; font-weight: 700; color: white; }
+    .c-list-name { font-size: 9px; color: rgba(255,255,255,0.45); letter-spacing: 1px; margin-top: 1px; }
+
+    /* ── Screens ── */
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    /* ─────────────── SETUP SCREEN ─────────────── */
+    .setup-body { padding: 32px 24px 40px; max-width: 440px; margin: 0 auto; }
+    .setup-eyebrow { font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--mint-d); margin-bottom: 8px; }
+    .setup-title { font-size: 24px; font-weight: 900; color: var(--navy); margin-bottom: 6px; }
+    .setup-sub   { font-size: 13px; color: var(--dim); margin-bottom: 32px; line-height: 1.5; }
+    .field-group { margin-bottom: 20px; }
+    .field-label { font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); display: block; margin-bottom: 7px; }
+    .field-input {
+      width: 100%; padding: 14px 16px; font-size: 16px;
+      border: 1.5px solid var(--border); border-radius: 8px;
+      background: white; color: var(--text); outline: none;
+      transition: border-color .15s; appearance: none;
+      font-family: inherit;
+    }
+    .field-input:focus { border-color: var(--mint-d); }
+    .field-input option { font-size: 15px; }
+    .btn-start {
+      width: 100%; padding: 16px; font-size: 13px; font-weight: 800;
+      letter-spacing: 1px; text-transform: uppercase;
+      background: var(--navy); color: white; border: none;
+      border-radius: 8px; cursor: pointer; transition: background .15s;
+      margin-top: 8px;
+    }
+    .btn-start:active { background: var(--navy-l); }
+    .btn-start:disabled { opacity: 0.35; cursor: not-allowed; }
+    .setup-note { font-size: 11px; color: var(--dim); text-align: center; margin-top: 16px; }
+
+    /* ─────────────── CARD SCREEN ─────────────── */
+    /* Progress bar (sticky below header) */
+    .prog-bar-wrap {
+      background: var(--navy);
+      padding: 10px 20px 16px;
+    }
+    .prog-meta { display: flex; justify-content: space-between; margin-bottom: 7px; }
+    .prog-meta span { font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.55); }
+    .prog-track { background: rgba(255,255,255,0.15); border-radius: 100px; height: 6px; overflow: hidden; }
+    .prog-fill   { height: 100%; background: var(--mint); border-radius: 100px; transition: width .4s cubic-bezier(.4,0,.2,1); }
+
+    /* Door card */
+    .card-outer { padding: 18px 16px 0; }
+    .door-card {
+      background: white;
+      border-radius: 14px;
+      border: 1.5px solid var(--border);
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(14,53,108,0.10);
+      animation: cardIn .25s ease;
+    }
+    @keyframes cardIn { from { opacity: 0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+    .door-hdr { background: var(--navy); padding: 18px 20px 16px; }
+    .door-num  { font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: rgba(255,255,255,0.45); margin-bottom: 7px; }
+    .door-addr { font-size: 21px; font-weight: 800; color: white; line-height: 1.2; margin-bottom: 5px; }
+    .door-name { font-size: 12px; color: rgba(255,255,255,0.6); }
+    .door-body { padding: 20px; }
+
+    /* Result grid */
+    .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 0; }
+    .res-btn {
+      padding: 18px 10px;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      background: white;
+      font-size: 13px; font-weight: 700;
+      color: var(--text); cursor: pointer;
+      text-align: center;
+      transition: all .12s;
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      line-height: 1.2;
+    }
+    .res-btn .res-icon { font-size: 20px; }
+    .res-btn:active { transform: scale(0.96); }
+    .res-btn.sel-fav { background: #ECFDF5; border-color: #10B981; color: #065F46; }
+    .res-btn.sel-no  { background: #FEF2F2; border-color: #EF4444; color: #991B1B; }
+    .res-btn.sel-nh  { background: #FFFBEB; border-color: #F59E0B; color: #92400E; }
+    .res-btn.sel-mv  { background: #EFF6FF; border-color: #3B82F6; color: #1E40AF; }
+
+    /* Notes */
+    .notes-section { padding: 14px 20px 4px; animation: slideIn .2s ease; }
+    @keyframes slideIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+    .notes-label { font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; display: block; }
+    .notes-ta {
+      width: 100%; padding: 11px 13px; font-size: 14px;
+      border: 1.5px solid var(--border); border-radius: 7px;
+      resize: none; font-family: inherit; color: var(--text); outline: none;
+      background: var(--bg);
+    }
+    .notes-ta:focus { border-color: var(--mint-d); background: white; }
+
+    /* Card nav */
+    .card-nav {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 16px 20px;
+    }
+    .btn-skip {
+      padding: 13px 20px; font-size: 12px; font-weight: 700;
+      color: var(--dim); background: white;
+      border: 1.5px solid var(--border); border-radius: 7px; cursor: pointer;
+    }
+    .btn-next {
+      padding: 14px 28px; font-size: 13px; font-weight: 800;
+      background: var(--navy); color: white; border: none;
+      border-radius: 7px; cursor: pointer; transition: background .15s;
+      letter-spacing: 0.5px;
+    }
+    .btn-next:disabled { opacity: 0.3; cursor: not-allowed; }
+    .btn-next:active { background: var(--navy-l); }
+    .btn-next.finish { background: var(--mint-d); }
+    .btn-next.finish:active { background: #2fa085; }
+
+    /* Already-knocked banner */
+    .skipped-banner {
+      margin: 0 16px;
+      padding: 10px 14px;
+      background: #FFFBEB;
+      border: 1px solid #F59E0B;
+      border-radius: 7px;
+      font-size: 11px;
+      color: #92400E;
+      font-weight: 600;
+      text-align: center;
+      display: none;
+    }
+
+    /* ─────────────── DONE SCREEN ─────────────── */
+    .done-body { padding: 48px 24px 40px; max-width: 440px; margin: 0 auto; text-align: center; }
+    .done-trophy { font-size: 64px; margin-bottom: 16px; }
+    .done-title { font-size: 28px; font-weight: 900; color: var(--navy); margin-bottom: 8px; }
+    .done-sub   { font-size: 13px; color: var(--dim); margin-bottom: 32px; line-height: 1.5; }
+    .done-grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 32px; }
+    .done-stat {
+      background: white; border: 1.5px solid var(--border);
+      border-radius: 10px; padding: 18px 12px;
+    }
+    .done-val { font-size: 32px; font-weight: 900; color: var(--navy); line-height: 1; }
+    .done-val.green { color: var(--mint-d); }
+    .done-lbl { font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim); margin-top: 5px; }
+    .done-rate {
+      background: var(--navy); color: white; border-radius: 10px;
+      padding: 16px; margin-bottom: 32px;
+      font-size: 13px; color: rgba(255,255,255,0.7);
+    }
+    .done-rate strong { font-size: 26px; font-weight: 900; color: var(--mint); display: block; margin-bottom: 2px; }
+    .btn-restart {
+      width: 100%; padding: 16px; font-size: 13px; font-weight: 800;
+      letter-spacing: 1px; text-transform: uppercase;
+      background: var(--navy); color: white; border: none;
+      border-radius: 8px; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<div class="c-header">
+  <div class="c-brand">
+    <div class="c-logo">Vote For Blaine</div>
+    <div class="c-tag">Field Canvassing</div>
+  </div>
+  <div class="c-session-badge" id="session-badge" style="display:none;">
+    <div class="c-vol-name" id="hdr-vol"></div>
+    <div class="c-list-name" id="hdr-list"></div>
+  </div>
+</div>
+
+<!-- ══════════════ SETUP SCREEN ══════════════ -->
+<div class="screen active" id="screen-setup">
+  <div class="setup-body">
+    <div class="setup-eyebrow">Field Operations</div>
+    <div class="setup-title">Ready to knock?</div>
+    <div class="setup-sub">Enter your name and pick your walk list. Results sync live to campaign headquarters.</div>
+
+    <div class="field-group">
+      <label class="field-label" for="inp-name">Your name</label>
+      <input class="field-input" id="inp-name" type="text" placeholder="First Last" autocomplete="name" autocorrect="off">
+    </div>
+
+    <div class="field-group">
+      <label class="field-label" for="inp-list">Walk list</label>
+      <select class="field-input" id="inp-list">
+        <option value="">Loading lists…</option>
+      </select>
+    </div>
+
+    <button class="btn-start" id="btn-start" onclick="startSession()" disabled>
+      Start Canvassing →
+    </button>
+    <div class="setup-note">Results appear in the admin dashboard in real time.</div>
+  </div>
+</div>
+
+<!-- ══════════════ CARD SCREEN ══════════════ -->
+<div class="screen" id="screen-card">
+  <div class="prog-bar-wrap">
+    <div class="prog-meta">
+      <span id="prog-label">Door 1 of 0</span>
+      <span id="prog-pct">0%</span>
+    </div>
+    <div class="prog-track"><div class="prog-fill" id="prog-fill" style="width:0%"></div></div>
+  </div>
+
+  <div class="card-outer">
+    <div class="door-card" id="door-card">
+      <div class="door-hdr">
+        <div class="door-num" id="card-num">DOOR 1</div>
+        <div class="door-addr" id="card-addr">Loading…</div>
+        <div class="door-name" id="card-voter"></div>
+      </div>
+      <div class="door-body">
+        <div class="result-grid">
+          <button class="res-btn" id="btn-fav" onclick="pick('favorable')">
+            <span class="res-icon">✓</span>Favorable
+          </button>
+          <button class="res-btn" id="btn-no" onclick="pick('unfavorable')">
+            <span class="res-icon">✗</span>Not Interested
+          </button>
+          <button class="res-btn" id="btn-nh" onclick="pick('not_home')">
+            <span class="res-icon">↩</span>Not Home
+          </button>
+          <button class="res-btn" id="btn-mv" onclick="pick('moved')">
+            <span class="res-icon">⟵</span>Moved
+          </button>
+        </div>
+      </div>
+      <div class="notes-section" id="notes-section" style="display:none;">
+        <label class="notes-label" for="inp-notes">Note (optional)</label>
+        <textarea class="notes-ta" id="inp-notes" rows="2" placeholder="Add anything useful…"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="skipped-banner" id="skip-banner">
+    This door was skipped — it won't be counted in your totals.
+  </div>
+
+  <div class="card-nav">
+    <button class="btn-skip" onclick="skipDoor()">Skip</button>
+    <button class="btn-next" id="btn-next" onclick="logAndAdvance()" disabled>Next Door →</button>
+  </div>
+</div>
+
+<!-- ══════════════ DONE SCREEN ══════════════ -->
+<div class="screen" id="screen-done">
+  <div class="done-body">
+    <div class="done-trophy">🏆</div>
+    <div class="done-title">Great work!</div>
+    <div class="done-sub" id="done-sub">You finished your walk list.</div>
+
+    <div class="done-rate">
+      <strong id="done-rate-val">—</strong>
+      Favorable conversion rate
+    </div>
+
+    <div class="done-grid">
+      <div class="done-stat">
+        <div class="done-val" id="done-knocked">0</div>
+        <div class="done-lbl">Knocked</div>
+      </div>
+      <div class="done-stat">
+        <div class="done-val green" id="done-fav">0</div>
+        <div class="done-lbl">Favorable</div>
+      </div>
+      <div class="done-stat">
+        <div class="done-val" id="done-no">0</div>
+        <div class="done-lbl">Not Interested</div>
+      </div>
+      <div class="done-stat">
+        <div class="done-val" id="done-nh">0</div>
+        <div class="done-lbl">Not Home</div>
+      </div>
+    </div>
+
+    <button class="btn-restart" onclick="resetApp()">Start New Session</button>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+var _vol    = '';
+var _list   = null;   // { id, name }
+var _doors  = [];     // pending doors for this session
+var _idx    = 0;
+var _picked = null;   // current selection
+var _stats  = { knocked:0, fav:0, no:0, nh:0, mv:0 };
+
+// ── Bootstrap ────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  loadLists();
+  document.getElementById('inp-name').addEventListener('input', guardStart);
+  document.getElementById('inp-list').addEventListener('change', guardStart);
+});
+
+function loadLists() {
+  fetch('/admin/walk-lists')
+    .then(function(r){ return r.json(); })
+    .then(function(lists) {
+      var sel = document.getElementById('inp-list');
+      if (!lists.length) {
+        sel.innerHTML = '<option value="">No walk lists available yet</option>';
+        return;
+      }
+      sel.innerHTML = '<option value="">— Select a list —</option>' +
+        lists.map(function(l){
+          var label = l.name + (l.area ? ' (' + l.area + ')' : '') +
+                      (l._total ? ' · ' + (l._total - (l._knocked||0)) + ' pending' : '');
+          return '<option value="' + l.id + '">' + label + '</option>';
+        }).join('');
+    });
+}
+
+function guardStart() {
+  var name = document.getElementById('inp-name').value.trim();
+  var list = document.getElementById('inp-list').value;
+  document.getElementById('btn-start').disabled = !(name && list);
+}
+
+// ── Session ──────────────────────────────────────────────────────────────────
+function startSession() {
+  _vol  = document.getElementById('inp-name').value.trim();
+  var sel = document.getElementById('inp-list');
+  var listId = parseInt(sel.value);
+  var listOpt = sel.options[sel.selectedIndex];
+  var listName = listOpt.text.replace(/ ·.*$/, '').replace(/ \(.*\)$/, '');
+
+  _list  = { id: listId, name: listName };
+  _stats = { knocked:0, fav:0, no:0, nh:0, mv:0 };
+
+  document.getElementById('hdr-vol').textContent  = _vol;
+  document.getElementById('hdr-list').textContent = _list.name;
+  document.getElementById('session-badge').style.display = '';
+
+  fetch('/admin/walk-doors/' + listId)
+    .then(function(r){ return r.json(); })
+    .then(function(doors) {
+      // Only show pending doors
+      _doors = doors.filter(function(d){ return !d.result || d.result === 'pending'; });
+      _idx   = 0;
+
+      if (!_doors.length) {
+        // All doors already knocked
+        showDone();
+        return;
+      }
+      showCard();
+      renderCard();
+    });
+}
+
+// ── Card rendering ───────────────────────────────────────────────────────────
+function renderCard() {
+  var d    = _doors[_idx];
+  var tot  = _doors.length;
+  var pct  = Math.round((_idx / tot) * 100);
+  var last = (_idx === tot - 1);
+
+  document.getElementById('prog-label').textContent = 'Door ' + (_idx + 1) + ' of ' + tot;
+  document.getElementById('prog-pct').textContent   = pct + '%';
+  document.getElementById('prog-fill').style.width  = pct + '%';
+
+  document.getElementById('card-num').textContent   = 'DOOR ' + (_idx + 1);
+  document.getElementById('card-addr').textContent  = d.address   || '—';
+  document.getElementById('card-voter').textContent = d.voter_name || '';
+
+  // Reset state
+  _picked = null;
+  resetButtons();
+  document.getElementById('notes-section').style.display = 'none';
+  document.getElementById('inp-notes').value = '';
+  document.getElementById('skip-banner').style.display = 'none';
+
+  var nextBtn = document.getElementById('btn-next');
+  nextBtn.disabled = true;
+  nextBtn.textContent = last ? 'Finish →' : 'Next Door →';
+  nextBtn.className   = 'btn-next' + (last ? ' finish' : '');
+}
+
+function resetButtons() {
+  ['btn-fav','btn-no','btn-nh','btn-mv'].forEach(function(id){
+    document.getElementById(id).className = 'res-btn';
+  });
+}
+
+function pick(result) {
+  _picked = result;
+  resetButtons();
+  var map = { favorable:'btn-fav', unfavorable:'btn-no', not_home:'btn-nh', moved:'btn-mv' };
+  var cls = { favorable:'sel-fav', unfavorable:'sel-no', not_home:'sel-nh',  moved:'sel-mv' };
+  document.getElementById(map[result]).className = 'res-btn ' + cls[result];
+  document.getElementById('notes-section').style.display = '';
+  document.getElementById('btn-next').disabled = false;
+}
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+function logAndAdvance() {
+  if (!_picked) return;
+  var d     = _doors[_idx];
+  var notes = document.getElementById('inp-notes').value.trim();
+
+  // Fire-and-forget PATCH (real-time sync to admin)
+  fetch('/admin/walk-door/' + d.id, {
+    method:  'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ result: _picked, volunteer: _vol, notes: notes })
+  });
+
+  // Tally
+  _stats.knocked++;
+  if (_picked === 'favorable')   _stats.fav++;
+  if (_picked === 'unfavorable') _stats.no++;
+  if (_picked === 'not_home')    _stats.nh++;
+  if (_picked === 'moved')       _stats.mv++;
+
+  advance();
+}
+
+function skipDoor() {
+  document.getElementById('skip-banner').style.display = '';
+  _picked = null;
+  resetButtons();
+  document.getElementById('notes-section').style.display = 'none';
+  document.getElementById('btn-next').disabled = true;
+  // Brief flash then advance
+  setTimeout(advance, 800);
+}
+
+function advance() {
+  _idx++;
+  if (_idx >= _doors.length) {
+    showDone();
+  } else {
+    renderCard();
+  }
+}
+
+// ── Done screen ──────────────────────────────────────────────────────────────
+function showDone() {
+  var knocked = _stats.knocked;
+  var rate    = knocked ? Math.round((_stats.fav / knocked) * 100) : 0;
+
+  document.getElementById('done-sub').textContent =
+    knocked ? 'Amazing work, ' + _vol + '! Here\'s how it went:' : 'No pending doors left on this list.';
+
+  document.getElementById('done-rate-val').textContent  = rate + '%';
+  document.getElementById('done-knocked').textContent   = knocked;
+  document.getElementById('done-fav').textContent       = _stats.fav;
+  document.getElementById('done-no').textContent        = _stats.no;
+  document.getElementById('done-nh').textContent        = _stats.nh;
+
+  showScreen('done');
+}
+
+function resetApp() {
+  document.getElementById('inp-name').value  = '';
+  document.getElementById('inp-list').value  = '';
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('session-badge').style.display = 'none';
+  loadLists();  // refresh pending counts
+  showScreen('setup');
+}
+
+// ── Screen helpers ───────────────────────────────────────────────────────────
+function showScreen(name) {
+  ['setup','card','done'].forEach(function(s){
+    var el = document.getElementById('screen-' + s);
+    el.className = 'screen' + (s === name ? ' active' : '');
+  });
+}
+function showCard() { showScreen('card'); }
+</script>
+</body>
+</html>

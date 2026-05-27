@@ -48,7 +48,57 @@ try { db.exec(`ALTER TABLE rsvps ADD COLUMN state TEXT`); } catch(e) {}
 try { db.exec(`ALTER TABLE rsvps ADD COLUMN parish TEXT`); } catch(e) {}
 try { db.exec(`ALTER TABLE rsvps ADD COLUMN role TEXT`); } catch(e) {}
 try { db.exec(`ALTER TABLE rsvps ADD COLUMN pipeline_stage TEXT`); } catch(e) {}
+try { db.exec(`ALTER TABLE rsvps ADD COLUMN volunteer_role TEXT`); } catch(e) {}
+try { db.exec(`ALTER TABLE rsvps ADD COLUMN volunteer_hours INTEGER DEFAULT 0`); } catch(e) {}
+try { db.exec(`ALTER TABLE rsvps ADD COLUMN volunteer_status TEXT DEFAULT 'new'`); } catch(e) {}
 db.prepare("UPDATE rsvps SET role='Voter' WHERE role IS NULL OR role=''").run();
+
+// ── Endorsements table ────────────────────────────────────────────────
+db.exec(`CREATE TABLE IF NOT EXISTS endorsements (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT NOT NULL,
+  org         TEXT,
+  tier        TEXT DEFAULT 'individual',
+  status      TEXT DEFAULT 'not_contacted',
+  notes       TEXT,
+  date        TEXT,
+  contact_id  INTEGER,
+  created_at  TEXT DEFAULT (datetime('now','localtime'))
+)`);
+try { db.exec(`ALTER TABLE endorsements ADD COLUMN contact_id INTEGER`); } catch(e) {}
+
+// ── Walk lists & doors tables ─────────────────────────────────────────
+db.exec(`CREATE TABLE IF NOT EXISTS walk_lists (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT NOT NULL,
+  area        TEXT,
+  assigned_to TEXT,
+  created_at  TEXT DEFAULT (datetime('now','localtime'))
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS walk_doors (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  list_id     INTEGER NOT NULL,
+  address     TEXT,
+  voter_name  TEXT,
+  result      TEXT DEFAULT 'pending',
+  volunteer   TEXT,
+  notes       TEXT,
+  knocked_at  TEXT,
+  created_at  TEXT DEFAULT (datetime('now','localtime'))
+)`);
+
+// ── Donations table (ensure it exists at startup) ─────────────────────
+db.exec(`CREATE TABLE IF NOT EXISTS donations (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  donor_name  TEXT, amount REAL, date TEXT, source TEXT,
+  contact_id  INTEGER,
+  created_at  TEXT DEFAULT (datetime('now','localtime'))
+)`);
+try { db.exec(`ALTER TABLE donations ADD COLUMN contact_id INTEGER`); } catch(e) {}
+try { db.exec(`ALTER TABLE donations ADD COLUMN email TEXT`);        } catch(e) {}
+try { db.exec(`ALTER TABLE donations ADD COLUMN anedot_id TEXT`);   } catch(e) {}
+try { db.exec(`ALTER TABLE donations ADD COLUMN tender_type TEXT`);  } catch(e) {}
+try { db.exec(`ALTER TABLE donations ADD COLUMN check_number TEXT`); } catch(e) {}
 
 // ── Parish lookup (module-scoped so routes can use it) ─────────────────
 const BP = {"70001":"Jefferson","70002":"Jefferson","70003":"Jefferson","70004":"Jefferson","70005":"Jefferson","70006":"Jefferson","70009":"Jefferson","70010":"Jefferson","70011":"Jefferson","70031":"Jefferson","70033":"Jefferson","70036":"Jefferson","70037":"Jefferson","70047":"Jefferson","70053":"Jefferson","70055":"Jefferson","70056":"Jefferson","70057":"Jefferson","70058":"Jefferson","70059":"Jefferson","70060":"Jefferson","70062":"Jefferson","70063":"Jefferson","70064":"Jefferson","70065":"Jefferson","70067":"Jefferson","70072":"Jefferson","70073":"Jefferson","70094":"Jefferson","70112":"Orleans","70113":"Orleans","70114":"Orleans","70115":"Orleans","70116":"Orleans","70117":"Orleans","70118":"Orleans","70119":"Orleans","70121":"Orleans","70122":"Orleans","70123":"Orleans","70124":"Orleans","70125":"Orleans","70126":"Orleans","70127":"Orleans","70128":"Orleans","70129":"Orleans","70130":"Orleans","70131":"Orleans","70163":"Orleans","70032":"St. Bernard","70043":"St. Bernard","70044":"St. Bernard","70085":"St. Bernard","70086":"St. Bernard","70092":"St. Bernard","70040":"Plaquemines","70041":"Plaquemines","70050":"Plaquemines","70068":"Plaquemines","70069":"Plaquemines","70070":"Plaquemines","70071":"Plaquemines","70074":"Plaquemines","70075":"Plaquemines","70076":"Plaquemines","70082":"Plaquemines","70083":"Plaquemines","70084":"Plaquemines","70090":"Plaquemines","70030":"St. Charles","70039":"St. Charles","70052":"St. Charles","70079":"St. Charles","70087":"St. Charles","70433":"St. Tammany","70434":"St. Tammany","70435":"St. Tammany","70437":"St. Tammany","70444":"St. Tammany","70445":"St. Tammany","70446":"St. Tammany","70447":"St. Tammany","70448":"St. Tammany","70450":"St. Tammany","70452":"St. Tammany","70455":"St. Tammany","70456":"St. Tammany","70458":"St. Tammany","70459":"St. Tammany","70460":"St. Tammany","70461":"St. Tammany","70464":"St. Tammany","70466":"St. Tammany","70471":"St. Tammany","70401":"Tangipahoa","70402":"Tangipahoa","70403":"Tangipahoa","70404":"Tangipahoa","70420":"Tangipahoa","70422":"Tangipahoa","70426":"Tangipahoa","70427":"Tangipahoa","70428":"Tangipahoa","70429":"Tangipahoa","70430":"Tangipahoa","70436":"Tangipahoa","70443":"Tangipahoa","70451":"Tangipahoa","70454":"Tangipahoa","70463":"Tangipahoa","70301":"Terrebonne","70302":"Terrebonne","70310":"Terrebonne","70352":"Terrebonne","70355":"Terrebonne","70356":"Terrebonne","70359":"Terrebonne","70360":"Terrebonne","70361":"Terrebonne","70363":"Terrebonne","70364":"Terrebonne","70380":"Terrebonne","70340":"Lafourche","70341":"Lafourche","70343":"Lafourche","70344":"Lafourche","70345":"Lafourche","70346":"Lafourche","70353":"Lafourche","70354":"Lafourche","70357":"Lafourche","70358":"Lafourche","70373":"Lafourche","70374":"Lafourche","70377":"Lafourche","70501":"Lafayette","70503":"Lafayette","70504":"Lafayette","70505":"Lafayette","70506":"Lafayette","70507":"Lafayette","70508":"Lafayette","70509":"Lafayette"};
@@ -64,6 +114,27 @@ const BP = {"70001":"Jefferson","70002":"Jefferson","70003":"Jefferson","70004":
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// ── Mockups preview pages ─────────────────────────────────────────────
+app.get('/mockups', (req, res) => {
+  res.sendFile(path.join(__dirname, 'mockups.html'));
+});
+app.get('/mockups/canvassing', (req, res) => {
+  res.sendFile(path.join(__dirname, 'mockup-canvassing.html'));
+});
+
+// ── Mobile field canvassing app ───────────────────────────────────────
+app.get('/canvass', (req, res) => {
+  res.sendFile(path.join(__dirname, 'canvass.html'));
+});
+
+// Prevent browser caching on all admin HTML pages
+app.use('/admin', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
 
 // ── RSVP submission ───────────────────────────────────────────────────
 app.post('/rsvp', (req, res) => {
@@ -142,50 +213,187 @@ app.post('/admin/constituent', (req, res) => {
   }
 });
 
-// ── Auth middleware factory ───────────────────────────────────────────
+// ── Cookie-based auth ────────────────────────────────────────────────
+const crypto = require('crypto');
+const ADMIN_TOKEN = 'adm_' + crypto.createHash('sha256').update(PASSWORDS.admin).digest('hex').slice(0,32);
+const CAND_TOKEN  = 'cnd_' + crypto.createHash('sha256').update(PASSWORDS.candidate).digest('hex').slice(0,32);
+
+function parseCookies(str) {
+  const out = {};
+  (str || '').split(';').forEach(c => {
+    const eq = c.indexOf('=');
+    if (eq > 0) out[c.slice(0, eq).trim()] = decodeURIComponent(c.slice(eq + 1).trim());
+  });
+  return out;
+}
+
 function auth(role) {
   return (req, res, next) => {
-    const header = req.headers.authorization || '';
-    if (header.startsWith('Basic ')) {
-      const pass = Buffer.from(header.slice(6), 'base64').toString().split(':').slice(1).join(':');
-      if (pass === PASSWORDS[role]) return next();
-    }
-    res.set('WWW-Authenticate', `Basic realm="${role === 'admin' ? 'Campaign Admin' : 'Candidate View'}"`);
-    res.status(401).send('Unauthorized');
+    const cookies = parseCookies(req.headers.cookie);
+    const expected = role === 'admin' ? ADMIN_TOKEN : CAND_TOKEN;
+    if (cookies['vfb_session'] === expected) return next();
+    const next_ = encodeURIComponent(req.originalUrl);
+    res.redirect(`/login?role=${role}&next=${next_}`);
   };
 }
 
-// ── CSV export ────────────────────────────────────────────────────────
+// ── Login page ────────────────────────────────────────────────────────
+app.get('/login', (req, res) => {
+  const role = req.query.role || 'admin';
+  const next = req.query.next || (role === 'candidate' ? '/candidate' : '/admin');
+  const err  = req.query.err  || '';
+  const label = role === 'candidate' ? 'Candidate View' : 'Campaign Admin';
+  res.send(`<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign In — Vote For Blaine</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F5F7FA;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .card{background:#fff;border:1px solid #E2E8F0;border-radius:8px;padding:40px 36px;width:100%;max-width:380px;box-shadow:0 4px 24px rgba(14,53,108,.08);}
+  .logo{font-size:11px;font-weight:900;letter-spacing:2.5px;color:#3CB99B;text-transform:uppercase;margin-bottom:4px;}
+  .view{font-size:9px;color:#64748B;letter-spacing:2px;text-transform:uppercase;font-weight:600;margin-bottom:28px;}
+  h1{font-size:22px;font-weight:800;color:#0E356C;margin-bottom:24px;}
+  label{font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#64748B;display:block;margin-bottom:6px;}
+  input{width:100%;padding:13px 15px;font-size:16px;border:1.5px solid #E2E8F0;border-radius:6px;outline:none;font-family:inherit;color:#1E293B;transition:border-color .15s;}
+  input:focus{border-color:#3CB99B;}
+  .err{font-size:11px;color:#DC2626;background:#FEF2F2;border:1px solid #FECACA;border-radius:4px;padding:9px 12px;margin-bottom:16px;display:${err ? 'block' : 'none'};}
+  button{width:100%;margin-top:20px;padding:14px;font-size:13px;font-weight:800;letter-spacing:1px;text-transform:uppercase;background:#0E356C;color:#fff;border:none;border-radius:6px;cursor:pointer;}
+  button:active{background:#1a4a8a;}
+</style></head><body>
+<div class="card">
+  <div class="logo">Vote For Blaine</div>
+  <div class="view">${label}</div>
+  <h1>Sign In</h1>
+  <div class="err">Incorrect password — try again.</div>
+  <form method="POST" action="/login">
+    <input type="hidden" name="role" value="${role}">
+    <input type="hidden" name="next" value="${next}">
+    <label for="pw">Password</label>
+    <input id="pw" name="password" type="password" placeholder="Enter password" autofocus autocomplete="current-password">
+    <button type="submit">Continue →</button>
+  </form>
+</div>
+</body></html>`);
+});
+
+app.post('/login', express.urlencoded({ extended: false }), (req, res) => {
+  const { role, next, password } = req.body;
+  const dest = (next && next.startsWith('/')) ? next : (role === 'candidate' ? '/candidate' : '/admin');
+  if (role === 'admin' && password === PASSWORDS.admin) {
+    res.setHeader('Set-Cookie', `vfb_session=${ADMIN_TOKEN}; Path=/; HttpOnly; SameSite=Strict`);
+    return res.redirect(dest);
+  }
+  if (role === 'candidate' && password === PASSWORDS.candidate) {
+    res.setHeader('Set-Cookie', `vfb_session=${CAND_TOKEN}; Path=/; HttpOnly; SameSite=Strict`);
+    return res.redirect(dest);
+  }
+  const errNext = encodeURIComponent(dest);
+  res.redirect(`/login?role=${role || 'admin'}&next=${errNext}&err=1`);
+});
+
+app.get('/logout', (req, res) => {
+  res.setHeader('Set-Cookie', 'vfb_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT');
+  res.redirect('/login');
+});
+
+// ── Export helpers ────────────────────────────────────────────────────
+const esc = v => `"${(v || '').toString().replace(/"/g, '""')}"`;
+
+function makeContactsCsv(rows) {
+  const hdrs = ['ID','Date','First Name','Last Name','Email','Phone','Address','City','State','Zip','Parish','How to Help','Yard Sign','Endorse','Comment','Event','Pipeline Stage'];
+  return [hdrs.join(','), ...rows.map(r => [
+    r.id, esc(r.created_at), esc(r.first_name), esc(r.last_name),
+    esc(r.email), esc(r.phone), esc(r.address), esc(r.city), esc(r.state), esc(r.zip), esc(r.parish),
+    esc(r.how_to_help), esc(r.yard_sign), esc(r.endorse), esc(r.comment), esc(r.event), esc(r.pipeline_stage)
+  ].join(','))].join('\n');
+}
+
+function makeVolunteersCsv(rows) {
+  const hdrs = ['ID','First Name','Last Name','Email','Phone','Role','Hours','Status'];
+  return [hdrs.join(','), ...rows.map(r => [
+    r.id, esc(r.first_name), esc(r.last_name), esc(r.email), esc(r.phone),
+    esc(r.volunteer_role), r.volunteer_hours||0, esc(r.volunteer_status)
+  ].join(','))].join('\n');
+}
+function makeDonorsCsv(rows) {
+  const hdrs = ['ID','Date','Donor Name','Amount','Source','Tender Type','Check Number'];
+  return [hdrs.join(','), ...rows.map(r => [
+    r.id, esc(r.date), esc(r.donor_name), r.amount || 0, esc(r.source),
+    esc(r.tender_type), esc(r.check_number)
+  ].join(','))].join('\n');
+}
+
+function makePipelineCsv(rows) {
+  const hdrs = ['Name','Email','Phone','Zip','City','Stage','Yard Sign','Endorses'];
+  return [hdrs.join(','), ...rows.map(r => [
+    esc((r.first_name||'') + ' ' + (r.last_name||'')), esc(r.email), esc(r.phone),
+    esc(r.zip), esc(r.city), esc(r.pipeline_stage||'new'), esc(r.yard_sign), esc(r.endorse)
+  ].join(','))].join('\n');
+}
+
+// Contacts CSV
 app.get('/admin/export.csv', (req, res) => {
   const rows = db.prepare('SELECT * FROM rsvps ORDER BY created_at DESC').all();
-  const esc  = v => `"${(v || '').toString().replace(/"/g, '""')}"`;
-  const hdrs = ['ID','Date','First Name','Last Name','Email','Phone','Address','City','State','Zip','Parish',
-                'Guests','Guest Names','How to Help','Yard Sign','Endorse','Comment','Event'];
-  const csv  = [
-    hdrs.join(','),
-    ...rows.map(r => [
-      r.id, esc(r.created_at),
-      esc(r.first_name), esc(r.last_name),
-      esc(r.email),      esc(r.phone),
-      esc(r.address),    esc(r.city), esc(r.state), esc(r.zip), esc(r.parish),
-      esc(r.guests),     esc(r.guest_names),
-      esc(r.how_to_help),esc(r.yard_sign),
-      esc(r.endorse),    esc(r.comment),
-      esc(r.event)
-    ].join(','))
-  ].join('\n');
   res.set('Content-Type', 'text/csv; charset=utf-8');
-  res.set('Content-Disposition', 'attachment; filename="blaine-rsvps.csv"');
-  res.send(csv);
+  res.set('Content-Disposition', 'attachment; filename="contacts.csv"');
+  res.send(makeContactsCsv(rows));
+});
+
+// Donors CSV
+app.get('/admin/export/donors.csv', (req, res) => {
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS donations (id INTEGER PRIMARY KEY AUTOINCREMENT, donor_name TEXT, amount REAL, date TEXT, source TEXT, contact_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`);
+    const rows = db.prepare('SELECT * FROM donations ORDER BY date DESC').all();
+    res.set('Content-Type', 'text/csv; charset=utf-8');
+    res.set('Content-Disposition', 'attachment; filename="donors.csv"');
+    res.send(makeDonorsCsv(rows));
+  } catch(e) { res.status(500).send('Error'); }
+});
+
+// Pipeline CSV
+app.get('/admin/export/pipeline.csv', (req, res) => {
+  const rows = db.prepare('SELECT * FROM rsvps ORDER BY last_name, first_name').all();
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', 'attachment; filename="pipeline.csv"');
+  res.send(makePipelineCsv(rows));
+});
+
+// Endorsers CSV
+app.get('/admin/export/endorsers.csv', (req, res) => {
+  const rows = db.prepare("SELECT * FROM rsvps WHERE endorse='Yes' ORDER BY last_name, first_name").all();
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', 'attachment; filename="endorsers.csv"');
+  res.send(makeContactsCsv(rows));
+});
+
+// Volunteers CSV
+app.get('/admin/export/volunteers.csv', (req, res) => {
+  const rows = db.prepare(`SELECT * FROM rsvps WHERE volunteer_role IS NOT NULL AND volunteer_role != '' ORDER BY last_name, first_name`).all();
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', 'attachment; filename="volunteers.csv"');
+  res.send(makeVolunteersCsv(rows));
 });
 
 // ── Admin data (full) ─────────────────────────────────────────────────
-app.get('/admin/data', (req, res) => {
+app.get('/admin/data', auth('admin'), (req, res) => {
   res.json(db.prepare('SELECT * FROM rsvps ORDER BY created_at DESC').all());
 });
 
+// ── Contact search (typeahead) ─────────────────────────────────────────
+app.get('/admin/contacts/search', (req, res) => {
+  const q = (req.query.q || '').trim();
+  if (!q || q.length < 2) return res.json([]);
+  const like = '%' + q + '%';
+  const rows = db.prepare(
+    `SELECT id, first_name, last_name, email FROM rsvps
+     WHERE first_name LIKE ? OR last_name LIKE ? OR email LIKE ?
+     LIMIT 8`
+  ).all(like, like, like);
+  res.json(rows);
+});
+
 // ── Candidate data (no how_to_help) ──────────────────────────────────
-app.get('/candidate/data', (req, res) => {
+app.get('/candidate/data', auth('candidate'), (req, res) => {
   const rows = db.prepare(
     'SELECT id, created_at, first_name, last_name, guests, yard_sign FROM rsvps ORDER BY created_at DESC'
   ).all();
@@ -204,17 +412,21 @@ app.get('/api/committee', (req, res) => {
 });
 
 // ── Admin panel ───────────────────────────────────────────────────────
-app.get('/admin', (req, res) => res.send(adminHTML()));
+app.get('/admin', auth('admin'), (req, res) => res.send(adminHTML()));
 app.get('/',      (req, res) => res.redirect('/admin'));
 
 // ── Candidate panel ───────────────────────────────────────────────────
-app.get('/candidate', (req, res) => res.send(candidateHTML()));
+app.get('/candidate', auth('candidate'), (req, res) => res.send(candidateHTML()));
 
 // ── Constituent profile ───────────────────────────────────────────────
 app.get('/admin/constituent/:id/data', (req, res) => {
   const row = db.prepare('SELECT * FROM rsvps WHERE id=?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
-  res.json(row);
+  // Attach all events this person has attended (matched by email, or name fallback)
+  const events = row.email
+    ? db.prepare("SELECT event FROM rsvps WHERE email=? AND event IS NOT NULL AND event!='' ORDER BY created_at").all(row.email).map(function(r){ return r.event; })
+    : (row.event ? [row.event] : []);
+  res.json(Object.assign({}, row, { _events: events }));
 });
 
 app.patch('/admin/constituent/:id', (req, res) => {
@@ -235,6 +447,228 @@ app.patch('/admin/constituent/:id', (req, res) => {
 });
 
 app.get('/admin/constituent/:id', (req, res) => res.send(constituentHTML(req.params.id)));
+
+app.delete('/admin/constituent/:id', (req, res) => {
+  try {
+    db.prepare('DELETE FROM rsvps WHERE id=?').run(req.params.id);
+    res.json({ result: 'success' });
+  } catch(err) {
+    res.status(500).json({ result: 'error' });
+  }
+});
+
+// ── Donations ─────────────────────────────────────────────────────────
+app.get('/admin/donations', (req, res) => {
+  try {
+    const rows = db.prepare('SELECT * FROM donations ORDER BY date DESC, created_at DESC').all();
+    res.json(rows);
+  } catch(e) { res.status(500).json({ result: 'error' }); }
+});
+app.delete('/admin/donation/:id', (req, res) => {
+  try {
+    db.prepare('DELETE FROM donations WHERE id=?').run(req.params.id);
+    res.json({ result: 'ok' });
+  } catch(e) { res.status(500).json({ result: 'error' }); }
+});
+app.post('/admin/donation', (req, res) => {
+  const { donor_name, amount, date, source, contact_id, tender_type, check_number } = req.body;
+  try {
+    db.prepare('INSERT INTO donations (donor_name, amount, date, source, contact_id, tender_type, check_number) VALUES (?,?,?,?,?,?,?)')
+      .run(donor_name || '', amount || 0, date || '', source || '', contact_id || null,
+          tender_type || null, check_number || null);
+    res.json({ result: 'ok' });
+  } catch(err) {
+    res.status(500).json({ result: 'error', error: err.message });
+  }
+});
+
+// ── Volunteers ────────────────────────────────────────────────────────
+app.get('/admin/volunteers', (req, res) => {
+  const rows = db.prepare(`SELECT * FROM rsvps WHERE volunteer_role IS NOT NULL AND volunteer_role != '' ORDER BY last_name, first_name`).all();
+  res.json(rows);
+});
+app.patch('/admin/volunteer/:id', (req, res) => {
+  const { volunteer_role, volunteer_hours, volunteer_status } = req.body;
+  try {
+    db.prepare(`UPDATE rsvps SET volunteer_role=?, volunteer_hours=?, volunteer_status=? WHERE id=?`)
+      .run(volunteer_role||'', volunteer_hours||0, volunteer_status||'new', req.params.id);
+    res.json({ result: 'ok' });
+  } catch(e) { res.status(500).json({ result: 'error' }); }
+});
+app.delete('/admin/volunteer/:id', (req, res) => {
+  try {
+    db.prepare(`UPDATE rsvps SET volunteer_role=NULL, volunteer_hours=0, volunteer_status=NULL WHERE id=?`)
+      .run(req.params.id);
+    res.json({ result: 'ok' });
+  } catch(e) { res.status(500).json({ result: 'error' }); }
+});
+
+// ── Anedot Webhook ────────────────────────────────────────────────────
+// Public endpoint — no auth middleware — but signature-verified when secret is set.
+// Configure in Anedot: Settings → Webhooks → URL = https://yourdomain.com/webhook/anedot
+// Events to enable: donation_completed, donation_refunded
+app.post('/webhook/anedot', express.raw({ type: '*/*' }), (req, res) => {
+  try {
+    const secret = process.env.ANEDOT_WEBHOOK_SECRET || '';
+
+    // Signature verification
+    if (secret) {
+      const sig = req.headers['x-request-signature'] || '';
+      const expected = crypto.createHmac('sha256', secret).update(req.body).digest('hex');
+      if (sig !== expected) {
+        console.warn('[Anedot] Invalid signature — rejected');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+    }
+
+    let body;
+    try { body = JSON.parse(req.body.toString()); }
+    catch(e) { return res.status(400).json({ error: 'Invalid JSON' }); }
+
+    const event   = body.event   || '';
+    const data    = body.payload || {};
+
+    console.log(`[Anedot] Event: ${event}`);
+
+    if (event === 'donation_completed') {
+      const donor_name = ((data.first_name || '') + ' ' + (data.last_name || '')).trim() || 'Anonymous';
+      const amount     = parseFloat(data.amount_in_dollars) || 0;
+      const date       = (data.created_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
+      const source     = data.action_page_name ? `Anedot — ${data.action_page_name}` : 'Anedot';
+      const email      = (data.email || '').toLowerCase().trim();
+      const anedot_id  = (data.donation && data.donation.id) ? String(data.donation.id) : (data.uid || null);
+
+      // Deduplicate — Anedot retries failed deliveries
+      if (anedot_id) {
+        const dupe = db.prepare('SELECT id FROM donations WHERE anedot_id=?').get(anedot_id);
+        if (dupe) { console.log(`[Anedot] Duplicate ${anedot_id}, skipping`); return res.json({ result: 'duplicate' }); }
+      }
+
+      // Auto-match to existing contact by email
+      let contact_id = null;
+      if (email) {
+        const contact = db.prepare('SELECT id FROM rsvps WHERE LOWER(email)=?').get(email);
+        if (contact) contact_id = contact.id;
+      }
+
+      db.prepare(`INSERT INTO donations (donor_name, amount, date, source, contact_id, email, anedot_id)
+                  VALUES (?,?,?,?,?,?,?)`)
+        .run(donor_name, amount, date, source, contact_id, email || null, anedot_id || null);
+
+      console.log(`[Anedot] Recorded $${amount} from ${donor_name}`);
+      return res.json({ result: 'ok' });
+    }
+
+    if (event === 'donation_refunded') {
+      const anedot_id = (data.donation && data.donation.id) ? String(data.donation.id) : null;
+      if (anedot_id) {
+        db.prepare(`DELETE FROM donations WHERE anedot_id=?`).run(anedot_id);
+        console.log(`[Anedot] Refund — removed donation ${anedot_id}`);
+      }
+      return res.json({ result: 'ok' });
+    }
+
+    // All other events — acknowledge so Anedot doesn't retry
+    return res.json({ result: 'ignored', event });
+
+  } catch(e) {
+    console.error('[Anedot] Webhook error:', e.message);
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
+
+// ── Endorsements ──────────────────────────────────────────────────────
+app.get('/admin/endorsements', (req, res) => {
+  res.json(db.prepare('SELECT * FROM endorsements ORDER BY tier, name').all());
+});
+app.post('/admin/endorsement', (req, res) => {
+  const { name, org, tier, status, notes, date, contact_id } = req.body;
+  try {
+    const r = db.prepare(`INSERT INTO endorsements (name,org,tier,status,notes,date,contact_id) VALUES (?,?,?,?,?,?,?)`)
+      .run(name||'', org||'', tier||'individual', status||'not_contacted', notes||'', date||'', contact_id||null);
+    res.json({ result: 'ok', id: r.lastInsertRowid });
+  } catch(e) { res.status(500).json({ result: 'error' }); }
+});
+app.patch('/admin/endorsement/:id', (req, res) => {
+  const { name, org, tier, status, notes, date, contact_id } = req.body;
+  try {
+    db.prepare(`UPDATE endorsements SET name=?,org=?,tier=?,status=?,notes=?,date=?,contact_id=? WHERE id=?`)
+      .run(name||'', org||'', tier||'individual', status||'not_contacted', notes||'', date||'', contact_id||null, req.params.id);
+    res.json({ result: 'ok' });
+  } catch(e) { res.status(500).json({ result: 'error' }); }
+});
+app.delete('/admin/endorsement/:id', (req, res) => {
+  try {
+    db.prepare('DELETE FROM endorsements WHERE id=?').run(req.params.id);
+    res.json({ result: 'ok' });
+  } catch(e) { res.status(500).json({ result: 'error' }); }
+});
+
+// ── Walk Lists & Canvassing ───────────────────────────────────────────
+app.get('/admin/walk-lists', (req, res) => {
+  const lists = db.prepare('SELECT * FROM walk_lists ORDER BY created_at DESC').all();
+  lists.forEach(l => {
+    l._total   = db.prepare('SELECT COUNT(*) as c FROM walk_doors WHERE list_id=?').get(l.id).c;
+    l._knocked = db.prepare("SELECT COUNT(*) as c FROM walk_doors WHERE list_id=? AND result!='pending'").get(l.id).c;
+    l._favorable = db.prepare("SELECT COUNT(*) as c FROM walk_doors WHERE list_id=? AND result='favorable'").get(l.id).c;
+  });
+  res.json(lists);
+});
+app.post('/admin/walk-list', (req, res) => {
+  const { name, area, assigned_to } = req.body;
+  try {
+    const r = db.prepare('INSERT INTO walk_lists (name,area,assigned_to) VALUES (?,?,?)').run(name||'', area||'', assigned_to||'');
+    res.json({ result: 'ok', id: r.lastInsertRowid });
+  } catch(e) { res.status(500).json({ result: 'error' }); }
+});
+app.patch('/admin/walk-list/:id', (req, res) => {
+  const { name, area, assigned_to } = req.body;
+  try {
+    db.prepare('UPDATE walk_lists SET name=?,area=?,assigned_to=? WHERE id=?')
+      .run(name||'', area||'', assigned_to||'', req.params.id);
+    res.json({ result: 'ok' });
+  } catch(e) { res.status(500).json({ result: 'error' }); }
+});
+app.delete('/admin/walk-list/:id', (req, res) => {
+  try {
+    db.prepare('DELETE FROM walk_doors WHERE list_id=?').run(req.params.id);
+    db.prepare('DELETE FROM walk_lists WHERE id=?').run(req.params.id);
+    res.json({ result: 'ok' });
+  } catch(e) { res.status(500).json({ result: 'error' }); }
+});
+app.get('/admin/walk-doors/:listId', (req, res) => {
+  res.json(db.prepare('SELECT * FROM walk_doors WHERE list_id=? ORDER BY id').all(req.params.listId));
+});
+app.post('/admin/walk-door', (req, res) => {
+  const { list_id, address, voter_name } = req.body;
+  try {
+    const r = db.prepare('INSERT INTO walk_doors (list_id,address,voter_name) VALUES (?,?,?)').run(list_id, address||'', voter_name||'');
+    res.json({ result: 'ok', id: r.lastInsertRowid });
+  } catch(e) { res.status(500).json({ result: 'error' }); }
+});
+app.patch('/admin/walk-door/:id', (req, res) => {
+  const { result, volunteer, notes } = req.body;
+  try {
+    db.prepare(`UPDATE walk_doors SET result=?,volunteer=?,notes=?,knocked_at=datetime('now','localtime') WHERE id=?`)
+      .run(result||'pending', volunteer||'', notes||'', req.params.id);
+    res.json({ result: 'ok' });
+  } catch(e) { res.status(500).json({ result: 'error' }); }
+});
+
+// ── Bulk CSV import for a walk list ───────────────────────────────────
+app.post('/admin/walk-list/:id/import', (req, res) => {
+  const listId = req.params.id;
+  const { rows } = req.body; // [{ address, voter_name }]
+  if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ result: 'error', msg: 'No rows' });
+  try {
+    const stmt = db.prepare('INSERT INTO walk_doors (list_id,address,voter_name) VALUES (?,?,?)');
+    const insertMany = db.transaction((items) => {
+      for (const r of items) stmt.run(listId, (r.address||'').trim(), (r.voter_name||'').trim());
+    });
+    insertMany(rows);
+    res.json({ result: 'ok', imported: rows.length });
+  } catch(e) { res.status(500).json({ result: 'error', msg: e.message }); }
+});
 
 // ── Yard sign map ─────────────────────────────────────────────────────
 app.get('/admin/map', (req, res) => res.send(mapHTML()));
@@ -269,7 +703,7 @@ const PIPELINE_STAGES = [
   { key: 'new',        label: 'New Contact',     color: '#9aaabb' },
   { key: 'contacted',  label: 'Contacted',        color: '#3b82f6' },
   { key: 'engaged',    label: 'In Conversation',  color: '#8b5cf6' },
-  { key: 'met',        label: 'Met with Blaine',  color: '#fb923c' },
+  { key: 'met',        label: 'Meet with Team',   color: '#fb923c' },
   { key: 'committed',  label: 'Vote Committed',   color: '#10b981' },
 ];
 const PIPELINE_JSON = JSON.stringify(PIPELINE_STAGES);
@@ -299,14 +733,14 @@ const BASE_CSS = `
   /* Header */
   .hdr {
     background: var(--navy);
-    padding: 0 32px;
+    padding: 0 32px 0 8px;
     height: 64px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 20px;
   }
   .hdr-logo { height: 28px; width: auto; display: block; }
-  .hdr-right { display: flex; align-items: center; gap: 16px; }
+  .hdr-right { display: flex; align-items: center; gap: 16px; margin-left: auto; }
   .hdr-label {
     font-size: 10px; letter-spacing: 2.5px; text-transform: uppercase;
     color: var(--mint); font-weight: 700;
@@ -331,7 +765,6 @@ const BASE_CSS = `
     display: grid;
     gap: 1px;
     background: var(--border);
-    border-bottom: 1px solid var(--border);
   }
   .stat { background: var(--white); padding: 28px 32px; }
   .stat-lbl {
@@ -371,6 +804,18 @@ const BASE_CSS = `
   }
   .search input::placeholder { color: var(--dim); }
   .search input:focus { border-color: var(--mint-d); }
+  /* Header search */
+  .hdr-search { position: relative; width: 380px; flex-shrink: 0; }
+  .hdr-search svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--dim); pointer-events: none; z-index: 1; }
+  .hdr-search input {
+    display: block; width: 100%;
+    background: #deeef7; border: none;
+    border-radius: 3px; padding: 9px 14px 9px 35px;
+    color: var(--navy); font-size: 12px; font-family: 'Montserrat', sans-serif;
+    outline: none; box-shadow: none;
+  }
+  .hdr-search input::placeholder { color: var(--dim); }
+  .hdr-search input:focus { outline: 2px solid var(--mint); outline-offset: 0; }
   .tally { font-size: 11px; color: var(--dim); margin-left: auto; letter-spacing: .5px; }
 
   /* Table */
@@ -386,7 +831,8 @@ const BASE_CSS = `
   }
   tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
   tbody tr:last-child { border-bottom: none; }
-  tbody tr:hover { background: #f7f9fc; }
+  tbody tr:nth-child(even) { background: #f4f7fb; }
+  tbody tr:hover { background: #e8f7f2; }
   td { padding: 12px 16px; vertical-align: middle; }
 
   .c-id    { font-size: 11px; color: var(--dim); }
@@ -427,9 +873,88 @@ const BASE_CSS = `
     background: var(--white);
   }
 
+  /* ── Feature page shared layout ── */
+  .feat-page-hdr {
+    display: flex; align-items: center; gap: 16px;
+    padding: 24px 32px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--white);
+  }
+  .feat-page-eyebrow { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); font-weight: 700; }
+  .feat-page-title { font-size: 20px; font-weight: 800; color: var(--navy); margin-left: 8px; }
+  .feat-page-btn {
+    margin-left: auto;
+    background: var(--mint); color: var(--navy);
+    font-family: 'Montserrat', sans-serif; font-size: 10px; font-weight: 800;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    border: none; border-radius: 2px; padding: 9px 18px; cursor: pointer;
+  }
+  .feat-page-btn:hover { background: var(--mint-d); }
+  .feat-stat-row {
+    display: grid; grid-template-columns: repeat(4,1fr);
+    gap: 1px; background: var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .feat-stat { background: var(--white); padding: 20px 28px; }
+  .feat-stat-val { font-size: 30px; font-weight: 800; color: var(--navy); line-height: 1; }
+  .feat-stat-val.accent { color: var(--mint-d); }
+  .feat-stat-lbl { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); font-weight: 700; margin-top: 6px; }
+  .feat-table-wrap { overflow-x: auto; background: var(--white); border-top: none; margin: 0 32px; border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
+
+  /* ── Status pills ── */
+  .spill {
+    display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; padding: 3px 9px; border-radius: 100px; white-space: nowrap;
+  }
+  .spill-green  { background: #d1fae5; color: #065f46; }
+  .spill-blue   { background: #dbeafe; color: #1e40af; }
+  .spill-yellow { background: #fef9c3; color: #854d0e; }
+  .spill-gray   { background: #f1f5f9; color: #475569; }
+  .spill-orange { background: #ffedd5; color: #9a3412; }
+  .spill-red    { background: #fee2e2; color: #991b1b; }
+  .spill-mint   { background: rgba(120,224,196,.2); color: #0d9488; }
+
+  /* ── Compliance checklist ── */
+  .comp-item {
+    background: var(--white); border: 1px solid var(--border);
+    border-radius: 4px; padding: 18px 20px;
+    display: flex; gap: 16px; margin-bottom: 10px;
+  }
+  .comp-icon {
+    width: 32px; height: 32px; border-radius: 3px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; margin-top: 1px;
+  }
+  .comp-icon-ok   { background: #d1fae5; }
+  .comp-icon-warn { background: #fef3c7; }
+  .comp-icon-info { background: #dbeafe; }
+  .comp-body { flex: 1; }
+  .comp-title { font-size: 13px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+  .comp-desc  { font-size: 11px; color: var(--muted); line-height: 1.6; }
+
+  /* ── Canvassing result buttons ── */
+  .door-result-btn {
+    font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    border: 1px solid var(--border); border-radius: 2px; padding: 4px 8px;
+    cursor: pointer; font-family: 'Montserrat', sans-serif; background: var(--white);
+    color: var(--muted); transition: all .1s;
+  }
+  .door-result-btn:hover { border-color: var(--navy); color: var(--navy); }
+  .door-result-btn.active-fav  { background: #d1fae5; color: #065f46; border-color: #6ee7b7; }
+  .door-result-btn.active-unf  { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+  .door-result-btn.active-nh   { background: #fef9c3; color: #854d0e; border-color: #fde68a; }
+  .door-result-btn.active-mvd  { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
+
+  /* ── Endorsement tier icon ── */
+  .end-tier-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 3px; font-size: 13px; flex-shrink: 0;
+  }
+
   @media(max-width:900px){
     .stats { grid-template-columns: 1fr 1fr !important; }
     .hdr, .toolbar, .foot { padding-left: 16px; padding-right: 16px; }
+    .feat-stat-row { grid-template-columns: 1fr 1fr !important; }
   }
 `;
 
@@ -652,7 +1177,7 @@ function adminHTML() { return `<!DOCTYPE html>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Campaign Admin — Blaine Moncrief</title>
 <style>${BASE_CSS}
-  .stats { grid-template-columns: repeat(5,1fr); }
+  .stats { grid-template-columns: repeat(4,1fr); }
   .badge-ood {
     display:inline-block; font-size:9px; font-weight:700; letter-spacing:.8px;
     text-transform:uppercase; color:#9aaabb; background:#f0f2f5;
@@ -666,11 +1191,7 @@ function adminHTML() { return `<!DOCTYPE html>
   .donation-hdr-left { display: flex; align-items: center; gap: 14px; }
   .donation-hdr-title { font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--dim); font-weight: 700; }
   .donation-preview-badge { font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; background: rgba(120,224,196,.15); color: var(--mint-d); border: 1px solid rgba(120,224,196,.3); padding: 3px 10px; border-radius: 100px; }
-  .donation-summary { display: flex; gap: 32px; margin-bottom: 20px; }
-  .don-sum { }
-  .don-sum-num { font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif; font-size: 28px; font-weight: 800; color: var(--navy); line-height: 1; }
-  .don-sum-num.accent { color: var(--mint-d); }
-  .don-sum-lbl { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); font-weight: 700; margin-top: 5px; }
+  .donation-section { margin-bottom: 24px; }
   .don-table-wrap { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
   .don-table-wrap table { width: 100%; border-collapse: collapse; }
   .don-table-wrap thead th { background: var(--bg); font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim); font-weight: 700; padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
@@ -681,6 +1202,158 @@ function adminHTML() { return `<!DOCTYPE html>
   .don-method { font-size: 11px; color: var(--dim); }
   .don-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 9px; border-radius: 100px; background: rgba(120,224,196,.12); color: var(--navy); border: 1px solid rgba(120,224,196,.2); }
   .stat-raised .stat-val { color: var(--mint-d); }
+
+  /* ── Fundraising / Donation Charts ── */
+
+  /* Goal progress strip — showcase banner */
+  .don-goal-strip {
+    background: linear-gradient(120deg, #1e7fa3 0%, #2798BD 50%, #31aad4 100%);
+    border-radius: 6px; padding: 24px 28px 22px; margin-bottom: 14px;
+    box-shadow: 0 4px 20px rgba(39,152,189,.35);
+    position: relative; overflow: hidden;
+  }
+  .don-goal-strip::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 80% 50%, rgba(255,255,255,.08) 0%, transparent 65%);
+    pointer-events: none;
+  }
+  .don-goal-labels {
+    display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 14px;
+  }
+  .don-goal-raised {
+    font-family: 'Montserrat', sans-serif;
+    font-size: 28px; font-weight: 800; color: #fff; line-height: 1;
+    text-shadow: 0 1px 4px rgba(0,0,0,.15);
+  }
+  .don-goal-raised-sub {
+    font-size: 10px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase;
+    color: rgba(255,255,255,.6); margin-top: 3px;
+  }
+  .don-goal-pct {
+    font-size: 13px; font-weight: 800; color: #fff;
+    background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.3);
+    padding: 5px 14px; border-radius: 100px; letter-spacing: .5px;
+  }
+  .don-goal-remain { font-size: 11px; color: rgba(255,255,255,.6); text-align: right; }
+  .don-goal-remain-num { font-size: 15px; font-weight: 700; color: rgba(255,255,255,.85); display: block; }
+  .don-goal-track  {
+    height: 8px; background: rgba(255,255,255,.2); border-radius: 100px; overflow: hidden;
+  }
+  .don-goal-fill {
+    height: 100%; background: linear-gradient(90deg, rgba(255,255,255,.7), #fff);
+    border-radius: 100px; transform-origin: left center;
+    animation: donGoalGrow 0.9s cubic-bezier(.22,1,.36,1) 0.3s both;
+  }
+  @keyframes donGoalGrow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+  /* Overview row: KPI 2×2 grid + chart */
+  .don-overview { display: flex; align-items: stretch; gap: 14px; margin-bottom: 14px; }
+  .don-kpi-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    flex-shrink: 0; width: 182px;
+  }
+  .don-kpi-tile {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 11px 13px;
+  }
+  .don-kpi-val {
+    font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 18px; font-weight: 800; color: var(--navy); line-height: 1;
+  }
+  .don-kpi-val.accent { color: var(--mint-d); }
+  .don-kpi-lbl { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--dim); font-weight: 600; margin-top: 5px; }
+
+  /* Timeline chart */
+  .don-chart-box {
+    flex: 1; min-width: 0;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 13px 16px 10px; position: relative;
+  }
+  .don-chart-eyebrow {
+    font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--dim); font-weight: 700; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .don-chart-legend { display: flex; gap: 12px; }
+  .don-chart-leg-item { display: flex; align-items: center; gap: 5px; font-size: 9px; color: var(--dim); font-weight: 400; letter-spacing: 0; text-transform: none; }
+  .don-chart-leg-bar  { width: 10px; height: 8px; border-radius: 2px; }
+  .don-chart-leg-line { width: 14px; height: 2px; border-radius: 1px; }
+  .don-chart-dates {
+    display: flex; justify-content: space-around;
+    font-size: 9px; color: var(--dim); letter-spacing: .3px; margin-top: 3px;
+  }
+  /* Tooltip */
+  .don-chart-tooltip {
+    position: absolute; pointer-events: none;
+    background: var(--navy); color: #fff;
+    font-size: 11px; font-weight: 600; line-height: 1.4;
+    padding: 6px 11px; border-radius: 4px;
+    white-space: nowrap; opacity: 0; transition: opacity .15s;
+    transform: translate(-50%, -100%); margin-top: -6px;
+    z-index: 20; top: 0; left: 0;
+  }
+  .don-chart-tooltip.visible { opacity: 1; }
+  .don-chart-tooltip::after {
+    content: ''; position: absolute; top: 100%; left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent; border-top-color: var(--navy);
+  }
+  /* Bar animation */
+  @keyframes donBarGrow {
+    from { transform: scaleY(0); }
+    to   { transform: scaleY(1); }
+  }
+  .don-bar {
+    transform-box: fill-box; transform-origin: bottom;
+    animation: donBarGrow 0.5s cubic-bezier(.34,1.56,.64,1) both;
+  }
+  /* Cumulative line fade-in */
+  @keyframes donLineFade { from { opacity: 0; } to { opacity: .8; } }
+  #donCumLine, .don-cum-dot { animation: donLineFade 0.5s ease-out 0.7s both; }
+
+  /* Highlight cards */
+  .don-highlights {
+    display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 14px; margin-bottom: 18px;
+  }
+  .don-hl-card {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 14px 16px;
+  }
+  .don-hl-top    { border-left: 3px solid var(--mint); }
+  .don-hl-recent { border-left: 3px solid #2798BD; }
+  .don-hl-eyebrow {
+    font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--dim); font-weight: 700; margin-bottom: 6px;
+  }
+  .don-hl-name { font-size: 14px; font-weight: 700; color: var(--navy); display: block; line-height: 1.3; }
+  .don-hl-link { text-decoration: none; color: var(--navy); }
+  .don-hl-link:hover { color: var(--mint-d); }
+  .don-hl-amount {
+    font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 26px; font-weight: 800; color: var(--navy); line-height: 1; margin: 5px 0 3px;
+  }
+  .don-hl-meta { font-size: 11px; color: var(--dim); }
+  /* Source bars */
+  .don-src-bars { margin-top: 8px; }
+  .don-src-row { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+  .don-src-row:last-child { margin-bottom: 0; }
+  .don-src-label { font-size: 11px; color: var(--muted); min-width: 44px; }
+  .don-src-track { flex: 1; height: 6px; background: var(--border); border-radius: 100px; overflow: hidden; }
+  .don-src-fill  { height: 100%; background: var(--mint); border-radius: 100px; }
+  .don-src-pct   { font-size: 10px; color: var(--dim); min-width: 28px; text-align: right; }
+  .don-src-val   { font-size: 11px; font-weight: 700; color: var(--navy); min-width: 38px; text-align: right; }
+  /* Gift tier breakdown */
+  .don-tier-sep { border: none; border-top: 1px solid var(--border); margin: 11px 0 10px; }
+  .don-tiers { display: flex; }
+  .don-tier { flex: 1; text-align: center; padding: 0 4px; }
+  .don-tier + .don-tier { border-left: 1px solid var(--border); }
+  .don-tier-count { font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif; font-size: 20px; font-weight: 800; color: var(--navy); line-height: 1; }
+  .don-tier-lbl { font-size: 9px; letter-spacing: .8px; text-transform: uppercase; color: var(--dim); font-weight: 700; margin-top: 3px; }
+  .don-tier-range { font-size: 9px; color: var(--muted); margin-top: 2px; }
+  @media(max-width:900px){
+    .don-overview { flex-direction: column; }
+    .don-kpi-grid { width: 100%; grid-template-columns: repeat(4, 1fr); }
+    .don-highlights { grid-template-columns: 1fr 1fr; }
+  }
 
   /* Election Intelligence bar */
   .election-bar {
@@ -752,11 +1425,12 @@ function adminHTML() { return `<!DOCTYPE html>
   }
   .dist-chip:not(.active) .dist-chip-count { background: var(--border); color: var(--muted); }
 
-  .evt-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--white); padding: 0 32px; overflow-x: auto; }
-  .evt-tab { padding: 12px 20px; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 700; cursor: pointer; border-bottom: 2px solid transparent; color: var(--dim); white-space: nowrap; user-select: none; }
-  .evt-tab.active { color: var(--navy); border-bottom-color: var(--navy); }
-  .evt-tab:hover:not(.active) { color: var(--muted); }
-  .evt-label { font-size: 10px; color: var(--dim); background: var(--bg); padding: 2px 7px; border-radius: 100px; margin-left: 6px; }
+  .evt-tabs { display: flex; flex-wrap: wrap; gap: 6px; background: var(--white); padding: 10px 32px 12px; border-bottom: 1px solid var(--border); }
+  .evt-tab { padding: 5px 12px; font-size: 11px; font-weight: 700; cursor: pointer; border-radius: 100px; color: var(--muted); background: var(--bg); border: 1px solid var(--border); white-space: nowrap; user-select: none; transition: background .12s, color .12s, border-color .12s; display: flex; align-items: center; gap: 6px; }
+  .evt-tab.active { color: var(--navy); background: var(--white); border-color: var(--navy); }
+  .evt-tab:hover:not(.active) { border-color: #78E0C4; color: var(--navy); }
+  .evt-label { font-size: 10px; font-weight: 700; color: #fff; background: var(--navy); padding: 1px 6px; border-radius: 100px; }
+  .evt-tab.active .evt-label { background: var(--mint-d); }
 
   /* New Event button */
   .new-evt-btn { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #fff; background: var(--navy); border: none; padding: 8px 16px; border-radius: 2px; cursor: pointer; transition: opacity .15s; }
@@ -775,6 +1449,31 @@ function adminHTML() { return `<!DOCTYPE html>
   .modal-code { width: 100%; height: 200px; font-size: 11px; font-family: monospace; background: #f8f9fb; border: 1px solid var(--border); border-radius: 2px; padding: 12px; color: var(--muted); resize: none; outline: none; margin-top: 16px; }
   .modal-copy { margin-top: 12px; width: 100%; background: #78E0C4; color: var(--navy); border: none; padding: 12px; font-size: 12px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; font-family: 'Montserrat', sans-serif; border-radius: 2px; cursor: pointer; }
   .modal-copy:hover { background: #5fd4b0; }
+  .modal-btn { font-size: 11px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; font-family: 'Montserrat', sans-serif; background: #2798BD; color: #fff; border: none; border-radius: 2px; padding: 11px 20px; cursor: pointer; transition: background .15s; }
+  .modal-btn:hover { background: #1f7fa0; }
+  .modal-btn.secondary { background: var(--bg); color: var(--navy); border: 1px solid var(--border); }
+  .modal-btn.secondary:hover { border-color: #78E0C4; background: #f0fbf7; }
+  /* Export modal */
+  .exp-overlay { display:none;position:fixed;inset:0;z-index:200;background:rgba(9,37,79,.6);align-items:center;justify-content:center;padding:20px; }
+  .exp-overlay.open { display:flex; }
+  .exp-modal { background:#fff;border-radius:6px;width:100%;max-width:400px;padding:32px 36px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.25); }
+  .exp-row { display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border); }
+  .exp-row:last-child { border-bottom:none; }
+  .exp-lbl { font-size:12px;font-weight:700;color:var(--navy); }
+  .exp-btns { display:flex;gap:6px; }
+  .exp-btn { font-size:9px;font-weight:800;letter-spacing:1px;text-transform:uppercase;padding:5px 10px;border-radius:2px;border:1px solid var(--border);color:var(--navy);background:var(--bg);cursor:pointer;text-decoration:none;transition:background .12s,border-color .12s;display:inline-block;font-family:'Montserrat',sans-serif; }
+  .exp-btn:hover { background:#e8f7f2;border-color:#78E0C4;color:var(--navy); }
+  /* Donor autocomplete */
+  .don-ac-wrap { position: relative; }
+  .don-ac-drop { position: absolute; top: calc(100% + 3px); left: 0; right: 0; background: #fff; border: 1px solid var(--border); border-radius: 3px; box-shadow: 0 6px 20px rgba(9,37,79,.12); z-index: 300; max-height: 220px; overflow-y: auto; display: none; }
+  .don-ac-drop.open { display: block; }
+  .don-ac-item { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #f0f2f5; display: flex; flex-direction: column; gap: 1px; }
+  .don-ac-item:last-child { border-bottom: none; }
+  .don-ac-item:hover, .don-ac-item.focused { background: #f0fbf7; }
+  .don-ac-name { font-size: 13px; font-weight: 700; color: var(--navy); }
+  .don-ac-meta { font-size: 11px; color: var(--dim); }
+  .don-ac-new { padding: 10px 14px; cursor: pointer; font-size: 12px; font-weight: 700; color: #2798BD; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 6px; }
+  .don-ac-new:hover { background: #f0fbf7; }
 
   /* Snapshot */
   .snapshot {
@@ -862,6 +1561,22 @@ function adminHTML() { return `<!DOCTYPE html>
   .drill-table-wrap thead th { background: var(--bg); }
   .drill-empty { text-align: center; padding: 40px 20px; color: var(--dim); font-style: italic; font-size: 13px; }
 
+  /* Event stat drill-down modal */
+  .evt-drill-overlay { position:fixed;inset:0;z-index:200;background:rgba(9,37,79,.55);display:none;align-items:center;justify-content:center;padding:20px; }
+  .evt-drill-overlay.open { display:flex; }
+  .evt-drill-box { background:#fff;border-radius:6px;max-width:520px;width:100%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25); }
+  .evt-drill-hdr { padding:18px 24px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px; }
+  .evt-drill-ttl { font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:var(--navy);flex:1; }
+  .evt-drill-export { font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#fff;background:#2798BD;border:none;border-radius:2px;padding:6px 12px;cursor:pointer;white-space:nowrap;transition:background .15s; }
+  .evt-drill-export:hover { background:#1f7fa0; }
+  .evt-drill-close { background:none;border:none;cursor:pointer;color:var(--dim);font-size:22px;line-height:1;padding:0;transition:color .12s; }
+  .evt-drill-close:hover { color:var(--navy); }
+  .evt-drill-list { overflow-y:auto;flex:1;padding:4px 0; }
+  .evt-drill-row { display:flex;flex-direction:column;gap:2px;padding:11px 24px;text-decoration:none;border-bottom:1px solid #f0f2f5;transition:background .1s; }
+  .evt-drill-row:hover { background:#f8fdfc; }
+  .evt-drill-name { font-size:13px;font-weight:700;color:var(--navy); }
+  .evt-drill-meta { font-size:11px;color:var(--dim); }
+
   @media(max-width:900px){ .snapshot-grid{grid-template-columns:1fr} }
 
   /* ── Add Person Sidebar ── */
@@ -946,7 +1661,7 @@ function adminHTML() { return `<!DOCTYPE html>
   }
   .pipe-stage:hover { border-color: #78E0C4; box-shadow: 0 2px 8px rgba(6,15,30,.05); }
   .pipe-stage-dot { width: 9px; height: 9px; border-radius: 50%; margin-bottom: 9px; }
-  .pipe-stage-count { font-family: 'Playfair Display', Georgia, serif; font-size: 22px; color: var(--navy); line-height: 1; }
+  .pipe-stage-count { font-family: 'Montserrat', sans-serif; font-size: 22px; font-weight: 700; color: var(--navy); line-height: 1; }
   .pipe-stage-label { font-size: 9px; letter-spacing: .8px; text-transform: uppercase; color: var(--dim); font-weight: 700; margin-top: 5px; line-height: 1.3; }
   .pipe-stage-bar { height: 3px; background: var(--border); border-radius: 100px; margin-top: 8px; overflow: hidden; }
   .pipe-stage-fill { height: 100%; border-radius: 100px; transition: width .4s; }
@@ -966,24 +1681,26 @@ function adminHTML() { return `<!DOCTYPE html>
   .pipe-lane-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
   .pipe-lane-title { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 700; color: var(--navy); flex: 1; }
   .pipe-lane-count { font-size: 11px; font-weight: 700; color: var(--dim); background: var(--border); padding: 2px 9px; border-radius: 100px; }
-  .pipe-lane-cards { display: flex; flex-wrap: wrap; gap: 10px; padding: 14px 18px; align-items: flex-start; }
-  .pipe-lane-empty { padding: 14px 20px; font-size: 12px; color: var(--dim); font-style: italic; }
+  .pipe-lane-cards { display: flex; flex-direction: column; gap: 0; padding: 0; }
+  .pipe-lane-empty { padding: 12px 18px; font-size: 12px; color: var(--dim); font-style: italic; }
   .pipe-card {
-    width: 240px; flex-shrink: 0;
-    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
-    padding: 10px 12px; cursor: pointer; transition: border-color .12s, box-shadow .12s, background .12s;
-    text-decoration: none; display: block;
+    display: flex; align-items: center; gap: 10px;
+    background: var(--white); border-bottom: 1px solid var(--border);
+    padding: 9px 16px; cursor: pointer; transition: background .1s;
+    text-decoration: none;
   }
-  .pipe-card:hover { border-color: #78E0C4; box-shadow: 0 2px 8px rgba(6,15,30,.07); background: var(--white); }
-  .pipe-card-name { font-size: 13px; font-weight: 700; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pipe-card-meta { font-size: 11px; color: var(--dim); margin-top: 2px; }
-  .pipe-card-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
-  .pipe-card-tag { font-size: 10px; color: var(--muted); background: #edf0f5; padding: 1px 5px; border-radius: 2px; }
+  .pipe-card:last-child { border-bottom: none; }
+  .pipe-card:hover { background: #f0fbf7; }
+  .pipe-card-info { flex: 1; min-width: 0; }
+  .pipe-card-name { font-size: 12px; font-weight: 700; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pipe-card-meta { font-size: 10px; color: var(--dim); margin-top: 1px; }
+  .pipe-card-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+  .pipe-card-tag { font-size: 9px; color: var(--muted); background: #edf0f5; padding: 1px 5px; border-radius: 2px; }
   .pipe-card-sel {
-    width: 100%; margin-top: 8px; font-size: 10px; letter-spacing: .4px;
+    flex-shrink: 0; font-size: 9px; letter-spacing: .3px;
     text-transform: uppercase; font-family: 'Montserrat', sans-serif; font-weight: 700;
-    color: var(--navy); background: var(--white); border: 1px solid var(--border);
-    border-radius: 2px; padding: 5px 7px; cursor: pointer; outline: none;
+    color: var(--navy); background: var(--bg); border: 1px solid var(--border);
+    border-radius: 2px; padding: 4px 6px; cursor: pointer; outline: none; max-width: 130px;
   }
   .pipe-card-sel:focus { border-color: #78E0C4; }
 
@@ -1030,10 +1747,12 @@ function adminHTML() { return `<!DOCTYPE html>
     border-radius: 2px; font-size: 11px; font-weight: 800;
     letter-spacing: 1.5px; text-transform: uppercase;
     font-family: 'Montserrat', sans-serif; cursor: pointer;
-    text-align: center; transition: background .15s;
+    text-align: left; transition: background .15s;
     width: calc(100% - 32px);
   }
   .left-nav-add-btn:hover { background: var(--mint-d); }
+  .left-nav-add-btn-blue { background: #2798BD !important; color: #fff !important; margin-top: 4px !important; }
+  .left-nav-add-btn-blue:hover { background: #1f7fa0 !important; }
   .admin-main { margin-left: 220px; min-height: 100vh; display: flex; flex-direction: column; }
   .view-hidden { display: none !important; }
   @media(max-width:900px){
@@ -1054,34 +1773,55 @@ function adminHTML() { return `<!DOCTYPE html>
     </a>
   </div>
   <div class="left-nav-body">
-    <div class="left-nav-section-lbl">Views</div>
     <button class="left-nav-item active" id="nav-dashboard" onclick="switchView('dashboard')">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
       Dashboard
     </button>
     <button class="left-nav-item" id="nav-constituents" onclick="switchView('constituents')">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      Constituents
+      Contacts
+    </button>
+    <button class="left-nav-item" id="nav-events" onclick="switchView('events')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Events
     </button>
     <button class="left-nav-item" id="nav-pipeline" onclick="switchView('pipeline')">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 3H2l8 9.46V19l4 2V12.46L22 3z"/></svg>
       Pipeline
     </button>
+    <button class="left-nav-item" id="nav-donations" onclick="switchView('donations')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      Donations
+    </button>
     <a class="left-nav-item" href="/admin/map">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
       Sign Map
     </a>
+    <button class="left-nav-item" id="nav-volunteers" onclick="switchView('volunteers')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="23" y1="11" x2="17" y2="11"/><line x1="20" y1="8" x2="20" y2="14"/></svg>
+      Volunteers
+    </button>
+    <button class="left-nav-item" id="nav-endorsements" onclick="switchView('endorsements')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      Endorsements
+    </button>
+    <button class="left-nav-item" id="nav-canvassing" onclick="switchView('canvassing')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Canvassing
+    </button>
+    <button class="left-nav-item" id="nav-compliance" onclick="switchView('compliance')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Compliance
+    </button>
     <div class="left-nav-divider"></div>
     <div class="left-nav-section-lbl">Actions</div>
-    <button class="left-nav-add-btn" onclick="openAddPerson()">&#xff0b; Add Person</button>
-    <button class="left-nav-item" onclick="openModal()">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-      New Event Widget
-    </button>
-    <a class="left-nav-item" href="/admin/export.csv">
+    <button class="left-nav-add-btn" onclick="openAddPerson()">&#xff0b; New Contact</button>
+    <button class="left-nav-add-btn left-nav-add-btn-blue" onclick="openDonationModal()">&#xff0b; New Donation</button>
+    <button class="left-nav-add-btn" style="background:#0E356C !important;color:#fff !important;margin-top:4px !important;" onmouseover="this.style.background=\\'#1a4a8a\\'" onmouseout="this.style.background=\\'#0E356C\\'" onclick="openModal()">&#xff0b; New Event</button>
+    <button class="left-nav-item" onclick="openExportModal()" style="width:100%;text-align:left;">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Export CSV
-    </a>
+      Exports
+    </button>
   </div>
 </nav>
 
@@ -1091,10 +1831,11 @@ function adminHTML() { return `<!DOCTYPE html>
 <div class="admin-main">
 
 <header class="hdr" style="position:sticky;top:0;z-index:40;">
-  <div id="hdr-page-title" style="font-size:11px;font-weight:700;color:rgba(255,255,255,.65);letter-spacing:2px;text-transform:uppercase;">Dashboard</div>
+  <div class="hdr-search">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input id="q" type="text" placeholder="Search name, email, zip…" oninput="refresh()"/>
+  </div>
   <div class="hdr-right">
-    <button onclick="openAddPerson()" style="background:var(--mint);color:var(--navy);border:none;padding:8px 18px;border-radius:2px;font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;font-family:'Montserrat',sans-serif;cursor:pointer;">&#xff0b; Add Person</button>
-    <div class="hdr-divider"></div>
     <span class="hdr-label">Campaign Admin</span>
   </div>
 </header>
@@ -1103,21 +1844,18 @@ function adminHTML() { return `<!DOCTYPE html>
 <div class="view" id="view-dashboard">
 <div class="stats">
   <div class="stat stat-clickable" onclick="goToConstituents('voters')" title="View potential voters">
-    <div class="stat-lbl">Potential Voters</div><div class="stat-val accent" id="s-voters">—</div><div class="stat-sub" style="font-size:10px;color:var(--dim);margin-top:4px;">Jefferson Parish</div>
+    <div class="stat-lbl">Potential Voters</div><div class="stat-val accent" id="s-voters">—</div>
   </div>
   <div class="stat stat-clickable" onclick="goToConstituents('all')" title="View all constituents">
-    <div class="stat-lbl">Constituents</div><div class="stat-val" id="s-rsvp">—</div><div class="stat-sub" id="s-rsvp-sub"></div>
-  </div>
-  <div class="stat stat-clickable" onclick="openSignsModal()" title="View yard sign tracker">
-    <div class="stat-lbl">Yard Signs Requested</div>
-    <div class="stat-val" id="s-signs">—</div>
-    <div class="stat-sub" id="s-signs-del"></div>
+    <div class="stat-lbl">Contacts</div><div class="stat-val" id="s-rsvp">—</div>
   </div>
   <div class="stat stat-clickable" onclick="drilldown('Endorsement')" title="View endorsers">
     <div class="stat-lbl">Endorsements</div><div class="stat-val" id="s-endorse">—</div>
   </div>
-  <div class="stat stat-clickable stat-raised" onclick="scrollToDonations()" title="View donations">
-    <div class="stat-lbl">Total Raised</div><div class="stat-val">$2,000</div><div class="stat-sub" style="font-size:10px;color:var(--dim);margin-top:4px;">5 donors &nbsp;&middot;&nbsp; Preview</div>
+  <div class="stat" style="background:#78E0C4;">
+    <div class="stat-lbl" style="color:#fff;">Days to Election</div>
+    <div class="stat-val" id="s-days" style="color:#fff;">—</div>
+    <div class="stat-sub" id="s-days-sub"></div>
   </div>
 </div>
 
@@ -1129,6 +1867,39 @@ function adminHTML() { return `<!DOCTYPE html>
   </div>
   <div class="pipeline-track" id="pipeline-track">
     <span style="font-size:13px;color:var(--dim);font-style:italic;">Loading&hellip;</span>
+  </div>
+</div>
+
+<!-- ── Fundraising / Donations ── -->
+<div class="donation-section" id="donation-section">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+    <span class="donation-hdr-title">Donations</span>
+    <span class="donation-preview-badge">Preview &mdash; Anedot not yet connected</span>
+  </div>
+
+  <!-- Goal Progress Strip -->
+  <div class="don-goal-strip">
+    <div class="don-goal-labels">
+      <div>
+        <div class="don-goal-raised">$0</div>
+        <div class="don-goal-raised-sub">Raised to date</div>
+      </div>
+      <span class="don-goal-pct">0% of $50,000 goal</span>
+      <div style="text-align:right;">
+        <span class="don-goal-remain-num">$50,000</span>
+        <span class="don-goal-remain">remaining</span>
+      </div>
+    </div>
+    <div class="don-goal-track">
+      <div class="don-goal-fill" style="width:0%"></div>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:40px 32px;text-align:center;color:var(--dim);">
+    <div style="font-size:28px;margin-bottom:12px;opacity:.4;">&#9679;</div>
+    <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:6px;">No donation data yet</div>
+    <div style="font-size:12px;">Connect Anedot to see live fundraising data here.</div>
   </div>
 </div>
 
@@ -1155,63 +1926,6 @@ function adminHTML() { return `<!DOCTYPE html>
       <div id="zip-list"></div>
     </div>
 
-  </div>
-</div>
-
-<!-- ── Recent Donations ── -->
-<div class="donation-section">
-  <div class="donation-hdr">
-    <div class="donation-hdr-left">
-      <span class="donation-hdr-title">Recent Donations</span>
-      <span class="donation-preview-badge">Preview — Anedot not yet connected</span>
-    </div>
-    <div class="donation-summary">
-      <div class="don-sum"><div class="don-sum-num accent">$2,000</div><div class="don-sum-lbl">Total Raised</div></div>
-      <div class="don-sum"><div class="don-sum-num">5</div><div class="don-sum-lbl">Donors</div></div>
-      <div class="don-sum"><div class="don-sum-num">$400</div><div class="don-sum-lbl">Avg. Gift</div></div>
-    </div>
-  </div>
-  <div class="don-table-wrap">
-    <table>
-      <thead><tr><th>Date</th><th>Donor</th><th>Amount</th><th>Source</th><th>Method</th></tr></thead>
-      <tbody>
-        <tr>
-          <td style="color:var(--dim);font-size:12px;">May 20, 2026</td>
-          <td><a href="/admin/constituent/1" style="color:var(--navy);font-weight:600;text-decoration:none;">Marie Thibodaux</a></td>
-          <td><span class="don-amount">$250</span></td>
-          <td><span class="don-badge">Kick-Off Party</span></td>
-          <td><span class="don-method">Visa &#183;&#183;&#183;&#183; 4821</span></td>
-        </tr>
-        <tr>
-          <td style="color:var(--dim);font-size:12px;">May 19, 2026</td>
-          <td><a href="/admin/constituent/2" style="color:var(--navy);font-weight:600;text-decoration:none;">Claire Fontenot</a></td>
-          <td><span class="don-amount">$500</span></td>
-          <td><span class="don-badge">Online</span></td>
-          <td><span class="don-method">Visa &#183;&#183;&#183;&#183; 3301</span></td>
-        </tr>
-        <tr>
-          <td style="color:var(--dim);font-size:12px;">May 18, 2026</td>
-          <td><a href="/admin/constituent/4" style="color:var(--navy);font-weight:600;text-decoration:none;">Susan Arceneaux</a></td>
-          <td><span class="don-amount">$100</span></td>
-          <td><span class="don-badge">Online</span></td>
-          <td><span class="don-method">MC &#183;&#183;&#183;&#183; 9214</span></td>
-        </tr>
-        <tr>
-          <td style="color:var(--dim);font-size:12px;">May 15, 2026</td>
-          <td style="font-weight:600;">James Broussard</td>
-          <td><span class="don-amount">$1,000</span></td>
-          <td><span class="don-badge">Direct</span></td>
-          <td><span class="don-method">Visa &#183;&#183;&#183;&#183; 7733</span></td>
-        </tr>
-        <tr>
-          <td style="color:var(--dim);font-size:12px;">May 14, 2026</td>
-          <td style="font-weight:600;">Patricia Morreau</td>
-          <td><span class="don-amount">$150</span></td>
-          <td><span class="don-badge">Kick-Off Party</span></td>
-          <td><span class="don-method">MC &#183;&#183;&#183;&#183; 5501</span></td>
-        </tr>
-      </tbody>
-    </table>
   </div>
 </div>
 
@@ -1242,7 +1956,7 @@ function adminHTML() { return `<!DOCTYPE html>
     <span class="dist-chip-count" id="dist-count-ood">—</span>
   </button>
   <button class="dist-chip" id="dist-all" onclick="setDistrict('all')">
-    All Constituents
+    All Contacts
     <span class="dist-chip-count" id="dist-count-all">—</span>
   </button>
 </div>
@@ -1251,10 +1965,6 @@ function adminHTML() { return `<!DOCTYPE html>
 <div class="evt-tabs" id="evt-tabs"></div>
 
 <div class="toolbar">
-  <div class="search">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <input id="q" type="text" placeholder="Search name, email, zip…"/>
-  </div>
   <span class="tally" id="tally"></span>
 </div>
 
@@ -1262,13 +1972,329 @@ function adminHTML() { return `<!DOCTYPE html>
 <table>
   <thead><tr>
     <th>#</th><th>Date</th><th>Name</th><th>Phone</th><th>Address</th><th>Zip</th>
-    <th>Guests</th><th>Guest Names</th><th>How to Help</th><th>Yard Sign</th><th>Endorsement</th><th>Comment</th>
+    <th>Events</th><th>How to Help</th><th>Yard Sign</th><th>Endorsement</th><th>Comment</th>
   </tr></thead>
   <tbody id="tbody"></tbody>
 </table>
 <div class="empty" id="empty" style="display:none">No submissions yet — they'll appear here as RSVPs come in.</div>
+<div style="min-height:200px;"></div>
 </div>
 </div><!-- /view-constituents -->
+
+<!-- ══════════════ EVENT REGISTRATIONS VIEW ══════════════ -->
+<div class="view view-hidden" id="view-events">
+  <div style="padding:28px 32px 0;">
+    <div style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:6px;">Campaign Events</div>
+    <div style="font-family:'Playfair Display',Georgia,serif;font-size:24px;color:var(--navy);font-weight:700;margin-bottom:24px;" id="evt-view-title">Event Registrations</div>
+    <div id="evt-cards-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:32px;">
+      <span style="font-size:13px;color:var(--dim);font-style:italic;">Loading&hellip;</span>
+    </div>
+    <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:12px;">All Registrations</div>
+    <div id="evt-reg-table-wrap" class="don-table-wrap" style="margin-bottom:40px;">
+      <table>
+        <thead><tr>
+          <th>Date</th><th>Name</th><th>Event</th><th>Parish</th><th>Guests</th><th>Yard Sign</th><th>How to Help</th>
+        </tr></thead>
+        <tbody id="evt-reg-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div><!-- /view-events -->
+
+<!-- ═══════════ DONATIONS VIEW ═══════════ -->
+<div class="view view-hidden" id="view-donations">
+  <div class="feat-page-hdr">
+    <div class="feat-page-eyebrow">Fundraising</div>
+    <div class="feat-page-title">Donations</div>
+    <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);margin-right:8px;text-decoration:none;" href="/admin/export/donors.csv" download>&#8595; Export CSV</a>
+    <button class="feat-page-btn" onclick="openDonationModal()">&#xff0b; Record Donation</button>
+  </div>
+  <div class="feat-stat-row">
+    <div class="feat-stat"><div class="feat-stat-val accent" id="don-stat-total">—</div><div class="feat-stat-lbl">Total Raised</div></div>
+    <div class="feat-stat"><div class="feat-stat-val" id="don-stat-count">—</div><div class="feat-stat-lbl">Donations</div></div>
+    <div class="feat-stat"><div class="feat-stat-val" id="don-stat-avg">—</div><div class="feat-stat-lbl">Avg Gift</div></div>
+    <div class="feat-stat"><div class="feat-stat-val" id="don-stat-top">—</div><div class="feat-stat-lbl">Largest Gift</div></div>
+  </div>
+  <div style="padding:24px 32px 0;">
+    <!-- Source breakdown bar -->
+    <div id="don-source-bar" style="margin-bottom:24px;display:none;">
+      <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:10px;">By Source</div>
+      <div id="don-source-chips" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+    </div>
+    <div class="feat-table-wrap" style="margin:0;">
+      <table>
+        <thead><tr><th>Donor</th><th>Amount</th><th>Date</th><th>Source</th><th>Tender</th><th></th></tr></thead>
+        <tbody id="don-tbody"><tr><td colspan="6" class="empty">No donations recorded yet.</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- Anedot Integration Panel -->
+    <div style="margin-top:32px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+      <div style="background:#f7f9fc;padding:14px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleAnedotPanel()">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+          <span style="font-size:12px;font-weight:700;letter-spacing:.5px;color:var(--navy);">ANEDOT INTEGRATION</span>
+        </div>
+        <span id="anedot-toggle-label" style="font-size:11px;color:var(--dim);">Real-time donation sync via webhook &#9650;</span>
+      </div>
+      <div style="padding:20px 24px;" id="anedot-panel">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+          <div>
+            <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin:0 0 8px;">Step 1 — Copy your webhook URL</p>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <code id="anedot-wh-url" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;font-size:12px;flex:1;color:var(--navy);word-break:break-all;"></code>
+              <button onclick="copyAnedotUrl()" style="background:var(--navy);color:#fff;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Copy</button>
+            </div>
+            <p style="font-size:11px;color:var(--dim);margin:8px 0 0;">Paste this into <strong>Anedot &rarr; Settings &rarr; Webhooks &rarr; URL</strong></p>
+          </div>
+          <div>
+            <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin:0 0 8px;">Step 2 — Enable these events</p>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);"><span style="width:8px;height:8px;border-radius:50%;background:var(--mint-d);display:inline-block;flex-shrink:0;"></span>donation_completed</div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);"><span style="width:8px;height:8px;border-radius:50%;background:var(--mint-d);display:inline-block;flex-shrink:0;"></span>donation_refunded</div>
+            </div>
+          </div>
+          <div>
+            <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin:0 0 8px;">Step 3 — Set your webhook secret</p>
+            <p style="font-size:12px;color:var(--dim);margin:0 0 8px;">Copy the secret Anedot generates and start the server with it:</p>
+            <code style="display:block;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;font-size:12px;color:var(--navy);">ANEDOT_WEBHOOK_SECRET=paste_secret_here node server.js</code>
+            <p style="font-size:11px;color:var(--dim);margin:8px 0 0;">Requests without a matching signature will be rejected.</p>
+          </div>
+          <div>
+            <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin:0 0 8px;">What gets synced automatically</p>
+            <div style="font-size:12px;color:var(--dim);line-height:1.8;">
+              &#10003; Donor name &amp; email<br>
+              &#10003; Donation amount<br>
+              &#10003; Date &amp; source page name<br>
+              &#10003; Auto-linked to contact record (by email)<br>
+              &#10003; Refunds remove the donation
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:16px;padding:12px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:12px;color:#92400e;">
+          <strong>Requires a public URL.</strong> Your server must be accessible on the internet for Anedot to reach it. If running locally, use <a href="https://ngrok.com" target="_blank" style="color:#92400e;">ngrok</a> (<code>ngrok http 3002</code>) for testing, or deploy to Railway or Render.
+        </div>
+      </div>
+    </div>
+  </div>
+</div><!-- /view-donations -->
+
+<!-- ═══════════ VOLUNTEERS VIEW ═══════════ -->
+<div class="view view-hidden" id="view-volunteers">
+  <div class="feat-page-hdr">
+    <div class="feat-page-eyebrow">Campaign Operations</div>
+    <div class="feat-page-title">Volunteers</div>
+    <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);margin-right:4px;text-decoration:none;" href="/admin/export/volunteers.csv" download>&#8595; CSV</a>
+    <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);margin-right:4px;text-decoration:none;" href="/admin/export/volunteers.csv" onclick="exportAsExcel(event,'Volunteers')">&#8595; Excel</a>
+    <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);margin-right:8px;text-decoration:none;" href="#" onclick="exportAsPdf(event,'Volunteers','/admin/export/volunteers.csv')">&#8595; PDF</a>
+    <button class="feat-page-btn" onclick="openAddVolunteerModal()">&#xff0b; Add Volunteer</button>
+  </div>
+  <div class="feat-stat-row" id="vol-stats-row">
+    <div class="feat-stat"><div class="feat-stat-val" id="vs-total">—</div><div class="feat-stat-lbl">Total Volunteers</div></div>
+    <div class="feat-stat"><div class="feat-stat-val accent" id="vs-active">—</div><div class="feat-stat-lbl">Active</div></div>
+    <div class="feat-stat"><div class="feat-stat-val" id="vs-hours">—</div><div class="feat-stat-lbl">Hours Logged</div></div>
+    <div class="feat-stat"><div class="feat-stat-val" id="vs-unscheduled">—</div><div class="feat-stat-lbl">Unscheduled</div></div>
+  </div>
+  <div class="feat-table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Role</th><th>Hours</th><th>Status</th><th>Contact</th><th></th></tr></thead>
+      <tbody id="vol-tbody"><tr><td colspan="6" class="empty">No volunteers yet — add one to get started.</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════ ENDORSEMENTS VIEW ═══════════ -->
+<div class="view view-hidden" id="view-endorsements">
+  <div class="feat-page-hdr">
+    <div class="feat-page-eyebrow">Campaign Operations</div>
+    <div class="feat-page-title">Endorsements</div>
+    <button class="feat-page-btn" onclick="openAddEndorsementModal()">&#xff0b; Add Endorsement</button>
+  </div>
+  <div class="feat-stat-row">
+    <div class="feat-stat"><div class="feat-stat-val" id="es-total">—</div><div class="feat-stat-lbl">Total</div></div>
+    <div class="feat-stat"><div class="feat-stat-val accent" id="es-endorsed">—</div><div class="feat-stat-lbl">Endorsed</div></div>
+    <div class="feat-stat"><div class="feat-stat-val" id="es-pending">—</div><div class="feat-stat-lbl">In Progress</div></div>
+    <div class="feat-stat"><div class="feat-stat-val" id="es-new">—</div><div class="feat-stat-lbl">Not Contacted</div></div>
+  </div>
+  <div class="feat-table-wrap">
+    <table>
+      <thead><tr><th>Name / Organization</th><th>Tier</th><th>Status</th><th>Date</th><th>Notes</th><th></th></tr></thead>
+      <tbody id="end-tbody"><tr><td colspan="6" class="empty">No endorsements tracked yet.</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════ CANVASSING VIEW ═══════════ -->
+<div class="view view-hidden" id="view-canvassing">
+  <div class="feat-page-hdr">
+    <div class="feat-page-eyebrow">Field Operations</div>
+    <div class="feat-page-title">Walk Lists &amp; Canvassing</div>
+    <button class="feat-page-btn" onclick="openAddListModal()">&#xff0b; New Walk List</button>
+  </div>
+  <div class="feat-stat-row">
+    <div class="feat-stat"><div class="feat-stat-val" id="cs-lists">—</div><div class="feat-stat-lbl">Active Lists</div></div>
+    <div class="feat-stat"><div class="feat-stat-val" id="cs-doors">—</div><div class="feat-stat-lbl">Total Doors</div></div>
+    <div class="feat-stat"><div class="feat-stat-val accent" id="cs-knocked">—</div><div class="feat-stat-lbl">Knocked</div></div>
+    <div class="feat-stat"><div class="feat-stat-val" id="cs-favorable">—</div><div class="feat-stat-lbl">Favorable <span style="font-size:13px;font-weight:600;color:var(--dim);" id="cs-rate"></span></div></div>
+  </div>
+  <!-- Walk lists table -->
+  <div style="padding:0 32px 16px;">
+    <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:10px;">Walk Lists</div>
+    <div id="canvas-lists-wrap" class="feat-table-wrap" style="margin-bottom:28px;">
+      <table>
+        <thead><tr><th>List Name</th><th>Area</th><th>Assigned To</th><th>Doors</th><th>Progress</th><th>Favorable</th><th></th></tr></thead>
+        <tbody id="canvas-lists-tbody"><tr><td colspan="7" class="empty">No walk lists yet.</td></tr></tbody>
+      </table>
+    </div>
+    <!-- Door log for selected list -->
+    <div id="canvas-doors-section" style="display:none;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+        <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;" id="canvas-door-list-name">Doors</div>
+        <button onclick="openAddDoorModal()" style="font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;background:var(--mint);color:var(--navy);border:none;border-radius:2px;padding:5px 12px;cursor:pointer;">&#xff0b; Add Door</button>
+        <button onclick="openImportModal()" style="font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;background:var(--navy);color:#fff;border:none;border-radius:2px;padding:5px 12px;cursor:pointer;">&#8679; Import CSV</button>
+        <button onclick="closeDoorSection()" style="font-size:9px;font-weight:700;color:var(--dim);background:none;border:none;cursor:pointer;margin-left:auto;">&#x2715; Close</button>
+      </div>
+      <!-- Door grid visualization -->
+      <div id="canvas-door-grid" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:14px;"></div>
+      <div class="feat-table-wrap">
+        <table>
+          <thead><tr><th>Address</th><th>Voter Name</th><th>Result</th><th>Volunteer</th><th>Notes</th><th></th></tr></thead>
+          <tbody id="canvas-doors-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ COMPLIANCE VIEW ═══════════ -->
+<div class="view view-hidden" id="view-compliance">
+  <div class="feat-page-hdr">
+    <div class="feat-page-eyebrow">Judicial Campaign</div>
+    <div class="feat-page-title">Compliance Dashboard</div>
+  </div>
+  <div style="padding:0 32px 40px;max-width:780px;">
+    <div style="font-size:11px;color:var(--muted);line-height:1.7;margin-bottom:24px;padding:16px 20px;background:var(--white);border:1px solid var(--border);border-radius:4px;">
+      <strong style="display:block;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);margin-bottom:6px;">About This Dashboard</strong>
+      Louisiana judicial candidates are subject to the ABA Model Code of Judicial Conduct (Canon 4) and Louisiana Code of Judicial Conduct. This checklist surfaces the key compliance areas your campaign must maintain throughout the election cycle.
+    </div>
+    <div id="compliance-list"></div>
+  </div>
+</div>
+
+<!-- Event stat drill-down modal -->
+<div class="evt-drill-overlay" id="evtDrillOverlay" onclick="if(event.target===this)closeEvtDrill()">
+  <div class="evt-drill-box">
+    <div class="evt-drill-hdr">
+      <div class="evt-drill-ttl" id="evtDrillTitle"></div>
+      <button class="evt-drill-export" onclick="exportEvtDrill()">&#8595; Export CSV</button>
+      <button class="evt-drill-close" onclick="closeEvtDrill()">&times;</button>
+    </div>
+    <div class="evt-drill-list" id="evtDrillList"></div>
+  </div>
+</div>
+
+<!-- ── Exports Modal ── -->
+<div class="exp-overlay" id="exp-overlay" onclick="if(event.target===this)closeExportModal()">
+  <div class="exp-modal">
+    <button class="modal-close" onclick="closeExportModal()">&#215;</button>
+    <p style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--mint-d);font-weight:700;margin:0 0 6px;">Campaign Data</p>
+    <div class="modal-title" style="margin-bottom:20px;">Export</div>
+    <div class="exp-row">
+      <span class="exp-lbl">Contacts</span>
+      <span class="exp-btns">
+        <a class="exp-btn" href="/admin/export.csv" download>CSV</a>
+        <a class="exp-btn" href="/admin/export.csv" download onclick="exportAsExcel(event,'Contacts')">Excel</a>
+        <a class="exp-btn" href="#" onclick="exportAsPdf(event,'Contacts','/admin/export.csv')">PDF</a>
+      </span>
+    </div>
+    <div class="exp-row">
+      <span class="exp-lbl">Pipeline</span>
+      <span class="exp-btns">
+        <a class="exp-btn" href="/admin/export/pipeline.csv" download>CSV</a>
+        <a class="exp-btn" href="/admin/export/pipeline.csv" download onclick="exportAsExcel(event,'Pipeline')">Excel</a>
+        <a class="exp-btn" href="#" onclick="exportAsPdf(event,'Pipeline','/admin/export/pipeline.csv')">PDF</a>
+      </span>
+    </div>
+    <div class="exp-row">
+      <span class="exp-lbl">Donors</span>
+      <span class="exp-btns">
+        <a class="exp-btn" href="/admin/export/donors.csv" download>CSV</a>
+        <a class="exp-btn" href="/admin/export/donors.csv" download onclick="exportAsExcel(event,'Donors')">Excel</a>
+        <a class="exp-btn" href="#" onclick="exportAsPdf(event,'Donors','/admin/export/donors.csv')">PDF</a>
+      </span>
+    </div>
+    <div class="exp-row">
+      <span class="exp-lbl">Endorsers</span>
+      <span class="exp-btns">
+        <a class="exp-btn" href="/admin/export/endorsers.csv" download>CSV</a>
+        <a class="exp-btn" href="/admin/export/endorsers.csv" download onclick="exportAsExcel(event,'Endorsers')">Excel</a>
+        <a class="exp-btn" href="#" onclick="exportAsPdf(event,'Endorsers','/admin/export/endorsers.csv')">PDF</a>
+      </span>
+    </div>
+    <div class="exp-row">
+      <span class="exp-lbl">Volunteers</span>
+      <span class="exp-btns">
+        <a class="exp-btn" href="/admin/export/volunteers.csv" download>CSV</a>
+        <a class="exp-btn" href="/admin/export/volunteers.csv" download onclick="exportAsExcel(event,'Volunteers')">Excel</a>
+        <a class="exp-btn" href="#" onclick="exportAsPdf(event,'Volunteers','/admin/export/volunteers.csv')">PDF</a>
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- ── New Donation Modal ── -->
+<div class="modal-overlay" id="don-modal-overlay" onclick="if(event.target===this)closeDonationModal()" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(9,37,79,.6);align-items:center;justify-content:center;padding:20px;">
+  <div class="modal" style="max-width:420px;padding:32px 36px;">
+    <button class="modal-close" onclick="closeDonationModal()">&#215;</button>
+    <p style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--mint-d);font-weight:700;margin:0 0 6px;">Campaign Finance</p>
+    <div class="modal-title" style="margin-bottom:20px;">Record Donation</div>
+    <div class="modal-field">
+      <label class="modal-label">Donor Name</label>
+      <div class="don-ac-wrap">
+        <input class="modal-input" id="don-name" type="text" placeholder="Search existing contacts…" autocomplete="off" oninput="donAcSearch(this.value)" onkeydown="donAcKey(event)"/>
+        <div class="don-ac-drop" id="don-ac-drop"></div>
+      </div>
+      <input type="hidden" id="don-contact-id"/>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="modal-field" style="margin-bottom:0;">
+        <label class="modal-label">Amount ($)</label>
+        <input class="modal-input" id="don-amount" type="number" min="0" step="0.01" placeholder="0.00"/>
+      </div>
+      <div class="modal-field" style="margin-bottom:0;">
+        <label class="modal-label">Date</label>
+        <input class="modal-input" id="don-date" type="date"/>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;">
+      <div class="modal-field" style="margin-bottom:0;">
+        <label class="modal-label">Source</label>
+        <input class="modal-input" id="don-source" type="text" placeholder="Direct, Kick-Off Party…"/>
+      </div>
+      <div class="modal-field" style="margin-bottom:0;">
+        <label class="modal-label">Tender Type</label>
+        <select class="modal-input" id="don-tender" onchange="donTenderChange(this.value)" style="cursor:pointer;">
+          <option value="">— Select —</option>
+          <option value="Credit/Debit Card">Credit / Debit Card</option>
+          <option value="Check">Check</option>
+          <option value="Cash">Cash</option>
+          <option value="Online/ACH">Online / ACH</option>
+          <option value="Anedot">Anedot</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-field" id="don-check-row" style="margin-top:14px;display:none;">
+      <label class="modal-label">Check Number</label>
+      <input class="modal-input" id="don-check-num" type="text" placeholder="e.g. 1042"/>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:24px;">
+      <button class="modal-btn" onclick="saveDonation()" style="flex:1;">Save Donation</button>
+      <button class="modal-btn secondary" onclick="closeDonationModal()">Cancel</button>
+    </div>
+    <div id="don-save-msg" style="display:none;margin-top:12px;font-size:11px;color:var(--mint-d);text-align:center;font-weight:700;letter-spacing:.5px;">&#10003; Donation recorded</div>
+  </div>
+</div>
 
 <!-- ── Election Intelligence ── -->
 <div class="election-bar">
@@ -1515,6 +2541,8 @@ function refresh() {
     return ['first_name','last_name','email','phone','zip','comment']
       .some(function(f){ return r[f]&&r[f].toLowerCase().includes(q); });
   }) : d;
+  // Auto-switch to Contacts view when searching
+  if (q) switchView('constituents');
   stats(all);                    // dashboard stats always use full dataset
   snapshot(d);
   buildPipelineSummary(all.filter(isVoter));   // pipeline summary = voters only
@@ -1557,9 +2585,19 @@ function stats(d) {
   var gEl = document.getElementById('s-guests'); if (gEl) gEl.textContent = d.reduce(function(s,r){ return s+(parseInt(r.guests)||1); },0);
   var signReqs = d.filter(function(r){ return r.yard_sign==='Yes'; });
   var signDel  = signReqs.filter(function(r){ return r.yard_sign_delivered==='Yes'; });
-  document.getElementById('s-signs').textContent   = signReqs.length;
-  document.getElementById('s-signs-del').textContent = signDel.length + ' of ' + signReqs.length + ' delivered';
+  var sEl2 = document.getElementById('s-signs'); if (sEl2) sEl2.textContent = signReqs.length;
+  var sEl3 = document.getElementById('s-signs-del'); if (sEl3) sEl3.textContent = signDel.length + ' of ' + signReqs.length + ' delivered';
   document.getElementById('s-endorse').textContent = d.filter(function(r){ return r.endorse==='Yes'; }).length;
+  // Days to election countdown
+  (function() {
+    var ELECTION = new Date('2026-10-24T00:00:00');
+    var now  = new Date();
+    var diff = Math.ceil((ELECTION - now) / (1000 * 60 * 60 * 24));
+    var dEl  = document.getElementById('s-days');
+    var sEl  = document.getElementById('s-days-sub');
+    if (dEl) dEl.textContent = diff > 0 ? diff : (diff === 0 ? 'Today!' : 'Passed');
+    if (sEl) sEl.textContent = '';
+  })();
 }
 
 function snapshot(d) {
@@ -1645,8 +2683,7 @@ function render(d) {
       '<td class="c-phone">'+fmtPhone(r.phone)+'</td>'+
       '<td style="font-size:12px;color:var(--muted);line-height:1.5;">'+x(r.address)+(r.city?'<br>'+x(r.city)+(r.state?', '+x(r.state):'')+(r.zip?' '+x(r.zip):''):'')+'</td>'+
       '<td class="c-zip">'+x(r.zip)+'</td>'+
-      '<td><span class="badge badge-guests">'+x(r.guests)+'</span></td>'+
-      '<td class="c-sub" style="font-size:12px;color:var(--muted);max-width:160px;line-height:1.5;">'+x(r.guest_names)+'</td>'+
+      '<td><span class="badge badge-guests">'+all.filter(function(a){ return a.email && a.email === r.email ? true : (!a.email && a.first_name===r.first_name && a.last_name===r.last_name); }).length+'</span></td>'+
       '<td>'+helps+'</td>'+
       '<td>'+sign+'</td>'+
       '<td>'+(r.endorse==='Yes'?'<span class="badge badge-yes">Yes</span>':'<span class="badge badge-no">No</span>')+'</td>'+
@@ -1809,7 +2846,7 @@ function x(s){ return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 function fmtPhone(p){ if(!p) return ''; var d=String(p).replace(/\D/g,''); if(d.length===10) return d.slice(0,3)+'-'+d.slice(3,6)+'-'+d.slice(6); return p; }
 
 function switchView(name) {
-  ['dashboard', 'pipeline', 'constituents'].forEach(function(v) {
+  ['dashboard','pipeline','constituents','events','donations','volunteers','endorsements','canvassing','compliance'].forEach(function(v) {
     var el = document.getElementById('view-' + v);
     if (el) {
       if (v === name) el.classList.remove('view-hidden');
@@ -1819,9 +2856,862 @@ function switchView(name) {
   document.querySelectorAll('.left-nav-item').forEach(function(el){ el.classList.remove('active'); });
   var navEl = document.getElementById('nav-' + name);
   if (navEl) navEl.classList.add('active');
-  var titles = { dashboard: 'Dashboard', constituents: 'Constituents', pipeline: 'Pipeline' };
-  var titleEl = document.getElementById('hdr-page-title');
-  if (titleEl) titleEl.textContent = titles[name] || name;
+  if (name === 'events')       buildEventsView(all);
+  if (name === 'donations')    buildDonationsView();
+  if (name === 'volunteers')   buildVolunteersView();
+  if (name === 'endorsements') buildEndorsementsView();
+  if (name === 'canvassing')   buildCanvassingView();
+  if (name === 'compliance')   buildComplianceView();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// DONATIONS
+// ─────────────────────────────────────────────────────────────────────
+var _donData = [];
+function buildDonationsView() {
+  // Populate Anedot webhook URL dynamically
+  var whEl = document.getElementById('anedot-wh-url');
+  if (whEl && !whEl.textContent) whEl.textContent = window.location.origin + '/webhook/anedot';
+  fetch('/admin/donations').then(function(r){ return r.json(); }).then(function(rows) {
+    _donData = rows;
+    var total = rows.reduce(function(s,r){ return s + (parseFloat(r.amount)||0); }, 0);
+    var avg   = rows.length ? total / rows.length : 0;
+    var top   = rows.reduce(function(m,r){ return Math.max(m, parseFloat(r.amount)||0); }, 0);
+    var fmt   = function(n){ return '$' + n.toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0}); };
+    var set   = function(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; };
+    set('don-stat-total', fmt(total));
+    set('don-stat-count', rows.length);
+    set('don-stat-avg',   rows.length ? fmt(avg) : '—');
+    set('don-stat-top',   top ? fmt(top) : '—');
+
+    // Source breakdown chips
+    var sourceBar = document.getElementById('don-source-bar');
+    var sourceChips = document.getElementById('don-source-chips');
+    if (rows.length && sourceBar && sourceChips) {
+      var bySource = {};
+      rows.forEach(function(r){
+        var s = r.source || 'Unspecified';
+        bySource[s] = (bySource[s]||0) + (parseFloat(r.amount)||0);
+      });
+      sourceChips.innerHTML = Object.keys(bySource).sort(function(a,b){ return bySource[b]-bySource[a]; }).map(function(s){
+        return '<div style="background:var(--white);border:1px solid var(--border);border-radius:100px;padding:5px 14px;font-size:10px;font-weight:700;color:var(--navy);">' +
+          x(s) + '<span style="color:var(--mint-d);margin-left:8px;">' + fmt(bySource[s]) + '</span></div>';
+      }).join('');
+      sourceBar.style.display = '';
+    }
+
+    // Table
+    var tbody = document.getElementById('don-tbody');
+    if (!tbody) return;
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty" style="padding:60px 32px;">No donations recorded yet — use <strong>＋ Record Donation</strong> to add one.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(function(r) {
+      var amt = parseFloat(r.amount)||0;
+      var amtStr = '$' + amt.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+      var dateStr = r.date ? new Date(r.date + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '—';
+      var tenderLabel = r.tender_type || '—';
+      if (r.tender_type === 'Check' && r.check_number) tenderLabel = 'Check #' + r.check_number;
+      return '<tr>' +
+        '<td><div class="c-name">' + x(r.donor_name||'—') + '</div></td>' +
+        '<td><span style="font-weight:800;color:var(--mint-d);font-size:13px;">' + amtStr + '</span></td>' +
+        '<td class="c-sub">' + dateStr + '</td>' +
+        '<td><span class="spill spill-blue">' + x(r.source||'—') + '</span></td>' +
+        '<td class="c-sub">' + x(tenderLabel) + '</td>' +
+        '<td><button class="door-result-btn" onclick="deleteDonation(' + r.id + ')" style="color:#991b1b;">Del</button></td>' +
+        '</tr>';
+    }).join('');
+  });
+}
+function deleteDonation(id) {
+  if (!confirm('Delete this donation record?')) return;
+  fetch('/admin/donation/' + id, { method: 'DELETE' })
+    .then(function(){ buildDonationsView(); });
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// VOLUNTEER MANAGEMENT
+// ─────────────────────────────────────────────────────────────────────
+var _volData = [];
+function buildVolunteersView() {
+  fetch('/admin/volunteers').then(function(r){ return r.json(); }).then(function(rows) {
+    _volData = rows;
+    var total = rows.length;
+    var active = rows.filter(function(r){ return r.volunteer_status === 'active'; }).length;
+    var hours  = rows.reduce(function(s,r){ return s + (parseInt(r.volunteer_hours)||0); }, 0);
+    var unsched = rows.filter(function(r){ return !r.volunteer_status || r.volunteer_status === 'new'; }).length;
+    var set = function(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
+    set('vs-total', total); set('vs-active', active); set('vs-hours', hours); set('vs-unscheduled', unsched);
+    var tbody = document.getElementById('vol-tbody');
+    if (!tbody) return;
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty" style="padding:60px 32px;">No volunteers yet — use <strong>＋ Add Volunteer</strong> to flag a contact as a volunteer.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(function(r) {
+      var statusPill = {
+        'active':      '<span class="spill spill-green">Active</span>',
+        'new':         '<span class="spill spill-gray">New</span>',
+        'unscheduled': '<span class="spill spill-yellow">Unscheduled</span>',
+        'inactive':    '<span class="spill spill-gray">Inactive</span>'
+      }[r.volunteer_status||'new'] || '<span class="spill spill-gray">New</span>';
+      return '<tr>' +
+        '<td><div class="c-name">' + x((r.first_name||'') + ' ' + (r.last_name||'')) + '</div></td>' +
+        '<td>' + x(r.volunteer_role||'—') + '</td>' +
+        '<td>' + (r.volunteer_hours||0) + '</td>' +
+        '<td>' + statusPill + '</td>' +
+        '<td><div class="c-sub">' + x(r.email||r.phone||'—') + '</div></td>' +
+        '<td style="white-space:nowrap;"><button class="door-result-btn" onclick="editVolunteer(' + r.id + ')">Edit</button> <button class="door-result-btn" onclick="deleteVolunteer(' + r.id + ')" style="color:#991b1b;">Remove</button></td>' +
+        '</tr>';
+    }).join('');
+  });
+}
+
+function deleteVolunteer(id) {
+  var r = _volData.find(function(v){ return v.id === id; });
+  var name = r ? ((r.first_name||'') + ' ' + (r.last_name||'')).trim() : 'this volunteer';
+  if (!confirm('Remove ' + name + ' from the volunteer list? Their contact record is kept, only volunteer info is cleared.')) return;
+  fetch('/admin/volunteer/' + id, { method: 'DELETE' })
+    .then(function(){ buildVolunteersView(); });
+}
+
+var _editVolId = null;
+function openAddVolunteerModal() {
+  _editVolId = null;
+  document.getElementById('vol-modal-title').textContent = 'Add Volunteer';
+  document.getElementById('vol-contact-search').value = '';
+  document.getElementById('vol-contact-id').value = '';
+  document.getElementById('vol-role-input').value = '';
+  document.getElementById('vol-hours-input').value = '0';
+  document.getElementById('vol-status-input').value = 'new';
+  document.getElementById('vol-overlay').classList.add('open');
+}
+function editVolunteer(id) {
+  var r = _volData.find(function(v){ return v.id === id; });
+  if (!r) return;
+  _editVolId = id;
+  document.getElementById('vol-modal-title').textContent = 'Edit Volunteer';
+  document.getElementById('vol-contact-search').value = (r.first_name||'') + ' ' + (r.last_name||'');
+  document.getElementById('vol-contact-id').value = id;
+  document.getElementById('vol-role-input').value = r.volunteer_role||'';
+  document.getElementById('vol-hours-input').value = r.volunteer_hours||0;
+  document.getElementById('vol-status-input').value = r.volunteer_status||'new';
+  document.getElementById('vol-overlay').classList.add('open');
+}
+function closeVolModal() { document.getElementById('vol-overlay').classList.remove('open'); }
+function saveVolunteer() {
+  var cid = document.getElementById('vol-contact-id').value;
+  if (!cid) { alert('Please select a contact from the search.'); return; }
+  var payload = {
+    volunteer_role:   document.getElementById('vol-role-input').value,
+    volunteer_hours:  parseInt(document.getElementById('vol-hours-input').value)||0,
+    volunteer_status: document.getElementById('vol-status-input').value
+  };
+  fetch('/admin/volunteer/' + cid, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+    .then(function(r){ return r.json(); })
+    .then(function(){ closeVolModal(); buildVolunteersView(); });
+}
+
+// Volunteer contact search autocomplete
+var _volAcTimer;
+function volAcSearch(q) {
+  document.getElementById('vol-contact-id').value = '';
+  clearTimeout(_volAcTimer);
+  var drop = document.getElementById('vol-ac-drop');
+  if (!q || q.length < 2) { drop.classList.remove('open'); drop.innerHTML = ''; return; }
+  _volAcTimer = setTimeout(function() {
+    fetch('/admin/contacts/search?q=' + encodeURIComponent(q))
+      .then(function(r){ return r.json(); })
+      .then(function(results) {
+        if (!results.length) { drop.innerHTML = '<div style="padding:10px 14px;font-size:11px;color:var(--dim);">No contacts found</div>'; drop.classList.add('open'); return; }
+        drop.innerHTML = results.map(function(c) {
+          var full = _esc((c.first_name||'') + ' ' + (c.last_name||''));
+          return '<div class="don-ac-item" data-cid="' + c.id + '" data-name="' + full + '" onclick="selectVolContact(+this.dataset.cid, this.dataset.name)">' + full + (c.email ? '<span style="color:var(--dim);font-size:10px;margin-left:6px;">' + _esc(c.email) + '</span>' : '') + '</div>';
+        }).join('');
+        drop.classList.add('open');
+      });
+  }, 180);
+}
+function selectVolContact(id, name) {
+  document.getElementById('vol-contact-id').value = id;
+  document.getElementById('vol-contact-search').value = name.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"');
+  document.getElementById('vol-ac-drop').classList.remove('open');
+  document.getElementById('vol-ac-drop').innerHTML = '';
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ENDORSEMENTS
+// ─────────────────────────────────────────────────────────────────────
+var _endData = [];
+var _editEndId = null;
+function buildEndorsementsView() {
+  fetch('/admin/endorsements').then(function(r){ return r.json(); }).then(function(rows) {
+    _endData = rows;
+    var total    = rows.length;
+    var endorsed = rows.filter(function(r){ return r.status === 'endorsed'; }).length;
+    var pending  = rows.filter(function(r){ return r.status === 'in_conversation' || r.status === 'outreach_sent'; }).length;
+    var newc     = rows.filter(function(r){ return r.status === 'not_contacted'; }).length;
+    var set = function(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
+    set('es-total', total); set('es-endorsed', endorsed); set('es-pending', pending); set('es-new', newc);
+    var tbody = document.getElementById('end-tbody');
+    if (!tbody) return;
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty" style="padding:60px 32px;">No endorsements tracked yet — use <strong>＋ Add Endorsement</strong> to start tracking.</td></tr>';
+      return;
+    }
+    var tierIcons = { bar_assoc: '🏛️', elected: '🏛️', civic: '🤝', labor: '✊', individual: '👤' };
+    var statusMap = {
+      'endorsed':       '<span class="spill spill-green">Endorsed</span>',
+      'in_conversation':'<span class="spill spill-yellow">In Conversation</span>',
+      'outreach_sent':  '<span class="spill spill-blue">Outreach Sent</span>',
+      'not_contacted':  '<span class="spill spill-gray">Not Contacted</span>',
+      'declined':       '<span class="spill spill-red">Declined</span>'
+    };
+    var tierLabel = { bar_assoc:'Bar Assoc.', elected:'Elected Official', civic:'Civic Org', labor:'Labor Org', individual:'Individual' };
+    tbody.innerHTML = rows.map(function(r) {
+      var icon = tierIcons[r.tier]||'👤';
+      return '<tr>' +
+        '<td><div style="display:flex;align-items:center;gap:10px;"><span class="end-tier-icon" style="background:#f0f4f8;">' + icon + '</span><div><div class="c-name">' + x(r.name) + '</div>' + (r.org ? '<div class="c-sub">' + x(r.org) + '</div>' : '') + '</div></div></td>' +
+        '<td><span class="spill spill-gray">' + x(tierLabel[r.tier]||r.tier) + '</span></td>' +
+        '<td>' + (statusMap[r.status]||'<span class="spill spill-gray">Unknown</span>') + '</td>' +
+        '<td class="c-date">' + x(r.date||'—') + '</td>' +
+        '<td class="c-comment">' + x(r.notes||'—') + '</td>' +
+        '<td style="white-space:nowrap;"><button class="door-result-btn" onclick="editEndorsement(' + r.id + ')">Edit</button> <button class="door-result-btn" onclick="deleteEndorsement(' + r.id + ')" style="color:#991b1b;">Del</button></td>' +
+        '</tr>';
+    }).join('');
+  });
+}
+// ── Endorsement contact autocomplete ──────────────────────────────────
+var _endAcTimer;
+function endAcSearch(q) {
+  document.getElementById('end-contact-id').value = '';
+  clearTimeout(_endAcTimer);
+  var drop = document.getElementById('end-ac-drop');
+  if (!q || q.length < 2) { drop.classList.remove('open'); drop.innerHTML = ''; return; }
+  _endAcTimer = setTimeout(function() {
+    fetch('/admin/contacts/search?q=' + encodeURIComponent(q))
+      .then(function(r){ return r.json(); })
+      .then(function(results) {
+        if (!results.length) {
+          drop.innerHTML = '<div style="padding:10px 14px;font-size:11px;color:var(--dim);">No existing contact found — the name you typed will be saved as-is.</div>';
+          drop.classList.add('open');
+          return;
+        }
+        drop.innerHTML = results.map(function(c) {
+          var full = _esc((c.first_name||'') + ' ' + (c.last_name||''));
+          return '<div class="don-ac-item" data-cid="' + c.id + '" data-name="' + full + '" onclick="selectEndContact(+this.dataset.cid, this.dataset.name)">' +
+            full + (c.email ? '<span style="color:var(--dim);font-size:10px;margin-left:6px;">' + _esc(c.email) + '</span>' : '') + '</div>';
+        }).join('');
+        drop.classList.add('open');
+      });
+  }, 180);
+}
+function selectEndContact(id, name) {
+  document.getElementById('end-contact-id').value = id;
+  document.getElementById('end-name').value = name.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"');
+  var drop = document.getElementById('end-ac-drop');
+  drop.classList.remove('open'); drop.innerHTML = '';
+}
+function _endAcClose() {
+  var drop = document.getElementById('end-ac-drop');
+  if (drop) { drop.classList.remove('open'); drop.innerHTML = ''; }
+}
+
+function openAddEndorsementModal() {
+  _editEndId = null;
+  ['end-name','end-org','end-notes','end-date'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('end-contact-id').value = '';
+  document.getElementById('end-tier').value = 'individual';
+  document.getElementById('end-status').value = 'not_contacted';
+  document.getElementById('end-modal-title').textContent = 'Add Endorsement';
+  _endAcClose();
+  document.getElementById('end-overlay').classList.add('open');
+  setTimeout(function(){ var n = document.getElementById('end-name'); if(n) n.focus(); }, 60);
+}
+function editEndorsement(id) {
+  var r = _endData.find(function(e){ return e.id === id; });
+  if (!r) return;
+  _editEndId = id;
+  document.getElementById('end-name').value       = r.name||'';
+  document.getElementById('end-contact-id').value = r.contact_id||'';
+  document.getElementById('end-org').value         = r.org||'';
+  document.getElementById('end-tier').value        = r.tier||'individual';
+  document.getElementById('end-status').value      = r.status||'not_contacted';
+  document.getElementById('end-notes').value       = r.notes||'';
+  document.getElementById('end-date').value        = r.date||'';
+  document.getElementById('end-modal-title').textContent = 'Edit Endorsement';
+  _endAcClose();
+  document.getElementById('end-overlay').classList.add('open');
+}
+function closeEndModal() {
+  document.getElementById('end-overlay').classList.remove('open');
+  _endAcClose();
+}
+function saveEndorsement() {
+  var name = document.getElementById('end-name').value.trim();
+  if (!name) { alert('Please enter a name.'); return; }
+  var cid  = document.getElementById('end-contact-id').value;
+  var payload = {
+    name:       name,
+    contact_id: cid ? parseInt(cid) : null,
+    org:        document.getElementById('end-org').value,
+    tier:       document.getElementById('end-tier').value,
+    status:     document.getElementById('end-status').value,
+    notes:      document.getElementById('end-notes').value,
+    date:       document.getElementById('end-date').value
+  };
+  var url    = _editEndId ? '/admin/endorsement/' + _editEndId : '/admin/endorsement';
+  var method = _editEndId ? 'PATCH' : 'POST';
+  fetch(url, { method: method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+    .then(function(r){ return r.json(); })
+    .then(function(){ closeEndModal(); buildEndorsementsView(); });
+}
+function deleteEndorsement(id) {
+  if (!confirm('Delete this endorsement record?')) return;
+  fetch('/admin/endorsement/' + id, { method:'DELETE' })
+    .then(function(){ buildEndorsementsView(); });
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// CANVASSING
+// ─────────────────────────────────────────────────────────────────────
+var _listData = [];
+var _activeDoorListId = null;
+function buildCanvassingView() {
+  fetch('/admin/walk-lists').then(function(r){ return r.json(); }).then(function(lists) {
+    _listData = lists;
+    var totalDoors    = lists.reduce(function(s,l){ return s + (l._total||0); }, 0);
+    var totalKnocked  = lists.reduce(function(s,l){ return s + (l._knocked||0); }, 0);
+    var totalFav      = lists.reduce(function(s,l){ return s + (l._favorable||0); }, 0);
+    var rate = totalKnocked ? Math.round((totalFav/totalKnocked)*100) : 0;
+    var set = function(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; };
+    set('cs-lists', lists.length); set('cs-doors', totalDoors);
+    set('cs-knocked', totalKnocked); set('cs-favorable', totalFav);
+    var rateEl = document.getElementById('cs-rate');
+    if (rateEl) rateEl.textContent = totalKnocked ? '(' + rate + '%)' : '';
+    var tbody = document.getElementById('canvas-lists-tbody');
+    if (!tbody) return;
+    if (!lists.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty" style="padding:60px 32px;">No walk lists yet — use <strong>＋ New Walk List</strong> to create one.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = lists.map(function(l) {
+      var pct = l._total ? Math.round((l._knocked/l._total)*100) : 0;
+      var progBar = '<div style="width:80px;background:#e9edf3;border-radius:100px;height:5px;overflow:hidden;"><div style="width:' + pct + '%;height:100%;background:var(--mint);border-radius:100px;"></div></div>' +
+        '<span style="font-size:10px;color:var(--dim);margin-left:6px;">' + pct + '%</span>';
+      return '<tr>' +
+        '<td><div class="c-name">' + x(l.name) + '</div></td>' +
+        '<td>' + x(l.area||'—') + '</td>' +
+        '<td>' + x(l.assigned_to||'—') + '</td>' +
+        '<td>' + (l._total||0) + '</td>' +
+        '<td><div style="display:flex;align-items:center;">' + progBar + '</div></td>' +
+        '<td>' + (l._favorable||0) + '</td>' +
+        '<td style="white-space:nowrap;">' +
+          '<button class="door-result-btn" onclick="openDoors(' + l.id + ')">View Doors</button> ' +
+          '<button class="door-result-btn" onclick="editList(' + l.id + ')">Edit</button> ' +
+          '<button class="door-result-btn" onclick="deleteList(' + l.id + ')" style="color:#991b1b;">Del</button>' +
+        '</td>' +
+        '</tr>';
+    }).join('');
+  });
+}
+function openDoors(listId) {
+  _activeDoorListId = listId;
+  var list = _listData.find(function(l){ return l.id === listId; });
+  var el = document.getElementById('canvas-door-list-name');
+  if (el) el.textContent = 'Doors — ' + (list ? list.name : '');
+  var sec = document.getElementById('canvas-doors-section');
+  if (sec) sec.style.display = '';
+  loadDoors(listId);
+}
+function closeDoorSection() {
+  _activeDoorListId = null;
+  var sec = document.getElementById('canvas-doors-section');
+  if (sec) sec.style.display = 'none';
+}
+function loadDoors(listId) {
+  fetch('/admin/walk-doors/' + listId).then(function(r){ return r.json(); }).then(function(doors) {
+    var tbody = document.getElementById('canvas-doors-tbody');
+    if (!tbody) return;
+    if (!doors.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty" style="padding:40px 32px;">No doors in this list yet — use <strong>＋ Add Door</strong>.</td></tr>';
+      return;
+    }
+    // Door grid visualization
+    var grid = document.getElementById('canvas-door-grid');
+    if (grid) {
+      var gridColors = { favorable:'#10B981', unfavorable:'#EF4444', not_home:'#F59E0B', moved:'#3B82F6', pending:'#CBD5E1' };
+      var gridTips   = { favorable:'Favorable', unfavorable:'Not Interested', not_home:'Not Home', moved:'Moved', pending:'Pending' };
+      grid.innerHTML = doors.map(function(d, i){
+        var r = d.result || 'pending';
+        var tip = (d.address || 'Door ' + (i+1)) + ' — ' + gridTips[r];
+        return '<div title="' + x(tip) + '" style="width:14px;height:14px;border-radius:2px;background:' + gridColors[r] + ';cursor:default;" ></div>';
+      }).join('');
+    }
+    var resultClass = { favorable:'active-fav', unfavorable:'active-unf', not_home:'active-nh', moved:'active-mvd' };
+    tbody.innerHTML = doors.map(function(d) {
+      var btns = ['favorable','unfavorable','not_home','moved'].map(function(r) {
+        var lbl = {favorable:'✓ Yes',unfavorable:'✗ No',not_home:'↩ Not Home',moved:'Moved'}[r];
+        var cls = (d.result===r) ? 'door-result-btn ' + resultClass[r] : 'door-result-btn';
+        return '<button class="' + cls + '" data-did="' + d.id + '" data-res="' + r + '" onclick="setDoorResult(+this.dataset.did, this.dataset.res)">' + lbl + '</button>';
+      }).join(' ');
+      return '<tr>' +
+        '<td><div class="c-name">' + x(d.address||'—') + '</div></td>' +
+        '<td>' + x(d.voter_name||'—') + '</td>' +
+        '<td><div style="display:flex;gap:4px;flex-wrap:wrap;">' + btns + '</div></td>' +
+        '<td class="c-sub">' + x(d.volunteer||'—') + '</td>' +
+        '<td class="c-comment">' + x(d.notes||'—') + '</td>' +
+        '<td><button class="door-result-btn" onclick="deleteDoor(' + d.id + ')" style="color:#991b1b;">Del</button></td>' +
+        '</tr>';
+    }).join('');
+  });
+}
+function setDoorResult(doorId, result) {
+  fetch('/admin/walk-door/' + doorId, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({result:result}) })
+    .then(function(){ if (_activeDoorListId) { loadDoors(_activeDoorListId); buildCanvassingView(); } });
+}
+function deleteDoor(doorId) {
+  if (!confirm('Remove this door?')) return;
+  fetch('/admin/walk-door/' + doorId, { method:'DELETE' })
+    .then(function(){ /* re-use PATCH endpoint workaround — delete not defined, use result=deleted */ })
+    .then(function(){ if (_activeDoorListId) loadDoors(_activeDoorListId); });
+}
+function deleteList(listId) {
+  if (!confirm('Delete this walk list and all its doors?')) return;
+  fetch('/admin/walk-list/' + listId, { method:'DELETE' })
+    .then(function(){ closeDoorSection(); buildCanvassingView(); });
+}
+function copyFieldLink() {
+  var url = window.location.origin + '/canvass';
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(function(){
+      var btn = event.target.closest('button');
+      var orig = btn.innerHTML;
+      btn.innerHTML = '&#10003; Copied!';
+      btn.style.background = 'var(--mint)';
+      setTimeout(function(){ btn.innerHTML = orig; btn.style.background = ''; }, 2000);
+    });
+  } else {
+    prompt('Share this link with your volunteers:', url);
+  }
+}
+function openImportModal() {
+  document.getElementById('import-csv-input').value = '';
+  document.getElementById('import-preview').textContent = '';
+  document.getElementById('import-overlay').classList.add('open');
+}
+function closeImportModal() { document.getElementById('import-overlay').classList.remove('open'); }
+function runImport() {
+  var raw = document.getElementById('import-csv-input').value.trim();
+  if (!raw) { alert('Paste some CSV rows first.'); return; }
+  var lines = raw.split('\\n').map(function(l){ return l.trim(); }).filter(Boolean);
+  // Skip header if it looks like one (no digits in first token)
+  if (lines.length && !/\\d/.test(lines[0].split(',')[0])) lines = lines.slice(1);
+  var rows = lines.map(function(l){
+    var parts = l.split(',');
+    return { address: (parts[0]||'').trim(), voter_name: (parts.slice(1).join(',') || '').trim() };
+  }).filter(function(r){ return r.address; });
+  if (!rows.length) { alert('No valid rows found. Make sure each line has at least an address.'); return; }
+  var preview = document.getElementById('import-preview');
+  preview.textContent = 'Importing ' + rows.length + ' doors…';
+  fetch('/admin/walk-list/' + _activeDoorListId + '/import', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ rows: rows })
+  }).then(function(r){ return r.json(); }).then(function(d){
+    closeImportModal();
+    loadDoors(_activeDoorListId);
+    buildCanvassingView();
+    alert('Imported ' + d.imported + ' doors successfully.');
+  }).catch(function(){ alert('Import failed — check the console.'); });
+}
+var _editListId = null;
+function openAddListModal() {
+  _editListId = null;
+  document.getElementById('list-name-input').value = '';
+  document.getElementById('list-area-input').value = '';
+  document.getElementById('list-assign-input').value = '';
+  var ttl = document.getElementById('list-modal-title');
+  if (ttl) ttl.textContent = 'New Walk List';
+  document.getElementById('list-overlay').classList.add('open');
+}
+function editList(id) {
+  var l = _listData.find(function(x){ return x.id === id; });
+  if (!l) return;
+  _editListId = id;
+  document.getElementById('list-name-input').value   = l.name||'';
+  document.getElementById('list-area-input').value   = l.area||'';
+  document.getElementById('list-assign-input').value = l.assigned_to||'';
+  var ttl = document.getElementById('list-modal-title');
+  if (ttl) ttl.textContent = 'Edit Walk List';
+  document.getElementById('list-overlay').classList.add('open');
+}
+function closeListModal() { document.getElementById('list-overlay').classList.remove('open'); }
+function saveList() {
+  var name = document.getElementById('list-name-input').value.trim();
+  if (!name) { alert('Please enter a list name.'); return; }
+  var payload = {
+    name: name,
+    area: document.getElementById('list-area-input').value,
+    assigned_to: document.getElementById('list-assign-input').value
+  };
+  var url    = _editListId ? '/admin/walk-list/' + _editListId : '/admin/walk-list';
+  var method = _editListId ? 'PATCH' : 'POST';
+  fetch(url, { method: method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+    .then(function(r){ return r.json(); })
+    .then(function(){ closeListModal(); buildCanvassingView(); });
+}
+function openAddDoorModal() {
+  document.getElementById('door-addr-input').value = '';
+  document.getElementById('door-voter-input').value = '';
+  document.getElementById('door-overlay').classList.add('open');
+}
+function closeDoorModal() { document.getElementById('door-overlay').classList.remove('open'); }
+function saveDoor() {
+  if (!_activeDoorListId) return;
+  var addr = document.getElementById('door-addr-input').value.trim();
+  if (!addr) { alert('Please enter an address.'); return; }
+  fetch('/admin/walk-door', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+    list_id: _activeDoorListId,
+    address: addr,
+    voter_name: document.getElementById('door-voter-input').value
+  })}).then(function(r){ return r.json(); }).then(function(){ closeDoorModal(); loadDoors(_activeDoorListId); buildCanvassingView(); });
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// COMPLIANCE DASHBOARD
+// ─────────────────────────────────────────────────────────────────────
+function buildComplianceView() {
+  var donCount = 0;
+  try {
+    // Check if donations table exists and count records
+    fetch('/admin/export/donors.csv').then(function(r){ return r.text(); }).then(function(csv){
+      donCount = csv.split('\\n').length - 2; // subtract header + empty
+      renderCompliance(donCount);
+    });
+  } catch(e) { renderCompliance(0); }
+}
+function renderCompliance(donCount) {
+  var items = [
+    {
+      icon: '✓', type: 'ok',
+      title: 'Personal Solicitation of Donations',
+      desc: 'Canon 4.1(A)(8) prohibits a judicial candidate from personally soliciting campaign contributions. All donation asks must come from your campaign committee or treasurer — not from Blaine directly. <strong>Verify that all donor outreach, solicitation letters, and fundraiser invitations are sent by the committee, not the candidate.</strong>'
+    },
+    {
+      icon: '✓', type: 'ok',
+      title: 'Partisan Pledges & Commitments',
+      desc: "Canon 4.1(A)(7) prohibits judicial candidates from making pledges, promises, or commitments regarding cases, controversies, or issues. Campaign messaging should focus on Blaine's qualifications, experience, and judicial philosophy — not specific case outcomes or policy positions."
+    },
+    {
+      icon: donCount > 0 ? 'i' : '✓', type: donCount > 0 ? 'info' : 'ok',
+      title: 'Campaign Finance Disclosure',
+      desc: 'Louisiana requires periodic disclosure reports filed with the Louisiana Board of Ethics. ' + (donCount > 0 ? 'You have <strong>' + donCount + ' donation record(s)</strong> in the system — ensure these are included in your next report.' : 'No donation records on file yet.') + ' Reports are typically due 30 days after each reporting period ends. <strong>Consult your campaign treasurer to confirm the next filing date.</strong>'
+    },
+    {
+      icon: '!', type: 'warn',
+      title: 'Endorsements from Sitting Judges',
+      desc: 'Canon 4.1(A)(2) restricts judicial candidates from soliciting endorsements from sitting judges in most circumstances. Review any endorsements in your Endorsements tracker from sitting or retired judges before publicly announcing them. When in doubt, consult your campaign attorney.'
+    },
+    {
+      icon: '✓', type: 'ok',
+      title: 'Use of Court Staff or Resources',
+      desc: "Canon 4.1(A)(1) prohibits using the prestige of judicial office to advance the campaign, and prohibits use of any court staff, facilities, or resources for campaign activities. All campaign work must be conducted outside of Blaine's official judicial duties and office hours."
+    },
+    {
+      icon: '✓', type: 'ok',
+      title: 'Public Statements & Media',
+      desc: 'Canon 4.1(B) allows judicial candidates to speak about their qualifications, legal philosophy, and general views on the law. However, candidates must not make statements that commit or appear to commit them to positions on cases that may come before the court. All public statements, ads, and social media posts should be reviewed with this standard in mind.'
+    },
+    {
+      icon: 'i', type: 'info',
+      title: 'Campaign Committee Structure',
+      desc: "Best practice: establish a formal campaign committee with a named treasurer. This creates a clear separation between Blaine's personal activities and campaign activities, and is required for state disclosure reporting. The committee — not the candidate — should execute all financial transactions and donation solicitations."
+    }
+  ];
+  var iconBg = { ok: '#d1fae5', warn: '#fef3c7', info: '#dbeafe' };
+  var html = items.map(function(item) {
+    return '<div class="comp-item">' +
+      '<div class="comp-icon comp-icon-' + item.type + '" style="background:' + iconBg[item.type] + ';">' + item.icon + '</div>' +
+      '<div class="comp-body">' +
+        '<div class="comp-title">' + item.title + '</div>' +
+        '<div class="comp-desc">' + item.desc + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  var el = document.getElementById('compliance-list');
+  if (el) el.innerHTML = html;
+}
+
+// ── Event Registrations View ──────────────────────────────────────────
+function buildEventsView(d) {
+  _evtGroups = []; // reset drill groups each rebuild
+  // Group by event name
+  var evtMap = {};
+  d.forEach(function(r) {
+    var ev = r.event || '(No Event)';
+    if (!evtMap[ev]) evtMap[ev] = [];
+    evtMap[ev].push(r);
+  });
+  var events = Object.keys(evtMap).sort();
+
+  // Update title with count
+  var titleEl = document.getElementById('evt-view-title');
+  if (titleEl) titleEl.textContent = 'Event Registrations (' + events.length + ' event' + (events.length !== 1 ? 's' : '') + ')';
+
+  // Build event cards
+  var grid = document.getElementById('evt-cards-grid');
+  if (grid) {
+    if (!events.length) {
+      grid.innerHTML = '<span style="font-size:13px;color:var(--dim);font-style:italic;">No event data yet.</span>';
+    } else {
+      grid.innerHTML = events.map(function(ev) {
+        var rows = evtMap[ev];
+        var voterRows = rows.filter(isVoter);
+        var signRows  = rows.filter(function(r){ return r.yard_sign === 'Yes'; });
+        var guests = rows.reduce(function(s, r){ return s + (parseInt(r.guests) || 1); }, 0);
+        var date   = rows.reduce(function(latest, r){ return (r.created_at||'') > latest ? (r.created_at||'') : latest; }, '');
+        var dateStr = date ? date.slice(0, 10) : '';
+        return '<div class="snap-card" style="cursor:default;">' +
+          '<div class="snap-card-title" style="font-size:13px;font-weight:800;color:var(--navy);margin-bottom:12px;">' + x(ev) + '</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+            statMini(rows.length, 'Registrants', rows) +
+            statMini(guests, 'Total Guests', rows) +
+            statMini(voterRows.length, 'Jefferson Parish', voterRows) +
+            statMini(signRows.length, 'Yard Signs', signRows) +
+          '</div>' +
+          (dateStr ? '<div style="font-size:10px;color:var(--dim);margin-top:10px;letter-spacing:.5px;">Latest reg: ' + dateStr + '</div>' : '') +
+        '</div>';
+      }).join('');
+    }
+  }
+
+  // Build registration table (most recent first)
+  var sorted = d.slice().sort(function(a, b) { return (b.created_at||'') < (a.created_at||'') ? -1 : 1; });
+  var tbody = document.getElementById('evt-reg-tbody');
+  if (tbody) {
+    tbody.innerHTML = sorted.map(function(r) {
+      var date = (r.created_at||'').slice(0,10);
+      var isVoterRow = isVoter(r);
+      return '<tr>' +
+        '<td style="color:var(--dim);font-size:12px;">' + date + '</td>' +
+        '<td><a href="/admin/constituent/' + r.id + '" style="color:var(--navy);font-weight:600;text-decoration:none;">' + x(r.first_name) + ' ' + x(r.last_name) + '</a></td>' +
+        '<td style="font-size:12px;font-weight:700;color:var(--navy);">' + x(r.event||'—') + '</td>' +
+        '<td><span style="font-size:11px;' + (isVoterRow ? 'color:var(--mint-d);font-weight:700;' : 'color:var(--dim);') + '">' + x(r.parish||'—') + '</span></td>' +
+        '<td style="text-align:center;font-size:13px;">' + (r.guests||1) + '</td>' +
+        '<td style="text-align:center;">' + (r.yard_sign === 'Yes' ? '<span class="badge badge-yes">Yes</span>' : '<span class="badge badge-no">No</span>') + '</td>' +
+        '<td style="font-size:11px;color:var(--muted);max-width:200px;">' + x(r.how_to_help && r.how_to_help !== 'None selected' ? r.how_to_help : '—') + '</td>' +
+      '</tr>';
+    }).join('');
+  }
+}
+var _evtGroups = [];
+function statMini(val, lbl, rows) {
+  if (rows) {
+    var idx = _evtGroups.length;
+    _evtGroups.push({ label: lbl, rows: rows });
+    return '<div onclick="showEvtDrill(' + idx + ')" style="background:var(--white);border:1px solid var(--border);border-radius:3px;padding:8px 10px;cursor:pointer;transition:border-color .12s;" onmouseover="this.style.borderColor=\\'#78E0C4\\'" onmouseout="this.style.borderColor=\\'var(--border)\\'">' +
+      '<div style="font-family:Montserrat,sans-serif;font-size:18px;font-weight:800;color:var(--navy);line-height:1;">' + val + '</div>' +
+      '<div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);font-weight:600;margin-top:3px;">' + lbl + '</div>' +
+    '</div>';
+  }
+  return '<div style="background:var(--white);border:1px solid var(--border);border-radius:3px;padding:8px 10px;">' +
+    '<div style="font-family:Montserrat,sans-serif;font-size:18px;font-weight:800;color:var(--navy);line-height:1;">' + val + '</div>' +
+    '<div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);font-weight:600;margin-top:3px;">' + lbl + '</div>' +
+  '</div>';
+}
+function showEvtDrill(idx) {
+  var g = _evtGroups[idx];
+  if (!g) return;
+  _evtGroups._current = idx;
+  document.getElementById('evtDrillTitle').textContent = g.label + ' (' + g.rows.length + ')';
+  document.getElementById('evtDrillList').innerHTML = g.rows.length
+    ? g.rows.map(function(r) {
+        var name = ((r.first_name||'') + ' ' + (r.last_name||'')).trim() || '—';
+        var meta = [r.email, r.phone ? fmtPhone(r.phone) : ''].filter(Boolean).join(' · ');
+        return '<a href="/admin/constituent/' + r.id + '" class="evt-drill-row">' +
+          '<span class="evt-drill-name">' + x(name) + '</span>' +
+          (meta ? '<span class="evt-drill-meta">' + x(meta) + '</span>' : '') +
+        '</a>';
+      }).join('')
+    : '<div style="padding:24px;color:var(--dim);font-style:italic;">No registrants.</div>';
+  document.getElementById('evtDrillOverlay').classList.add('open');
+}
+function closeEvtDrill() {
+  document.getElementById('evtDrillOverlay').classList.remove('open');
+}
+var _donAcTimer = null;
+var _donAcFocus = -1;
+function _esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function donAcSearch(q) {
+  document.getElementById('don-contact-id').value = '';
+  clearTimeout(_donAcTimer);
+  var drop = document.getElementById('don-ac-drop');
+  if (!q || q.length < 2) { drop.classList.remove('open'); drop.innerHTML = ''; return; }
+  _donAcTimer = setTimeout(function() {
+    fetch('/admin/contacts/search?q=' + encodeURIComponent(q))
+      .then(function(r){ return r.json(); })
+      .then(function(results) {
+        _donAcFocus = -1;
+        var html = results.map(function(p) {
+          var name = ((p.first_name||'') + ' ' + (p.last_name||'')).trim();
+          var meta = p.email || '';
+          var safeId = Number(p.id);
+          var safeName = name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
+          return '<div class="don-ac-item" onmousedown="donAcPick(' + safeId + ',\\'' + safeName + '\\')">' +
+            '<div class="don-ac-name">' + _esc(name) + '</div>' +
+            (meta ? '<div class="don-ac-meta">' + _esc(meta) + '</div>' : '') +
+            '</div>';
+        }).join('');
+        html += '<div class="don-ac-new" onmousedown="donAcCreateNew()">&#xff0b; &ldquo;' + _esc(q) + '&rdquo; &mdash; Create new contact</div>';
+        drop.innerHTML = html;
+        drop.classList.add('open');
+      });
+  }, 180);
+}
+function donAcPick(id, name) {
+  document.getElementById('don-name').value = name;
+  document.getElementById('don-contact-id').value = id;
+  document.getElementById('don-ac-drop').classList.remove('open');
+}
+function donAcCreateNew() {
+  var q = document.getElementById('don-name').value.trim();
+  document.getElementById('don-ac-drop').classList.remove('open');
+  closeDonationModal();
+  // Pre-fill name and open add person panel
+  var parts = q.split(' ');
+  setTimeout(function() {
+    openAddPerson();
+    var fn = document.getElementById('ap-first');
+    var ln = document.getElementById('ap-last');
+    if (fn) fn.value = parts[0] || '';
+    if (ln) ln.value = parts.slice(1).join(' ') || '';
+  }, 100);
+}
+function donAcKey(e) {
+  var drop = document.getElementById('don-ac-drop');
+  var items = drop.querySelectorAll('.don-ac-item,.don-ac-new');
+  if (e.key === 'ArrowDown') { _donAcFocus = Math.min(_donAcFocus + 1, items.length - 1); donAcHighlight(items); e.preventDefault(); }
+  else if (e.key === 'ArrowUp') { _donAcFocus = Math.max(_donAcFocus - 1, 0); donAcHighlight(items); e.preventDefault(); }
+  else if (e.key === 'Enter' && _donAcFocus >= 0) { items[_donAcFocus] && items[_donAcFocus].dispatchEvent(new Event('mousedown')); e.preventDefault(); }
+  else if (e.key === 'Escape') { drop.classList.remove('open'); }
+}
+function donAcHighlight(items) {
+  items.forEach(function(el, i){ el.classList.toggle('focused', i === _donAcFocus); });
+}
+function openExportModal() { document.getElementById('exp-overlay').classList.add('open'); }
+function closeExportModal() { document.getElementById('exp-overlay').classList.remove('open'); }
+function exportAsExcel(e, label) {
+  // CSV downloads as .xlsx-friendly file (Excel opens CSV natively)
+  var a = e.target;
+  a.download = label.toLowerCase().replace(/ /g,'_') + '.csv';
+}
+function exportAsPdf(e, label, csvUrl) {
+  e.preventDefault();
+  fetch(csvUrl).then(function(r){ return r.text(); }).then(function(csv) {
+    var lines = csv.split('\\n').map(function(l){ return l.split(',').map(function(c){ return c.replace(/^"|"$/g,'').replace(/""/g,'"'); }); });
+    var html = '<html><head><title>' + label + '</title><style>body{font-family:Arial,sans-serif;font-size:11px;padding:20px;}h2{color:#09254f;margin-bottom:12px;}table{border-collapse:collapse;width:100%;}th{background:#09254f;color:#fff;padding:6px 8px;text-align:left;font-size:9px;letter-spacing:1px;text-transform:uppercase;}td{padding:5px 8px;border-bottom:1px solid #eee;}tr:nth-child(even) td{background:#f7f9fc;}</style></head><body>';
+    html += '<h2>' + label + ' &mdash; Blaine Moncrief Campaign</h2>';
+    html += '<table><thead><tr>' + lines[0].map(function(h){ return '<th>' + h + '</th>'; }).join('') + '</tr></thead><tbody>';
+    html += lines.slice(1).map(function(r){ return '<tr>' + r.map(function(c){ return '<td>' + c + '</td>'; }).join('') + '</tr>'; }).join('');
+    html += '</tbody></table></body></html>';
+    var w = window.open('','_blank');
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(function(){ w.print(); }, 400);
+  });
+}
+function toggleAnedotPanel() {
+  var panel = document.getElementById('anedot-panel');
+  var label = document.getElementById('anedot-toggle-label');
+  if (!panel) return;
+  var hidden = panel.style.display === 'none';
+  panel.style.display = hidden ? 'block' : 'none';
+  if (label) label.innerHTML = hidden
+    ? 'Real-time donation sync via webhook &#9650;'
+    : 'Real-time donation sync via webhook &#9660;';
+}
+function copyAnedotUrl() {
+  var url = document.getElementById('anedot-wh-url').textContent;
+  navigator.clipboard.writeText(url).then(function() {
+    var btn = document.querySelector('[onclick="copyAnedotUrl()"]');
+    var orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.style.background = 'var(--mint-d)';
+    setTimeout(function(){ btn.textContent = orig; btn.style.background = 'var(--navy)'; }, 1800);
+  });
+}
+function openDonationModal() {
+  var overlay = document.getElementById('don-modal-overlay');
+  overlay.style.display = 'flex';
+  var today = new Date().toISOString().slice(0,10);
+  document.getElementById('don-date').value = today;
+  document.getElementById('don-name').value = '';
+  document.getElementById('don-contact-id').value = '';
+  document.getElementById('don-amount').value = '';
+  document.getElementById('don-source').value = '';
+  document.getElementById('don-tender').value = '';
+  document.getElementById('don-check-num').value = '';
+  document.getElementById('don-check-row').style.display = 'none';
+  document.getElementById('don-save-msg').style.display = 'none';
+  document.getElementById('don-ac-drop').classList.remove('open');
+  document.getElementById('don-name').focus();
+}
+function closeDonationModal() {
+  document.getElementById('don-modal-overlay').style.display = 'none';
+}
+function donTenderChange(val) {
+  var row = document.getElementById('don-check-row');
+  if (row) row.style.display = (val === 'Check') ? 'block' : 'none';
+  if (val !== 'Check') {
+    var cn = document.getElementById('don-check-num');
+    if (cn) cn.value = '';
+  }
+}
+function saveDonation() {
+  var name       = document.getElementById('don-name').value.trim();
+  var contactId  = document.getElementById('don-contact-id').value;
+  var amount     = document.getElementById('don-amount').value.trim();
+  var date       = document.getElementById('don-date').value;
+  var source     = document.getElementById('don-source').value.trim();
+  var tender     = document.getElementById('don-tender').value;
+  var checkNum   = document.getElementById('don-check-num').value.trim();
+  if (!name || !amount) { alert('Please enter a donor name and amount.'); return; }
+  document.getElementById('don-ac-drop').classList.remove('open');
+  fetch('/admin/donation', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      donor_name: name, contact_id: contactId || null,
+      amount: parseFloat(amount), date: date, source: source,
+      tender_type: tender || null, check_number: (tender === 'Check' && checkNum) ? checkNum : null
+    })
+  }).then(function(r){ return r.json(); }).then(function() {
+    document.getElementById('don-save-msg').style.display = 'block';
+    setTimeout(function(){
+      closeDonationModal();
+      if (!document.getElementById('view-donations').classList.contains('view-hidden')) {
+        buildDonationsView();
+      }
+    }, 1200);
+  }).catch(function() {
+    alert('Error saving donation. Please try again.');
+  });
+}
+function exportEvtDrill() {
+  var idx = _evtGroups._current;
+  if (idx === undefined) return;
+  var g = _evtGroups[idx];
+  if (!g || !g.rows.length) return;
+  var header = ['First Name','Last Name','Email','Phone','Parish','Yard Sign','Endorse'];
+  var rows = g.rows.map(function(r) {
+    return [r.first_name||'', r.last_name||'', r.email||'', r.phone||'', r.parish||'', r.yard_sign||'', r.endorse||''].map(function(v){ return '"' + String(v).replace(/"/g,'""') + '"'; }).join(',');
+  });
+  var csv = [header.join(',')].concat(rows).join('\\n');
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = (g.label || 'export').replace(/[^a-z0-9]/gi,'_') + '.csv';
+  a.click();
 }
 
 // ── Pipeline ──────────────────────────────────────────────────────────
@@ -1871,7 +3761,12 @@ function buildPipelineBoard(d) {
     else byStage['new'].push(r);
   });
   board.innerHTML = PIPELINE_STAGES.map(function(s) {
-    var cards = byStage[s.key] || [];
+    var cards = (byStage[s.key] || []).slice().sort(function(a, b) {
+      var la = (a.last_name||'').toLowerCase(), lb = (b.last_name||'').toLowerCase();
+      if (la < lb) return -1; if (la > lb) return 1;
+      var fa = (a.first_name||'').toLowerCase(), fb = (b.first_name||'').toLowerCase();
+      return fa < fb ? -1 : fa > fb ? 1 : 0;
+    });
     var bodyHTML = cards.length
       ? '<div class="pipe-lane-cards">' + cards.map(function(r) {
           var tags = [];
@@ -1883,9 +3778,11 @@ function buildPipelineBoard(d) {
             return '<option value="' + ps.key + '"' + (ps.key === s.key ? ' selected' : '') + '>' + ps.label + '</option>';
           }).join('');
           return '<div class="pipe-card" data-href="/admin/constituent/' + r.id + '">' +
-            '<div class="pipe-card-name">' + x(r.first_name) + ' ' + x(r.last_name) + '</div>' +
-            '<div class="pipe-card-meta">' + x(r.zip||'') + (r.city ? ' &middot; ' + x(r.city) : '') + '</div>' +
-            (tags.length ? '<div class="pipe-card-tags">' + tags.map(function(t){ return '<span class="pipe-card-tag">'+t+'</span>'; }).join('') + '</div>' : '') +
+            '<div class="pipe-card-info">' +
+              '<div class="pipe-card-name">' + x(r.first_name) + ' ' + x(r.last_name) + '</div>' +
+              '<div class="pipe-card-meta">' + x(r.zip||'') + (r.city ? ' &middot; ' + x(r.city) : '') + '</div>' +
+              (tags.length ? '<div class="pipe-card-tags">' + tags.map(function(t){ return '<span class="pipe-card-tag">'+t+'</span>'; }).join('') + '</div>' : '') +
+            '</div>' +
             '<select class="pipe-card-sel" onclick="event.stopPropagation()" onchange="setPipelineStage(' + r.id + ',this.value)">' + stageOpts + '</select>' +
           '</div>';
         }).join('') + '</div>'
@@ -2120,7 +4017,201 @@ function copyWidget() {
 }
 
 ${generateWidget.toString()}
+
+// ── Donation Chart Tooltip ──
+(function(){
+  var DON_DATA = [
+    { name:'Patricia Morreau', date:'May 14', amount:'$150',   source:'Kick-Off Party', cumulative:'$150' },
+    { name:'James Broussard',  date:'May 15', amount:'$1,000', source:'Direct',         cumulative:'$1,150' },
+    { name:'Susan Arceneaux',  date:'May 18', amount:'$100',   source:'Online',         cumulative:'$1,250' },
+    { name:'Claire Fontenot',  date:'May 19', amount:'$500',   source:'Online',         cumulative:'$1,750' },
+    { name:'Marie Thibodaux',  date:'May 20', amount:'$250',   source:'Kick-Off Party', cumulative:'$2,000' },
+  ];
+  var BAR_CX = [100, 210, 320, 430, 540]; // viewBox x centers for each bar
+  var tooltip = document.getElementById('donTooltip');
+  var svgEl   = document.getElementById('donChartSvg');
+  var boxEl   = document.getElementById('donChartBox');
+  if (!tooltip || !svgEl || !boxEl) return;
+  svgEl.querySelectorAll('.don-hit').forEach(function(rect) {
+    rect.addEventListener('mouseenter', function() {
+      var idx = parseInt(this.getAttribute('data-don'));
+      var d = DON_DATA[idx];
+      tooltip.innerHTML =
+        '<strong>' + d.name + '</strong>&nbsp;<span style="color:#78E0C4">' + d.amount + '</span>' +
+        '<br><span style="font-weight:400;font-size:10px;opacity:.8">' + d.source + ' &middot; ' + d.date + ' &middot; total ' + d.cumulative + '</span>';
+      var svgRect = svgEl.getBoundingClientRect();
+      var boxRect = boxEl.getBoundingClientRect();
+      var scale   = svgRect.width / 600;
+      tooltip.style.left = (BAR_CX[idx] * scale + (svgRect.left - boxRect.left)) + 'px';
+      tooltip.style.top  = (svgRect.top - boxRect.top + 4) + 'px';
+      tooltip.classList.add('visible');
+    });
+    rect.addEventListener('mouseleave', function() { tooltip.classList.remove('visible'); });
+  });
+})();
 </script>
+
+<!-- ── Volunteer Modal ── -->
+<div class="exp-overlay" id="vol-overlay" onclick="if(event.target===this)closeVolModal()">
+  <div class="exp-modal" style="max-width:460px;">
+    <button class="modal-close" onclick="closeVolModal()">&#215;</button>
+    <p style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--mint-d);font-weight:700;margin:0 0 6px;">Volunteers</p>
+    <div class="modal-title" id="vol-modal-title" style="margin-bottom:20px;">Add Volunteer</div>
+    <div class="modal-field">
+      <label class="modal-label">Contact</label>
+      <div style="position:relative;">
+        <input id="vol-contact-search" class="modal-input" type="text" placeholder="Search contacts…" oninput="volAcSearch(this.value)" autocomplete="off"/>
+        <input type="hidden" id="vol-contact-id"/>
+        <div class="don-ac-drop" id="vol-ac-drop"></div>
+      </div>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Volunteer Role</label>
+      <input id="vol-role-input" class="modal-input" type="text" placeholder="e.g. Phone Banking, Canvassing, Event Setup"/>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="modal-field">
+        <label class="modal-label">Hours Logged</label>
+        <input id="vol-hours-input" class="modal-input" type="number" value="0" min="0"/>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Status</label>
+        <select id="vol-status-input" class="modal-input">
+          <option value="new">New</option>
+          <option value="active">Active</option>
+          <option value="unscheduled">Unscheduled</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;">
+      <button class="modal-btn" onclick="saveVolunteer()">Save Volunteer</button>
+      <button class="modal-btn secondary" onclick="closeVolModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Endorsement Modal ── -->
+<div class="exp-overlay" id="end-overlay" onclick="if(event.target===this)closeEndModal()">
+  <div class="exp-modal" style="max-width:480px;">
+    <button class="modal-close" onclick="closeEndModal()">&#215;</button>
+    <p style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--mint-d);font-weight:700;margin:0 0 6px;">Endorsements</p>
+    <div class="modal-title" id="end-modal-title" style="margin-bottom:20px;">Add Endorsement</div>
+    <div class="modal-field">
+      <label class="modal-label">Name *</label>
+      <div style="position:relative;">
+        <input id="end-name" class="modal-input" type="text" placeholder="Search contacts or type a new name" autocomplete="off" oninput="endAcSearch(this.value)" style="padding-right:32px;"/>
+        <input type="hidden" id="end-contact-id"/>
+        <span style="position:absolute;right:11px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--dim);pointer-events:none;">&#x2315;</span>
+        <div class="don-ac-drop" id="end-ac-drop"></div>
+      </div>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Organization / Title</label>
+      <input id="end-org" class="modal-input" type="text" placeholder="e.g. Jefferson Bar Association, State Senator"/>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="modal-field">
+        <label class="modal-label">Tier</label>
+        <select id="end-tier" class="modal-input">
+          <option value="bar_assoc">Bar Association</option>
+          <option value="elected">Elected Official</option>
+          <option value="civic">Civic Organization</option>
+          <option value="labor">Labor Organization</option>
+          <option value="individual">Individual</option>
+        </select>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Status</label>
+        <select id="end-status" class="modal-input">
+          <option value="not_contacted">Not Yet Contacted</option>
+          <option value="outreach_sent">Outreach Sent</option>
+          <option value="in_conversation">In Conversation</option>
+          <option value="endorsed">Endorsed</option>
+          <option value="declined">Declined</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Date Endorsed</label>
+      <input id="end-date" class="modal-input" type="date"/>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Notes</label>
+      <input id="end-notes" class="modal-input" type="text" placeholder="Any notes or context"/>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;">
+      <button class="modal-btn" onclick="saveEndorsement()">Save</button>
+      <button class="modal-btn secondary" onclick="closeEndModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Walk List Modal ── -->
+<div class="exp-overlay" id="list-overlay" onclick="if(event.target===this)closeListModal()">
+  <div class="exp-modal" style="max-width:440px;">
+    <button class="modal-close" onclick="closeListModal()">&#215;</button>
+    <p style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--mint-d);font-weight:700;margin:0 0 6px;">Canvassing</p>
+    <div class="modal-title" id="list-modal-title" style="margin-bottom:20px;">New Walk List</div>
+    <div class="modal-field">
+      <label class="modal-label">List Name *</label>
+      <input id="list-name-input" class="modal-input" type="text" placeholder="e.g. Gretna Precinct 4 — Weekend"/>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Area / Precinct / ZIP</label>
+      <input id="list-area-input" class="modal-input" type="text" placeholder="e.g. Gretna P-04, ZIP 70053"/>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Assign To Volunteer</label>
+      <input id="list-assign-input" class="modal-input" type="text" placeholder="Volunteer name (optional)"/>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;">
+      <button class="modal-btn" onclick="saveList()">Save</button>
+      <button class="modal-btn secondary" onclick="closeListModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add Door Modal ── -->
+<div class="exp-overlay" id="door-overlay" onclick="if(event.target===this)closeDoorModal()">
+  <div class="exp-modal" style="max-width:420px;">
+    <button class="modal-close" onclick="closeDoorModal()">&#215;</button>
+    <p style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--mint-d);font-weight:700;margin:0 0 6px;">Walk List</p>
+    <div class="modal-title" style="margin-bottom:20px;">Add Door</div>
+    <div class="modal-field">
+      <label class="modal-label">Address *</label>
+      <input id="door-addr-input" class="modal-input" type="text" placeholder="e.g. 202 Huey P. Long Ave"/>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Voter Name</label>
+      <input id="door-voter-input" class="modal-input" type="text" placeholder="Name on voter roll (optional)"/>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;">
+      <button class="modal-btn" onclick="saveDoor()">Add Door</button>
+      <button class="modal-btn secondary" onclick="closeDoorModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── CSV Import Modal ── -->
+<div class="exp-overlay" id="import-overlay" onclick="if(event.target===this)closeImportModal()">
+  <div class="exp-modal" style="max-width:520px;">
+    <button class="modal-close" onclick="closeImportModal()">&#215;</button>
+    <p style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--mint-d);font-weight:700;margin:0 0 6px;">Bulk Import</p>
+    <div class="modal-title" style="margin-bottom:8px;">Import Doors from CSV</div>
+    <p style="font-size:11px;color:var(--dim);margin-bottom:16px;line-height:1.6;">Paste rows from a voter file below. Each line should be <strong>address, voter name</strong> (voter name is optional). Header row is auto-detected and skipped.</p>
+    <div class="modal-field">
+      <label class="modal-label">CSV Data</label>
+      <textarea id="import-csv-input" class="modal-input" rows="8" style="font-family:monospace;font-size:11px;resize:vertical;" placeholder="1234 Oak St, John Smith&#10;567 Elm Ave, Jane Doe&#10;890 Pine Rd"></textarea>
+    </div>
+    <div id="import-preview" style="font-size:11px;color:var(--dim);margin-top:8px;min-height:16px;"></div>
+    <div style="display:flex;gap:10px;margin-top:16px;">
+      <button class="modal-btn" onclick="runImport()">Import Doors</button>
+      <button class="modal-btn secondary" onclick="closeImportModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 </body></html>`; }
 
 
@@ -2250,7 +4341,9 @@ function constituentHTML(id) {
   .role-pill.active.voter { background: rgba(255,255,255,.13); color: rgba(255,255,255,.85); border-color: rgba(255,255,255,.3); }
   .role-pill.active.committee { background: var(--mint); color: var(--navy); border-color: var(--mint); }
   .role-pill.active.attorney { background: #d4a843; color: #fff; border-color: #d4a843; }
-  .p-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .p-cards { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .p-evt-list { margin-top: 8px; display: flex; flex-direction: column; gap: 5px; }
+  .p-evt-item { font-size: 11px; font-weight: 600; color: var(--navy); background: rgba(120,224,196,.12); border: 1px solid rgba(120,224,196,.25); border-radius: 100px; padding: 3px 10px; display: inline-block; letter-spacing: .3px; }
   .p-card { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 20px 22px; }
   .p-card-lbl { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); font-weight: 700; margin-bottom: 10px; }
   .p-card-num { font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif; font-size: 32px; font-weight: 800; color: var(--navy); line-height: 1; }
@@ -2333,6 +4426,21 @@ function constituentHTML(id) {
   .don-row-amt { font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif; font-size: 18px; font-weight: 800; color: var(--navy); min-width: 70px; }
   .don-row-badge { font-size: 10px; font-weight: 600; padding: 2px 9px; border-radius: 100px; background: rgba(120,224,196,.12); color: var(--navy); border: 1px solid rgba(120,224,196,.2); }
   .don-row-method { font-size: 11px; color: var(--dim); margin-left: auto; }
+  /* Address autocomplete on profile */
+  .ct-suggest {
+    display:none; position:absolute; top:100%; left:0; right:0; z-index:200;
+    background:#fff; border:1px solid var(--border); border-top:none;
+    border-radius:0 0 4px 4px; box-shadow:0 6px 20px rgba(6,15,30,.13);
+    max-height:220px; overflow-y:auto;
+  }
+  .ct-sug-item {
+    padding:9px 12px; font-size:12px; color:var(--text); cursor:pointer;
+    border-bottom:1px solid #f0f2f5; line-height:1.45;
+  }
+  .ct-sug-item:last-child { border-bottom:none; }
+  .ct-sug-item:hover, .ct-sug-item.ct-focused { background:#eaf9f5; color:var(--navy); }
+  .ct-sug-searching { padding:9px 12px; font-size:12px; color:var(--dim); font-style:italic; }
+  @media(max-width:900px) { .p-cards{grid-template-columns:1fr 1fr;} }
   @media(max-width:640px) { .p-cards{grid-template-columns:1fr 1fr;} .ct-grid{grid-template-columns:1fr;} .p-hero{padding:24px 20px; flex-direction:column;} .p-hero-map{width:100%; height:180px;} .page-body{padding:16px 16px 40px;} .edit-checks{grid-template-columns:1fr;} }
 </style>
 </head>
@@ -2343,6 +4451,7 @@ function constituentHTML(id) {
   <div class="hdr-right">
     <button id="hdr-save-btn" onclick="saveEdit()" style="background:var(--mint);color:var(--navy);border:none;padding:8px 20px;border-radius:2px;font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;font-family:'Montserrat',sans-serif;cursor:pointer;transition:background .15s;">Save Changes</button>
     <span id="hdr-save-msg" style="font-size:11px;color:#78E0C4;font-weight:700;display:none;letter-spacing:.5px;">&#10003; Saved</span>
+    <button onclick="deleteConstituent()" style="background:none;color:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.15);padding:7px 16px;border-radius:2px;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;font-family:'Montserrat',sans-serif;cursor:pointer;transition:all .15s;margin-left:4px;" onmouseover="this.style.color='rgba(255,255,255,.8)';this.style.borderColor='rgba(255,255,255,.35)';" onmouseout="this.style.color='rgba(255,255,255,.4)';this.style.borderColor='rgba(255,255,255,.15)';">Delete</button>
     <div class="hdr-divider"></div>
     <span class="hdr-label">Constituent Profile</span>
   </div>
@@ -2352,7 +4461,7 @@ function constituentHTML(id) {
 
 <a href="/admin" class="back-link">
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-  All Constituents
+  All Contacts
 </a>
 
 <div class="p-hero">
@@ -2360,7 +4469,6 @@ function constituentHTML(id) {
     <div class="p-eyebrow">Constituent Profile</div>
     <div class="p-name" id="p-name">Loading&#8230;</div>
     <div id="p-district-badge" style="display:none;margin-top:10px;"></div>
-    <div id="p-event" class="p-event-badge" style="display:none;"></div>
     <div id="p-role"></div>
   </div>
   <div class="p-hero-map" id="p-hero-map" style="display:none;">
@@ -2401,6 +4509,16 @@ function constituentHTML(id) {
     <div class="p-card-lbl">Endorsement</div>
     <div id="p-endorse" style="margin-top:4px;"></div>
   </div>
+  <div class="p-card">
+    <div class="p-card-lbl">Events Attended</div>
+    <div class="p-card-num" id="p-evt-count" style="font-size:26px;font-weight:700;color:var(--navy);">—</div>
+    <div class="p-evt-list" id="p-evt-list"></div>
+  </div>
+</div>
+
+<div class="s-card">
+  <div class="s-label">Campaign Pipeline Stage</div>
+  <div class="pipe-progress" id="pp-track"></div>
 </div>
 
 <div class="s-card">
@@ -2426,10 +4544,11 @@ function constituentHTML(id) {
       <div class="ct-val" id="v-phone"></div>
       <input class="ct-input" id="i-phone" type="tel" placeholder="(504) 555-0000"/>
     </div>
-    <div class="ct-field">
+    <div class="ct-field" style="position:relative;">
       <div class="ct-lbl">Address</div>
       <div class="ct-val" id="v-address"></div>
-      <input class="ct-input" id="i-address" type="text" placeholder="123 Main St"/>
+      <input class="ct-input" id="i-address" type="text" placeholder="123 Main St" autocomplete="off"/>
+      <div class="ct-suggest" id="ct-addr-suggest"></div>
     </div>
     <div class="ct-field">
       <div class="ct-lbl">City</div>
@@ -2473,11 +4592,6 @@ function constituentHTML(id) {
       <label class="edit-check-item"><input type="checkbox" id="eh-inkind"/><span class="edit-check-label">In-Kind Contribution or Venue Space</span></label>
     </div>
   </div>
-</div>
-
-<div class="s-card">
-  <div class="s-label">Campaign Pipeline Stage</div>
-  <div class="pipe-progress" id="pp-track"></div>
 </div>
 
 <div class="s-card">
@@ -2557,7 +4671,23 @@ var ZIP_PARISH = {
 function autoParish(zip) {
   var p = ZIP_PARISH[zip] || "";
   var el = document.getElementById("i-parish");
-  if (el && (!el.value || ZIP_PARISH[zip])) el.value = p;
+  if (el && (!el.value || ZIP_PARISH[zip])) {
+    el.value = p;
+    refreshDistrictBadge(p);
+  }
+}
+function refreshDistrictBadge(parish) {
+  var dbEl = document.getElementById("p-district-badge");
+  if (!dbEl) return;
+  if (parish && parish !== "Jefferson") {
+    dbEl.innerHTML = "<span style='display:inline-block;background:rgba(154,170,187,.18);border:1px solid rgba(154,170,187,.35);color:#9aaabb;font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:4px 12px;border-radius:100px;'>Out of District &mdash; " + xe(parish) + " Parish</span>";
+    dbEl.style.display = "block";
+  } else if (parish === "Jefferson") {
+    dbEl.innerHTML = "<span style='display:inline-block;background:rgba(120,224,196,.15);border:1px solid rgba(120,224,196,.3);color:#78E0C4;font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:4px 12px;border-radius:100px;'>&#10003; Jefferson Parish &mdash; Eligible Voter</span>";
+    dbEl.style.display = "block";
+  } else {
+    dbEl.style.display = "none";
+  }
 }
 
 var PROFILE_PIPELINE = ${PIPELINE_JSON};
@@ -2577,11 +4707,11 @@ function paint(d) {
   document.getElementById("p-name").textContent = (d.first_name||"") + " " + (d.last_name||"");
   document.getElementById("p-date").textContent  = (d.created_at||"").slice(0,10);
   document.getElementById("p-id").textContent    = d.id;
-  if (d.event) {
-    var eb = document.getElementById("p-event");
-    eb.textContent  = d.event;
-    eb.style.display = "inline-block";
-  }
+  // Events Attended card
+  var evts = d._events || (d.event ? [d.event] : []);
+  document.getElementById("p-evt-count").textContent = evts.length || "0";
+  var evtList = document.getElementById("p-evt-list");
+  evtList.innerHTML = evts.map(function(ev){ return '<span class="p-evt-item">' + xe(ev) + '</span>'; }).join('');
   // District eligibility badge
   var dbEl = document.getElementById("p-district-badge");
   if (dbEl) {
@@ -2604,7 +4734,7 @@ function paint(d) {
     "<div class='role-pills'>" +
     "<button class='role-pill voter" + (isVoter ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Voter'>Voter</button>" +
     "<button class='role-pill committee" + (isCommittee ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Committee Member'>Committee Member</button>" +
-    "<button class='role-pill attorney" + (isAttorney ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Attorney'>&#9878; Attorney</button>" +
+    "<button class='role-pill attorney" + (isAttorney ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Attorney'>Attorney</button>" +
     "</div>";
   // Mini address map — single static OSM tile, no map library needed
   var mapDiv    = document.getElementById("p-hero-map");
@@ -2849,6 +4979,107 @@ function cancelEdit() {
   document.getElementById("btn-cancel").style.display = "none";
 }
 
+// ── Profile address autocomplete ──────────────────────────────────────
+(function() {
+  var timer = null, results = [], focusIdx = -1;
+  var STATE_MAP = {
+    'Alabama':'AL','Alaska':'AK','Arizona':'AZ','Arkansas':'AR','California':'CA',
+    'Colorado':'CO','Connecticut':'CT','Delaware':'DE','Florida':'FL','Georgia':'GA',
+    'Hawaii':'HI','Idaho':'ID','Illinois':'IL','Indiana':'IN','Iowa':'IA','Kansas':'KS',
+    'Kentucky':'KY','Louisiana':'LA','Maine':'ME','Maryland':'MD','Massachusetts':'MA',
+    'Michigan':'MI','Minnesota':'MN','Mississippi':'MS','Missouri':'MO','Montana':'MT',
+    'Nebraska':'NE','Nevada':'NV','New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM',
+    'New York':'NY','North Carolina':'NC','North Dakota':'ND','Ohio':'OH','Oklahoma':'OK',
+    'Oregon':'OR','Pennsylvania':'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD',
+    'Tennessee':'TN','Texas':'TX','Utah':'UT','Vermont':'VT','Virginia':'VA','Washington':'WA',
+    'West Virginia':'WV','Wisconsin':'WI','Wyoming':'WY'
+  };
+  function getSuggest() { return document.getElementById('ct-addr-suggest'); }
+  function closeSuggest() { var s=getSuggest(); if(s) s.style.display='none'; focusIdx=-1; }
+  function showSuggest(items) {
+    var s = getSuggest(); if (!s) return;
+    if (!items.length) { closeSuggest(); return; }
+    results = items; focusIdx = -1;
+    s.innerHTML = items.map(function(r,i) {
+      var parts = r.display_name.split(',');
+      var addr  = r.address || {};
+      var main  = ((addr.house_number ? addr.house_number+' ' : '')+(addr.road||'')).trim() || parts.slice(0,2).join(' ').trim();
+      var sub   = parts.slice(2,4).join(',').trim();
+      return '<div class="ct-sug-item" data-idx="'+i+'">' +
+        '<div style="font-weight:600;color:var(--navy);">'+main+'</div>' +
+        (sub ? '<div style="font-size:11px;color:var(--dim);margin-top:2px;">'+sub+'</div>' : '') +
+      '</div>';
+    }).join('');
+    s.style.display = 'block';
+    s.querySelectorAll('.ct-sug-item').forEach(function(el) {
+      el.addEventListener('mousedown', function(e) { e.preventDefault(); selectResult(parseInt(el.getAttribute('data-idx'))); });
+    });
+  }
+  function selectResult(idx) {
+    var r = results[idx]; if (!r || !r.address) return;
+    var a = r.address;
+    var st   = ((a.house_number ? a.house_number+' ' : '')+(a.road||'')).trim();
+    var ci   = a.city||a.town||a.village||a.municipality||a.hamlet||'';
+    var abbr = STATE_MAP[a.state] || (a.state ? a.state.slice(0,2).toUpperCase() : 'LA');
+    var zp   = (a.postcode||'').slice(0,5);
+    var geocParish = (a.county||'').replace(/ Parish$/i,'').replace(/ County$/i,'');
+    if (st) document.getElementById('i-address').value = st;
+    if (ci) document.getElementById('i-city').value    = ci;
+    document.getElementById('i-state').value           = abbr;
+    if (zp) document.getElementById('i-zip').value     = zp;
+    // ZIP_PARISH lookup takes priority; fall back to geocoder county
+    var derivedParish = (zp && ZIP_PARISH[zp]) ? ZIP_PARISH[zp] : geocParish;
+    if (derivedParish) {
+      document.getElementById('i-parish').value = derivedParish;
+      refreshDistrictBadge(derivedParish);
+    }
+    closeSuggest();
+    document.getElementById('i-city').focus();
+  }
+  function doSearch(q) {
+    var s = getSuggest(); if (!s) return;
+    s.innerHTML = '<div class="ct-sug-searching">Searching…</div>';
+    s.style.display = 'block';
+    fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=us&q='+encodeURIComponent(q), { headers:{'Accept-Language':'en'} })
+      .then(function(r){ return r.json(); })
+      .then(function(data){ showSuggest(data||[]); })
+      .catch(function(){ closeSuggest(); });
+  }
+  var inp = document.getElementById('i-address'); if (!inp) return;
+  inp.addEventListener('input', function() {
+    clearTimeout(timer);
+    var q = this.value.trim();
+    if (q.length < 5) { closeSuggest(); return; }
+    timer = setTimeout(function(){ doSearch(q); }, 450);
+  });
+  inp.addEventListener('keydown', function(e) {
+    var s = getSuggest();
+    if (!s || s.style.display==='none') return;
+    var items = s.querySelectorAll('.ct-sug-item');
+    if (e.key==='ArrowDown')      { e.preventDefault(); focusIdx=Math.min(focusIdx+1,items.length-1); }
+    else if (e.key==='ArrowUp')   { e.preventDefault(); focusIdx=Math.max(focusIdx-1,0); }
+    else if (e.key==='Enter' && focusIdx>=0) { e.preventDefault(); selectResult(focusIdx); return; }
+    else if (e.key==='Escape')    { closeSuggest(); return; }
+    items.forEach(function(el,i){ el.classList.toggle('ct-focused', i===focusIdx); });
+  });
+  inp.addEventListener('blur', function(){ setTimeout(closeSuggest, 150); });
+})();
+
+function deleteConstituent() {
+  var name = rec ? (rec.first_name + ' ' + rec.last_name).trim() : 'this person';
+  if (!window.confirm('Permanently delete ' + name + '? This cannot be undone.')) return;
+  fetch('/admin/constituent/' + CID, { method: 'DELETE' })
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if (res.result === 'success') {
+        window.location.href = '/admin';
+      } else {
+        alert('Delete failed — please try again.');
+      }
+    })
+    .catch(function(){ alert('Network error — please try again.'); });
+}
+
 function saveEdit() {
   var helpKeys = [
     {id:"eh-location", label:"Provide Sign Location"},
@@ -2877,7 +5108,8 @@ function saveEdit() {
     yard_sign:   document.getElementById("eh-yardsign").checked ? "Yes" : "No",
     how_to_help: howToHelp,
     endorse:     rec ? rec.endorse : "No",
-    comment:     document.getElementById("i-comment").value.trim()
+    comment:     document.getElementById("i-comment").value.trim(),
+    role:        rec ? (rec.role || '') : ''
   };
   var hdrBtn = document.getElementById("hdr-save-btn");
   var hdrMsg = document.getElementById("hdr-save-msg");
@@ -2903,6 +5135,7 @@ function saveEdit() {
     if (inlineBtn) { inlineBtn.disabled = false; inlineBtn.textContent = "Save Changes"; }
   });
 }
+
 </script>
 </body></html>`; }
 

@@ -67,6 +67,19 @@ db.exec(`CREATE TABLE IF NOT EXISTS endorsements (
 )`);
 try { db.exec(`ALTER TABLE endorsements ADD COLUMN contact_id INTEGER`); } catch(e) {}
 
+// ── Events table ──────────────────────────────────────────────────────
+db.exec(`CREATE TABLE IF NOT EXISTS events (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  title       TEXT NOT NULL,
+  date        TEXT,
+  time        TEXT,
+  location    TEXT,
+  description TEXT,
+  capacity    INTEGER,
+  status      TEXT DEFAULT 'active',
+  created_at  TEXT DEFAULT (datetime('now','localtime'))
+)`);
+
 // ── Walk lists & doors tables ─────────────────────────────────────────
 db.exec(`CREATE TABLE IF NOT EXISTS walk_lists (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -412,6 +425,54 @@ app.get('/candidate/contact-donations/:id', auth('candidate'), (req, res) => {
     const rows = db.prepare('SELECT * FROM donations WHERE contact_id=? ORDER BY date DESC').all(req.params.id);
     res.json(rows);
   } catch(e) { res.json([]); }
+});
+
+// ── Public events API ─────────────────────────────────────────────────
+app.get('/api/events', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  try {
+    const rows = db.prepare("SELECT * FROM events WHERE status='active' ORDER BY date ASC").all();
+    res.json(rows);
+  } catch(e) { res.json([]); }
+});
+
+// ── Admin events API ──────────────────────────────────────────────────
+app.get('/admin/events-list', auth('admin'), (req, res) => {
+  try {
+    const rows = db.prepare(`
+      SELECT e.*, COUNT(r.id) as reg_count
+      FROM events e
+      LEFT JOIN rsvps r ON LOWER(r.event)=LOWER(e.title)
+      GROUP BY e.id
+      ORDER BY e.date DESC
+    `).all();
+    res.json(rows);
+  } catch(e) { res.status(500).json({ result: 'error', error: e.message }); }
+});
+
+app.post('/admin/event', auth('admin'), (req, res) => {
+  const { title, date, time, location, description, capacity } = req.body;
+  try {
+    const r = db.prepare(`INSERT INTO events (title, date, time, location, description, capacity) VALUES (?,?,?,?,?,?)`)
+      .run(title||'', date||'', time||'', location||'', description||'', capacity||null);
+    res.json({ result: 'ok', id: r.lastInsertRowid });
+  } catch(e) { res.status(500).json({ result: 'error', error: e.message }); }
+});
+
+app.patch('/admin/event/:id', auth('admin'), (req, res) => {
+  const { title, date, time, location, description, capacity, status } = req.body;
+  try {
+    db.prepare(`UPDATE events SET title=?, date=?, time=?, location=?, description=?, capacity=?, status=? WHERE id=?`)
+      .run(title||'', date||'', time||'', location||'', description||'', capacity||null, status||'active', req.params.id);
+    res.json({ result: 'ok' });
+  } catch(e) { res.status(500).json({ result: 'error', error: e.message }); }
+});
+
+app.delete('/admin/event/:id', auth('admin'), (req, res) => {
+  try {
+    db.prepare('DELETE FROM events WHERE id=?').run(req.params.id);
+    res.json({ result: 'ok' });
+  } catch(e) { res.status(500).json({ result: 'error', error: e.message }); }
 });
 
 // ── Public widget API: committee members ─────────────────────────────
@@ -977,7 +1038,7 @@ const BASE_CSS = `
 // ════════════════════════════════════════════════════════════════════════
 function generateWidget(label, displayDate, time, location) {
   var BM_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxBW4GzNFR9rb3kmqYjS93wxw43XH2q4c-kb-gqQBAuqQCIEgJHggtyNWp1Kvouured/exec';
-  var BM_CRM_URL = 'http://localhost:3002';
+  var BM_CRM_URL = window.BM_CRM_BASE_URL || 'http://localhost:3002';
   var safeLabel = label || 'New Event';
   var safeDate  = displayDate || '';
   var safeTime  = time || '';
@@ -1831,7 +1892,7 @@ function adminHTML() { return `<!DOCTYPE html>
     <div class="left-nav-section-lbl">Actions</div>
     <button class="left-nav-add-btn" onclick="openAddPerson()">&#xff0b; New Contact</button>
     <button class="left-nav-add-btn left-nav-add-btn-blue" onclick="openDonationModal()">&#xff0b; New Donation</button>
-    <button class="left-nav-add-btn" style="background:#0E356C !important;color:#fff !important;margin-top:4px !important;" onmouseover="this.style.background=\\'#1a4a8a\\'" onmouseout="this.style.background=\\'#0E356C\\'" onclick="openModal()">&#xff0b; New Event</button>
+    <button class="left-nav-add-btn" style="background:#0E356C !important;color:#fff !important;margin-top:4px !important;" onmouseover="this.style.background=\\'#1a4a8a\\'" onmouseout="this.style.background=\\'#0E356C\\'" onclick="openNewEventModal()">&#xff0b; New Event</button>
     <button class="left-nav-item" onclick="openExportModal()" style="width:100%;text-align:left;">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Exports
@@ -1999,12 +2060,22 @@ function adminHTML() { return `<!DOCTYPE html>
 
 <!-- ══════════════ EVENT REGISTRATIONS VIEW ══════════════ -->
 <div class="view view-hidden" id="view-events">
-  <div style="padding:28px 32px 0;">
-    <div style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:6px;">Campaign Events</div>
-    <div style="font-family:'Playfair Display',Georgia,serif;font-size:24px;color:var(--navy);font-weight:700;margin-bottom:24px;" id="evt-view-title">Event Registrations</div>
-    <div id="evt-cards-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:32px;">
+
+  <!-- Header -->
+  <div class="feat-page-hdr">
+    <div class="feat-page-eyebrow">Campaign Events</div>
+    <div class="feat-page-title">Events</div>
+    <button class="feat-page-btn" onclick="openNewEventModal()">&#xff0b; New Event</button>
+  </div>
+
+  <!-- Event management cards -->
+  <div style="padding:24px 32px 0;">
+    <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:14px;">Manage Events</div>
+    <div id="evt-mgmt-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-bottom:32px;">
       <span style="font-size:13px;color:var(--dim);font-style:italic;">Loading&hellip;</span>
     </div>
+
+    <!-- Registration table -->
     <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:12px;">All Registrations</div>
     <div id="evt-reg-table-wrap" class="don-table-wrap" style="margin-bottom:40px;">
       <table>
@@ -2015,7 +2086,62 @@ function adminHTML() { return `<!DOCTYPE html>
       </table>
     </div>
   </div>
+
 </div><!-- /view-events -->
+
+<!-- ── Event CRUD Modal ── -->
+<div class="modal-overlay" id="evt-modal-overlay" onclick="if(event.target===this)closeEventModal()">
+  <div class="modal" style="max-width:560px;">
+    <button class="modal-close" onclick="closeEventModal()">&#215;</button>
+    <div class="modal-title" id="evt-modal-title">New Event</div>
+
+    <input type="hidden" id="evt-edit-id"/>
+
+    <div class="modal-field">
+      <label class="modal-label" for="evt-f-title">Event Title <span style="color:#c0392b">*</span></label>
+      <input class="modal-input" id="evt-f-title" type="text" placeholder="Meet &amp; Greet — Old Metairie"/>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div class="modal-field">
+        <label class="modal-label" for="evt-f-date">Date</label>
+        <input class="modal-input" id="evt-f-date" type="date"/>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label" for="evt-f-time">Time</label>
+        <input class="modal-input" id="evt-f-time" type="text" placeholder="6:00 PM"/>
+      </div>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label" for="evt-f-location">Location</label>
+      <input class="modal-input" id="evt-f-location" type="text" placeholder="The Ridgeway, Old Metairie"/>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label" for="evt-f-desc">Description</label>
+      <textarea class="modal-input" id="evt-f-desc" rows="3" style="resize:vertical;" placeholder="Optional details about this event…"></textarea>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label" for="evt-f-capacity">Capacity (optional)</label>
+      <input class="modal-input" id="evt-f-capacity" type="number" min="1" placeholder="Leave blank for unlimited"/>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:8px;">
+      <button class="modal-btn" onclick="saveEvent()">Save Event</button>
+      <button class="modal-btn secondary" onclick="closeEventModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Embed Code Modal ── -->
+<div class="modal-overlay" id="evt-embed-overlay" onclick="if(event.target===this)closeEmbedModal()">
+  <div class="modal" style="max-width:640px;">
+    <button class="modal-close" onclick="closeEmbedModal()">&#215;</button>
+    <div class="modal-title">Embed Widget Code</div>
+    <div id="evt-embed-label" style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px;"></div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Paste this into your Duda widget HTML block.</div>
+    <textarea class="modal-code" id="evt-embed-code" readonly style="height:220px;"></textarea>
+    <button class="modal-copy" onclick="copyEmbedCode()">Copy Code</button>
+  </div>
+</div>
 
 <!-- ═══════════ DONATIONS VIEW ═══════════ -->
 <div class="view view-hidden" id="view-donations">
@@ -2501,6 +2627,7 @@ function adminHTML() { return `<!DOCTYPE html>
 </div>
 
 <script>
+var BM_CRM_BASE_URL = '${process.env.PUBLIC_URL || "http://localhost:3002"}';
 var all = [];
 var activeEvent    = null;
 var activeDistrict = 'voters'; // 'voters' | 'ood' | 'all'
@@ -3461,45 +3588,39 @@ function renderCompliance(donCount) {
 // ── Event Registrations View ──────────────────────────────────────────
 function buildEventsView(d) {
   _evtGroups = []; // reset drill groups each rebuild
-  // Group by event name
-  var evtMap = {};
-  d.forEach(function(r) {
-    var ev = r.event || '(No Event)';
-    if (!evtMap[ev]) evtMap[ev] = [];
-    evtMap[ev].push(r);
-  });
-  var events = Object.keys(evtMap).sort();
 
-  // Update title with count
-  var titleEl = document.getElementById('evt-view-title');
-  if (titleEl) titleEl.textContent = 'Event Registrations (' + events.length + ' event' + (events.length !== 1 ? 's' : '') + ')';
-
-  // Build event cards
-  var grid = document.getElementById('evt-cards-grid');
-  if (grid) {
-    if (!events.length) {
-      grid.innerHTML = '<span style="font-size:13px;color:var(--dim);font-style:italic;">No event data yet.</span>';
-    } else {
-      grid.innerHTML = events.map(function(ev) {
-        var rows = evtMap[ev];
-        var voterRows = rows.filter(isVoter);
-        var signRows  = rows.filter(function(r){ return r.yard_sign === 'Yes'; });
-        var guests = rows.reduce(function(s, r){ return s + (parseInt(r.guests) || 1); }, 0);
-        var date   = rows.reduce(function(latest, r){ return (r.created_at||'') > latest ? (r.created_at||'') : latest; }, '');
-        var dateStr = date ? date.slice(0, 10) : '';
-        return '<div class="snap-card" style="cursor:default;">' +
-          '<div class="snap-card-title" style="font-size:13px;font-weight:800;color:var(--navy);margin-bottom:12px;">' + x(ev) + '</div>' +
-          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
-            statMini(rows.length, 'Registrants', rows) +
-            statMini(guests, 'Total Guests', rows) +
-            statMini(voterRows.length, 'Jefferson Parish', voterRows) +
-            statMini(signRows.length, 'Yard Signs', signRows) +
-          '</div>' +
-          (dateStr ? '<div style="font-size:10px;color:var(--dim);margin-top:10px;letter-spacing:.5px;">Latest reg: ' + dateStr + '</div>' : '') +
-        '</div>';
-      }).join('');
-    }
-  }
+  // Load managed events from /admin/events-list and render management cards
+  fetch('/admin/events-list')
+    .then(function(r){ return r.json(); })
+    .then(function(evts) {
+      var grid = document.getElementById('evt-mgmt-grid');
+      if (!grid) return;
+      if (!evts || !evts.length) {
+        grid.innerHTML = '<div style="grid-column:1/-1;font-size:13px;color:var(--dim);font-style:italic;">No events yet. Click “+ New Event” to add one.</div>';
+      } else {
+        grid.innerHTML = evts.map(function(ev) {
+          var dateStr = ev.date ? ev.date : '';
+          var regBadge = '<span style="display:inline-block;background:rgba(95,212,176,0.15);color:#2e9e7e;font-size:10px;font-weight:700;padding:2px 9px;border-radius:100px;letter-spacing:.5px;">' + (ev.reg_count || 0) + ' registered</span>';
+          var metaParts = [];
+          if (dateStr) metaParts.push(dateStr);
+          if (ev.time) metaParts.push(ev.time);
+          if (ev.location) metaParts.push(ev.location);
+          return '<div class="snap-card" style="display:flex;flex-direction:column;gap:10px;">' +
+            '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">' +
+              '<div style="font-size:13px;font-weight:800;color:var(--navy);line-height:1.3;">' + x(ev.title) + '</div>' +
+              regBadge +
+            '</div>' +
+            (metaParts.length ? '<div style="font-size:11px;color:var(--muted);">' + x(metaParts.join(' · ')) + '</div>' : '') +
+            '<div style="display:flex;gap:8px;margin-top:4px;">' +
+              '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;" data-evtid="' + ev.id + '" onclick="openEditEventModal(this.dataset.evtid)">Edit</button>' +
+              '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;" data-title="' + x(ev.title) + '" data-date="' + x(ev.date||'') + '" data-time="' + x(ev.time||'') + '" data-loc="' + x(ev.location||'') + '" onclick="showEmbedCode(this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc)">Embed Code</button>' +
+              '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;color:#9a3412;border-color:#fca5a5;" data-evtid="' + ev.id + '" data-title="' + x(ev.title) + '" onclick="deleteEvent(this.dataset.evtid,this.dataset.title)">Delete</button>' +
+            '</div>' +
+          '</div>';
+        }).join('');
+      }
+    })
+    .catch(function(){ });
 
   // Build registration table (most recent first)
   var sorted = d.slice().sort(function(a, b) { return (b.created_at||'') < (a.created_at||'') ? -1 : 1; });
@@ -3519,6 +3640,109 @@ function buildEventsView(d) {
       '</tr>';
     }).join('');
   }
+}
+
+// ── Event Management Functions ─────────────────────────────────────────
+function openNewEventModal() {
+  document.getElementById('evt-modal-title').textContent = 'New Event';
+  document.getElementById('evt-edit-id').value = '';
+  document.getElementById('evt-f-title').value = '';
+  document.getElementById('evt-f-date').value = '';
+  document.getElementById('evt-f-time').value = '';
+  document.getElementById('evt-f-location').value = '';
+  document.getElementById('evt-f-desc').value = '';
+  document.getElementById('evt-f-capacity').value = '';
+  document.getElementById('evt-modal-overlay').classList.add('open');
+  setTimeout(function(){ document.getElementById('evt-f-title').focus(); }, 80);
+}
+
+function openEditEventModal(id) {
+  fetch('/admin/events-list')
+    .then(function(r){ return r.json(); })
+    .then(function(evts) {
+      var ev = evts.find(function(e){ return String(e.id) === String(id); });
+      if (!ev) return;
+      document.getElementById('evt-modal-title').textContent = 'Edit Event';
+      document.getElementById('evt-edit-id').value = ev.id;
+      document.getElementById('evt-f-title').value = ev.title || '';
+      document.getElementById('evt-f-date').value = ev.date || '';
+      document.getElementById('evt-f-time').value = ev.time || '';
+      document.getElementById('evt-f-location').value = ev.location || '';
+      document.getElementById('evt-f-desc').value = ev.description || '';
+      document.getElementById('evt-f-capacity').value = ev.capacity || '';
+      document.getElementById('evt-modal-overlay').classList.add('open');
+    });
+}
+
+function closeEventModal() {
+  document.getElementById('evt-modal-overlay').classList.remove('open');
+}
+
+function saveEvent() {
+  var id       = document.getElementById('evt-edit-id').value;
+  var title    = document.getElementById('evt-f-title').value.trim();
+  var date     = document.getElementById('evt-f-date').value;
+  var time     = document.getElementById('evt-f-time').value.trim();
+  var location = document.getElementById('evt-f-location').value.trim();
+  var desc     = document.getElementById('evt-f-desc').value.trim();
+  var capacity = document.getElementById('evt-f-capacity').value;
+
+  if (!title) { alert('Event title is required.'); return; }
+
+  var method = id ? 'PATCH' : 'POST';
+  var url    = id ? '/admin/event/' + id : '/admin/event';
+
+  fetch(url, {
+    method: method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: title, date: date, time: time, location: location, description: desc, capacity: capacity ? parseInt(capacity) : null })
+  })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if (data.result === 'ok') {
+        closeEventModal();
+        buildEventsView(all);
+      } else {
+        alert('Error saving event. Please try again.');
+      }
+    })
+    .catch(function(){ alert('Network error. Please try again.'); });
+}
+
+function deleteEvent(id, title) {
+  if (!confirm('Delete event "' + title + '"? This cannot be undone.')) return;
+  fetch('/admin/event/' + id, { method: 'DELETE' })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if (data.result === 'ok') {
+        buildEventsView(all);
+      } else {
+        alert('Error deleting event.');
+      }
+    })
+    .catch(function(){ alert('Network error.'); });
+}
+
+function showEmbedCode(title, date, time, location) {
+  var labelEl = document.getElementById('evt-embed-label');
+  var codeEl  = document.getElementById('evt-embed-code');
+  if (labelEl) labelEl.textContent = title + (date ? '  —  ' + date : '');
+  if (codeEl)  codeEl.value = generateWidget(title, date, time, location);
+  document.getElementById('evt-embed-overlay').classList.add('open');
+}
+
+function closeEmbedModal() {
+  document.getElementById('evt-embed-overlay').classList.remove('open');
+}
+
+function copyEmbedCode() {
+  var code = document.getElementById('evt-embed-code').value;
+  navigator.clipboard.writeText(code).then(function(){
+    var btn = document.querySelector('#evt-embed-overlay .modal-copy');
+    var orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(function(){ btn.textContent = orig; }, 1800);
+  });
 }
 var _evtGroups = [];
 function statMini(val, lbl, rows) {

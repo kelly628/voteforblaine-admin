@@ -80,7 +80,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS events (
   created_at  TEXT DEFAULT (datetime('now','localtime'))
 )`);
 
-try { db.exec(`ALTER TABLE events ADD COLUMN fields TEXT`); } catch(e) {}
+try { db.exec(`ALTER TABLE events ADD COLUMN fields TEXT`);    } catch(e) {}
+try { db.exec(`ALTER TABLE events ADD COLUMN end_time TEXT`);  } catch(e) {}
 
 // ── Walk lists & doors tables ─────────────────────────────────────────
 db.exec(`CREATE TABLE IF NOT EXISTS walk_lists (
@@ -453,19 +454,19 @@ app.get('/admin/events-list', auth('admin'), (req, res) => {
 });
 
 app.post('/admin/event', auth('admin'), (req, res) => {
-  const { title, date, time, location, description, capacity, fields } = req.body;
+  const { title, date, time, end_time, location, description, capacity, fields } = req.body;
   try {
-    const r = db.prepare(`INSERT INTO events (title, date, time, location, description, capacity, fields) VALUES (?,?,?,?,?,?,?)`)
-      .run(title||'', date||'', time||'', location||'', description||'', capacity||null, fields ? JSON.stringify(fields) : null);
+    const r = db.prepare(`INSERT INTO events (title, date, time, end_time, location, description, capacity, fields) VALUES (?,?,?,?,?,?,?,?)`)
+      .run(title||'', date||'', time||'', end_time||'', location||'', description||'', capacity||null, fields ? JSON.stringify(fields) : null);
     res.json({ result: 'ok', id: r.lastInsertRowid });
   } catch(e) { res.status(500).json({ result: 'error', error: e.message }); }
 });
 
 app.patch('/admin/event/:id', auth('admin'), (req, res) => {
-  const { title, date, time, location, description, capacity, status, fields } = req.body;
+  const { title, date, time, end_time, location, description, capacity, status, fields } = req.body;
   try {
-    db.prepare(`UPDATE events SET title=?, date=?, time=?, location=?, description=?, capacity=?, status=?, fields=? WHERE id=?`)
-      .run(title||'', date||'', time||'', location||'', description||'', capacity||null, status||'active',
+    db.prepare(`UPDATE events SET title=?, date=?, time=?, end_time=?, location=?, description=?, capacity=?, status=?, fields=? WHERE id=?`)
+      .run(title||'', date||'', time||'', end_time||'', location||'', description||'', capacity||null, status||'active',
           fields ? JSON.stringify(fields) : null, req.params.id);
     res.json({ result: 'ok' });
   } catch(e) { res.status(500).json({ result: 'error', error: e.message }); }
@@ -1039,12 +1040,12 @@ const BASE_CSS = `
 // ════════════════════════════════════════════════════════════════════════
 //  WIDGET GENERATOR — defined here so .toString() preserves escape seqs
 // ════════════════════════════════════════════════════════════════════════
-function generateWidget(label, displayDate, time, location, fields) {
+function generateWidget(label, displayDate, time, location, fields, endTime) {
   var BM_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxBW4GzNFR9rb3kmqYjS93wxw43XH2q4c-kb-gqQBAuqQCIEgJHggtyNWp1Kvouured/exec';
   var BM_CRM_URL = window.BM_CRM_BASE_URL || 'http://localhost:3002';
   var safeLabel = label || 'New Event';
   var safeDate  = displayDate || '';
-  var safeTime  = time || '';
+  var safeTime  = time ? (endTime ? time + ' – ' + endTime : time) : '';
   var safeLoc   = location || '';
   var eyebrow   = 'Join Us';
   var heading   = safeLabel;
@@ -2087,8 +2088,12 @@ function adminHTML() { return `<!DOCTYPE html>
         <input class="modal-input" id="evt-f-date" type="date"/>
       </div>
       <div class="modal-field">
-        <label class="modal-label" for="evt-f-time">Time</label>
+        <label class="modal-label" for="evt-f-time">Start Time</label>
         <input class="modal-input" id="evt-f-time" type="text" placeholder="6:00 PM"/>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label" for="evt-f-end-time">End Time</label>
+        <input class="modal-input" id="evt-f-end-time" type="text" placeholder="8:00 PM"/>
       </div>
     </div>
     <div class="modal-field">
@@ -3633,7 +3638,7 @@ function buildEventsView(d) {
             (metaParts.length ? '<div style="font-size:11px;color:var(--muted);">' + x(metaParts.join(' · ')) + '</div>' : '') +
             '<div style="display:flex;gap:8px;margin-top:4px;">' +
               '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;" data-evtid="' + ev.id + '" onclick="openEditEventModal(this.dataset.evtid)">Edit</button>' +
-              '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;" data-title="' + x(ev.title) + '" data-date="' + x(ev.date||'') + '" data-time="' + x(ev.time||'') + '" data-loc="' + x(ev.location||'') + '" data-fields="' + x(ev.fields||'{}') + '" onclick="var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f)">Embed Code</button>' +
+              '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;" data-title="' + x(ev.title) + '" data-date="' + x(ev.date||'') + '" data-time="' + x(ev.time||'') + '" data-loc="' + x(ev.location||'') + '" data-fields="' + x(ev.fields||'{}') + '" data-endtime="' + x(ev.end_time||'') + '" onclick="var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f,this.dataset.endtime)">Embed Code</button>' +
               '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;color:#9a3412;border-color:#fca5a5;" data-evtid="' + ev.id + '" data-title="' + x(ev.title) + '" onclick="deleteEvent(this.dataset.evtid,this.dataset.title)">Delete</button>' +
             '</div>' +
           '</div>';
@@ -3688,6 +3693,7 @@ function openNewEventModal() {
   document.getElementById('evt-f-title').value = '';
   document.getElementById('evt-f-date').value = '';
   document.getElementById('evt-f-time').value = '';
+  document.getElementById('evt-f-end-time').value = '';
   document.getElementById('evt-f-location').value = '';
   document.getElementById('evt-f-desc').value = '';
   document.getElementById('evt-f-capacity').value = '';
@@ -3707,6 +3713,7 @@ function openEditEventModal(id) {
       document.getElementById('evt-f-title').value = ev.title || '';
       document.getElementById('evt-f-date').value = ev.date || '';
       document.getElementById('evt-f-time').value = ev.time || '';
+      document.getElementById('evt-f-end-time').value = ev.end_time || '';
       document.getElementById('evt-f-location').value = ev.location || '';
       document.getElementById('evt-f-desc').value = ev.description || '';
       document.getElementById('evt-f-capacity').value = ev.capacity || '';
@@ -3726,6 +3733,7 @@ function saveEvent() {
   var title    = document.getElementById('evt-f-title').value.trim();
   var date     = document.getElementById('evt-f-date').value;
   var time     = document.getElementById('evt-f-time').value.trim();
+  var endTime  = document.getElementById('evt-f-end-time').value.trim();
   var location = document.getElementById('evt-f-location').value.trim();
   var desc     = document.getElementById('evt-f-desc').value.trim();
   var capacity = document.getElementById('evt-f-capacity').value;
@@ -3739,7 +3747,7 @@ function saveEvent() {
   fetch(url, {
     method: method,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: title, date: date, time: time, location: location, description: desc, capacity: capacity ? parseInt(capacity) : null, fields: fields })
+    body: JSON.stringify({ title: title, date: date, time: time, end_time: endTime, location: location, description: desc, capacity: capacity ? parseInt(capacity) : null, fields: fields })
   })
     .then(function(r){ return r.json(); })
     .then(function(data) {
@@ -3767,11 +3775,11 @@ function deleteEvent(id, title) {
     .catch(function(){ alert('Network error.'); });
 }
 
-function showEmbedCode(title, date, time, location, fields) {
+function showEmbedCode(title, date, time, location, fields, endTime) {
   var labelEl = document.getElementById('evt-embed-label');
   var codeEl  = document.getElementById('evt-embed-code');
   if (labelEl) labelEl.textContent = title + (date ? '  —  ' + date : '');
-  if (codeEl)  codeEl.value = generateWidget(title, date, time, location, fields);
+  if (codeEl)  codeEl.value = generateWidget(title, date, time, location, fields, endTime);
   document.getElementById('evt-embed-overlay').classList.add('open');
 }
 

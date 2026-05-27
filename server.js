@@ -1874,7 +1874,9 @@ function adminHTML() { return `<!DOCTYPE html>
 <div class="donation-section" id="donation-section">
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
     <span class="donation-hdr-title">Donations</span>
-    <span class="donation-preview-badge">Preview &mdash; Anedot not yet connected</span>
+    ${process.env.ANEDOT_WEBHOOK_SECRET
+      ? '<span class="donation-preview-badge" style="background:#d1fae5;color:#065f46;border-color:#6ee7b7;">&#10003; Anedot Connected</span>'
+      : '<span class="donation-preview-badge">Preview &mdash; Anedot not yet connected</span>'}
   </div>
 
   <!-- Goal Progress Strip -->
@@ -4606,7 +4608,9 @@ function constituentHTML(id) {
 <div class="s-card" id="don-hist-card">
   <div class="s-label">
     Donation History
-    <span class="don-hist-preview">Preview — Anedot not yet connected</span>
+    ${process.env.ANEDOT_WEBHOOK_SECRET
+      ? '<span class="don-hist-preview" style="background:#d1fae5;color:#065f46;border-color:#6ee7b7;">&#10003; Anedot Connected</span>'
+      : '<span class="don-hist-preview">Preview &mdash; Anedot not yet connected</span>'}
   </div>
   <div class="don-hist-summary">
     <div class="don-hist"><div class="don-hist-num accent" id="dh-total">—</div><div class="don-hist-lbl">Total Given</div></div>

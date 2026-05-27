@@ -400,6 +400,20 @@ app.get('/candidate/data', auth('candidate'), (req, res) => {
   res.json(rows);
 });
 
+app.get('/candidate/donations', auth('candidate'), (req, res) => {
+  try {
+    const rows = db.prepare('SELECT * FROM donations ORDER BY date DESC').all();
+    res.json(rows);
+  } catch(e) { res.json([]); }
+});
+
+app.get('/candidate/contact-donations/:id', auth('candidate'), (req, res) => {
+  try {
+    const rows = db.prepare('SELECT * FROM donations WHERE contact_id=? ORDER BY date DESC').all(req.params.id);
+    res.json(rows);
+  } catch(e) { res.json([]); }
+});
+
 // ── Public widget API: committee members ─────────────────────────────
 // Used by the Duda embeddable widget at voteforblaine.com
 app.get('/api/committee', (req, res) => {
@@ -4022,13 +4036,7 @@ ${generateWidget.toString()}
 
 // ── Donation Chart Tooltip ──
 (function(){
-  var DON_DATA = [
-    { name:'Patricia Morreau', date:'May 14', amount:'$150',   source:'Kick-Off Party', cumulative:'$150' },
-    { name:'James Broussard',  date:'May 15', amount:'$1,000', source:'Direct',         cumulative:'$1,150' },
-    { name:'Susan Arceneaux',  date:'May 18', amount:'$100',   source:'Online',         cumulative:'$1,250' },
-    { name:'Claire Fontenot',  date:'May 19', amount:'$500',   source:'Online',         cumulative:'$1,750' },
-    { name:'Marie Thibodaux',  date:'May 20', amount:'$250',   source:'Kick-Off Party', cumulative:'$2,000' },
-  ];
+  var DON_DATA = [];
   var BAR_CX = [100, 210, 320, 430, 540]; // viewBox x centers for each bar
   var tooltip = document.getElementById('donTooltip');
   var svgEl   = document.getElementById('donChartSvg');
@@ -4275,6 +4283,23 @@ function candidateHTML() { return `<!DOCTYPE html>
 var all = [];
 fetch('/candidate/data').then(r=>r.json()).then(function(d){ all=d; stats(d); render(d); });
 
+// Load real donations into chart tooltip data
+fetch('/candidate/donations').then(r=>r.json()).then(function(donations){
+  // Sort ascending by date for cumulative chart
+  var sorted = donations.slice().sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
+  var running = 0;
+  DON_DATA = sorted.map(function(d){
+    running += parseFloat(d.amount)||0;
+    return {
+      name: d.donor_name || 'Anonymous',
+      date: d.date ? new Date(d.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—',
+      amount: '$' + (parseFloat(d.amount)||0).toLocaleString(),
+      source: d.source || '—',
+      cumulative: '$' + running.toLocaleString()
+    };
+  });
+});
+
 function stats(d) {
   document.getElementById('s-rsvp').textContent   = d.length;
   document.getElementById('s-guests').textContent = d.reduce(function(s,r){ return s+(parseInt(r.guests)||1); },0);
@@ -4485,7 +4510,7 @@ function constituentHTML(id) {
     <div class="giving-bar-wrap">
       <div class="giving-bar-meta">
         <span class="giving-bar-remaining" id="p-giving-remaining"></span>
-        <span class="giving-bar-cap">$6,000 cap</span>
+        <span class="giving-bar-cap" id="p-giving-cap"></span>
       </div>
       <div class="giving-bar-track">
         <div class="giving-bar-fill" id="p-giving-bar" style="width:0%;background:#78E0C4;"></div>
@@ -4837,39 +4862,35 @@ function paint(d) {
     cEl.innerHTML = "<span class='comment-none'>No comments provided.</span>";
   }
 
-  // Mock donation history — replace with live Anedot data after deployment
-  var MOCK_GIFTS = {
-    1:  [{ date:"May 20, 2026", amount:"$250", badge:"Kick-Off Party", method:"Visa ···· 4821" }],
-    2:  [{ date:"May 19, 2026", amount:"$500", badge:"Online",         method:"Visa ···· 3301" },
-         { date:"Apr 4,  2026",  amount:"$250", badge:"Direct",         method:"Visa ···· 3301" }],
-    4:  [{ date:"May 18, 2026", amount:"$100", badge:"Online",         method:"MC ···· 9214" }]
-  };
-  var gifts = MOCK_GIFTS[d.id] || [];
-  var total = gifts.reduce(function(s,g){ return s + parseFloat(g.amount.replace(/[$,]/g,"")); }, 0);
-  document.getElementById("dh-total").textContent  = gifts.length ? ("$" + total.toLocaleString()) : "—";
-  document.getElementById("dh-count").textContent  = gifts.length || "—";
-  document.getElementById("dh-last").textContent   = gifts.length ? gifts[0].date : "—";
-  document.getElementById("dh-rows").innerHTML = gifts.length
-    ? gifts.map(function(g){
-        return "<div class='don-row'>" +
-          "<span class='don-row-date'>" + g.date + "</span>" +
-          "<span class='don-row-amt'>" + g.amount + "</span>" +
-          "<span class='don-row-badge'>" + g.badge + "</span>" +
-          "<span class='don-row-method'>" + g.method + "</span>" +
-          "</div>";
-      }).join("")
-    : "<div style='font-size:13px;color:var(--dim);font-style:italic;padding:4px 0;'>No donations on record.</div>";
-
-  // Total Giving card — progress bar toward $6,000 cap
-  var cap = 6000;
-  var pct = total ? Math.min((total / cap) * 100, 100) : 0;
-  var remaining = cap - total;
-  document.getElementById("p-total-giving").textContent = total ? ("$" + total.toLocaleString()) : "$0";
-  document.getElementById("p-giving-remaining").textContent = total
-    ? ("$" + remaining.toLocaleString() + " remaining")
-    : "No contributions yet";
-  document.getElementById("p-giving-bar").style.width      = pct + "%";
-  document.getElementById("p-giving-bar").style.background = pct >= 80 ? "#f59e0b" : "#78E0C4";
+  // Load real donation history for this contact
+  fetch('/candidate/contact-donations/' + d.id)
+    .then(function(r){ return r.json(); })
+    .then(function(gifts) {
+      var total = gifts.reduce(function(s,g){ return s + (parseFloat(g.amount)||0); }, 0);
+      document.getElementById("dh-total").textContent = total ? ("$" + total.toLocaleString()) : "—";
+      document.getElementById("dh-count").textContent = gifts.length || "—";
+      document.getElementById("dh-last").textContent  = gifts.length
+        ? new Date(gifts[0].date + "T00:00:00").toLocaleDateString("en-US", {month:"short", day:"numeric", year:"numeric"})
+        : "—";
+      document.getElementById("dh-rows").innerHTML = gifts.length
+        ? gifts.map(function(g){
+            var amt = "$" + (parseFloat(g.amount)||0).toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2});
+            var dateStr = g.date ? new Date(g.date + "T00:00:00").toLocaleDateString("en-US", {month:"short", day:"numeric", year:"numeric"}) : "—";
+            var tender = g.tender_type ? (" &middot; " + g.tender_type + (g.check_number ? " #" + g.check_number : "")) : "";
+            return "<div class='don-row'>" +
+              "<span class='don-row-date'>" + dateStr + "</span>" +
+              "<span class='don-row-amt'>" + amt + "</span>" +
+              "<span class='don-row-badge'>" + (g.source || "—") + "</span>" +
+              "<span class='don-row-method' style='color:var(--dim);font-size:11px;'>" + tender + "</span>" +
+              "</div>";
+          }).join("")
+        : "<div style='font-size:13px;color:var(--dim);font-style:italic;padding:4px 0;'>No donations on record.</div>";
+      document.getElementById("p-total-giving").textContent = total ? ("$" + total.toLocaleString()) : "$0";
+      document.getElementById("p-giving-remaining").textContent = total ? "" : "No contributions yet";
+      document.getElementById("p-giving-bar").style.width = "0%";
+    }).catch(function() {
+      document.getElementById("dh-rows").innerHTML = "<div style='font-size:13px;color:var(--dim);font-style:italic;'>No donations on record.</div>";
+    });
 
   renderProfilePipeline(d.pipeline_stage);
 }

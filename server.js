@@ -187,8 +187,8 @@ app.post('/admin/constituent', async (req, res) => {
         how_to_help||'', yard_sign||'No', endorse||'No', comment||'', role||'Voter', 'Manual Entry']);
     res.json({ result: 'success' });
   } catch(err) {
-    console.error('DB error:', err.message);
-    res.status(500).json({ result: 'error' });
+    console.error('[constituent POST] DB error:', err.message, err.code);
+    res.status(500).json({ result: 'error', debug: err.message });
   }
 });
 

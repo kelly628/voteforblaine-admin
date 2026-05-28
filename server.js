@@ -3753,7 +3753,13 @@ function buildEventsView(d) {
           grid.innerHTML = '<div style=”grid-column:1/-1;font-size:13px;color:var(--dim);font-style:italic;”>No events yet. Click “+ New Event” to add one.</div>';
         } else {
           grid.innerHTML = evts.map(function(ev) {
-            var dateStr = ev.date ? ev.date : '';
+            var dateStr = (function(d) {
+              if (!d) return '';
+              var p = d.split('-');
+              if (p.length !== 3) return d;
+              var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+              return months[parseInt(p[1],10)-1] + ' ' + parseInt(p[2],10) + ', ' + p[0];
+            })(ev.date);
             var regBadge = '<span style=”display:inline-block;background:rgba(95,212,176,0.15);color:#2e9e7e;font-size:10px;font-weight:700;padding:2px 9px;border-radius:100px;letter-spacing:.5px;”>' + (ev.reg_count || 0) + ' registered</span>';
             var metaParts = [];
             if (dateStr) metaParts.push(dateStr);

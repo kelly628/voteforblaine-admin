@@ -430,6 +430,49 @@ app.get('/candidate/contact-donations/:id', auth('candidate'), (req, res) => {
   } catch(e) { res.json([]); }
 });
 
+// ── Widget preview (standalone full-page render for admin preview) ─────
+app.get('/widget-preview/:id', auth('admin'), (req, res) => {
+  try {
+    const evt = db.prepare("SELECT * FROM events WHERE id=?").get(req.params.id);
+    if (!evt) return res.status(404).send('Event not found');
+    const fields = evt.fields ? JSON.parse(evt.fields) : null;
+    const widgetHtml = generateWidget(evt.title, evt.date, evt.time, evt.location, fields, evt.end_time);
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Widget Preview — ${evt.title}</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #f0f2f5; min-height: 100vh; }
+  .preview-banner {
+    background: #09254f; border-bottom: 2px solid #78E0C4;
+    padding: 10px 24px; display: flex; align-items: center; justify-content: space-between;
+    font-family: 'Montserrat', sans-serif; position: sticky; top: 0; z-index: 100;
+  }
+  .preview-banner-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+    color: #78E0C4;
+  }
+  .preview-banner-close {
+    font-size: 11px; color: rgba(255,255,255,0.5); cursor: pointer; text-decoration: none;
+    font-weight: 600; letter-spacing: 1px;
+  }
+  .preview-banner-close:hover { color: #fff; }
+</style>
+</head>
+<body>
+<div class="preview-banner">
+  <span class="preview-banner-label">&#128065; Widget Preview — ${evt.title}</span>
+  <a class="preview-banner-close" href="javascript:window.close()">&#10005; Close Preview</a>
+</div>
+${widgetHtml}
+</body>
+</html>`);
+  } catch(e) { res.status(500).send('Error: ' + e.message); }
+});
+
 // ── Public events API ─────────────────────────────────────────────────
 app.get('/api/events', (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1042,23 +1085,30 @@ const BASE_CSS = `
 // ════════════════════════════════════════════════════════════════════════
 function generateWidget(label, displayDate, time, location, fields, endTime) {
   var BM_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxBW4GzNFR9rb3kmqYjS93wxw43XH2q4c-kb-gqQBAuqQCIEgJHggtyNWp1Kvouured/exec';
-  var BM_CRM_URL = window.BM_CRM_BASE_URL || 'http://localhost:3002';
+  var BM_CRM_URL = (typeof window !== 'undefined' && window.BM_CRM_BASE_URL) || (typeof process !== 'undefined' && process.env && process.env.PUBLIC_URL) || 'http://localhost:3002';
   var safeLabel = label || 'New Event';
-  var safeDate  = displayDate || '';
+  // Format ISO date (YYYY-MM-DD) → "Wednesday, May 27, 2026"
+  var safeDate = (function(d) {
+    if (!d) return '';
+    var parts = d.split('-');
+    if (parts.length !== 3) return d;
+    var dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    return dt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  })(displayDate);
   var safeTime  = time ? (endTime ? time + ' – ' + endTime : time) : '';
   var safeLoc   = location || '';
   var eyebrow   = 'Join Us';
   var heading   = safeLabel;
   // Field config — defaults to on for common fields
   var f = fields || {};
-  var showEmail    = f.email    !== false;
-  var showPhone    = f.phone    !== false;
-  var showAddress  = !!f.address;
-  var showGuests   = f.guests   !== false;
-  var showYardSign = f.yard_sign !== false;
-  var showEndorse  = !!f.endorse;
+  var showEmail    = f.email       !== false;
+  var showPhone    = f.phone       !== false;
+  var showAddress  = f.address     !== false;
+  var showGuests   = f.guests      !== false;
+  var showYardSign = f.yard_sign   !== false;
+  var showEndorse  = f.endorse     !== false;
   var showHelp     = f.how_to_help !== false;
-  var showComment  = !!f.comment;
+  var showComment  = f.comment     !== false;
 
   return [
 '<!-- RSVP Widget — ' + safeLabel + ' -->',
@@ -1128,18 +1178,18 @@ showGuests ? '        <div class="bm-rsvp-field"><label class="bm-rsvp-label" fo
 '      </div>',
 // Address
 showAddress ? '      <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-address">Street Address</label><input class="bm-rsvp-input" type="text" id="bm-address" placeholder="123 Main St"/></div>' : '',
-showAddress ? '      <div class="bm-rsvp-row"><div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-city">City</label><input class="bm-rsvp-input" type="text" id="bm-city" placeholder="Metairie"/></div><div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-state">State</label><input class="bm-rsvp-input" type="text" id="bm-state" placeholder="LA" maxlength="2" value="LA"/></div></div>' : '',
+showAddress ? '      <div class="bm-rsvp-row"><div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-city">City</label><input class="bm-rsvp-input" type="text" id="bm-city" placeholder="Metairie"/></div><div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-state">State</label><select class="bm-rsvp-select" id="bm-state"><option value="AL">Alabama</option><option value="AK">Alaska</option><option value="AZ">Arizona</option><option value="AR">Arkansas</option><option value="CA">California</option><option value="CO">Colorado</option><option value="CT">Connecticut</option><option value="DE">Delaware</option><option value="FL">Florida</option><option value="GA">Georgia</option><option value="HI">Hawaii</option><option value="ID">Idaho</option><option value="IL">Illinois</option><option value="IN">Indiana</option><option value="IA">Iowa</option><option value="KS">Kansas</option><option value="KY">Kentucky</option><option value="LA" selected>Louisiana</option><option value="ME">Maine</option><option value="MD">Maryland</option><option value="MA">Massachusetts</option><option value="MI">Michigan</option><option value="MN">Minnesota</option><option value="MS">Mississippi</option><option value="MO">Missouri</option><option value="MT">Montana</option><option value="NE">Nebraska</option><option value="NV">Nevada</option><option value="NH">New Hampshire</option><option value="NJ">New Jersey</option><option value="NM">New Mexico</option><option value="NY">New York</option><option value="NC">North Carolina</option><option value="ND">North Dakota</option><option value="OH">Ohio</option><option value="OK">Oklahoma</option><option value="OR">Oregon</option><option value="PA">Pennsylvania</option><option value="RI">Rhode Island</option><option value="SC">South Carolina</option><option value="SD">South Dakota</option><option value="TN">Tennessee</option><option value="TX">Texas</option><option value="UT">Utah</option><option value="VT">Vermont</option><option value="VA">Virginia</option><option value="WA">Washington</option><option value="WV">West Virginia</option><option value="WI">Wisconsin</option><option value="WY">Wyoming</option></select></div></div>' : '',
 '      <input type="hidden" id="bm-parish"/>',
 // Ways to get involved
 showHelp ? '      <div class="bm-rsvp-help-group"><span class="bm-rsvp-help-group-label">How would you like to help? (select all that apply)</span><div class="bm-rsvp-help-grid">' : '',
-(showHelp && showYardSign) ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-yardsign"/><span class="bm-rsvp-help-option-text">Deliver me a yard sign</span></label>' : '',
-showHelp ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-sign-location"/><span class="bm-rsvp-help-option-text">Provide a sign location</span></label>' : '',
+(showHelp && showYardSign) ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-yardsign"/><span class="bm-rsvp-help-option-text">Provide a sign location</span></label>' : '',
 showHelp ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-phone-calls"/><span class="bm-rsvp-help-option-text">Make phone calls</span></label>' : '',
 showHelp ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-knock"/><span class="bm-rsvp-help-option-text">Knock on doors</span></label>' : '',
-showHelp ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-sign-wave"/><span class="bm-rsvp-help-option-text">Sign Wave</span></label>' : '',
+showHelp ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-sign-wave"/><span class="bm-rsvp-help-option-text">Wave signs</span></label>' : '',
 showHelp ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-errands"/><span class="bm-rsvp-help-option-text">Run errands for the committee</span></label>' : '',
 showHelp ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-host-event"/><span class="bm-rsvp-help-option-text">Host a meet &amp; greet or other event</span></label>' : '',
 showHelp ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-inkind"/><span class="bm-rsvp-help-option-text">In-kind contribution or venue space</span></label>' : '',
+showHelp ? '        <label class="bm-rsvp-help-option"><input type="checkbox" id="bm-help-other"/><span class="bm-rsvp-help-option-text">Other — contact me directly</span></label>' : '',
 showHelp ? '      </div></div>' : '',
 // Standalone yard sign (if help is off but yard_sign is on)
 (!showHelp && showYardSign) ? '      <label class="bm-rsvp-checkbox-row"><input type="checkbox" id="bm-yardsign"/><span class="bm-rsvp-checkbox-label">I would like a yard sign.</span></label>' : '',
@@ -1184,13 +1234,13 @@ showComment ? '      <div class="bm-rsvp-field"><label class="bm-rsvp-label" for
 '    var endorse  = bmChk(\'bm-endorse\') ? \'Yes\' : \'No\';',
 '    var comment  = bmVal(\'bm-comment\');',
 '    var helpOptions = [',
-'      { id: \'bm-help-sign-location\', label: \'Provide Sign Location\' },',
-'      { id: \'bm-help-phone-calls\',   label: \'Make Phone Calls\' },',
-'      { id: \'bm-help-knock\',         label: \'Knock on Doors\' },',
-'      { id: \'bm-help-sign-wave\',     label: \'Sign Wave\' },',
-'      { id: \'bm-help-errands\',       label: \'Run Errands for Committee\' },',
-'      { id: \'bm-help-host-event\',    label: \'Host a Meet & Greet or Event\' },',
-'      { id: \'bm-help-inkind\',        label: \'In-Kind Contribution or Venue Space\' }',
+'      { id: \'bm-help-phone-calls\',   label: \'Make phone calls\' },',
+'      { id: \'bm-help-knock\',         label: \'Knock on doors\' },',
+'      { id: \'bm-help-sign-wave\',     label: \'Wave signs\' },',
+'      { id: \'bm-help-errands\',       label: \'Run errands for the committee\' },',
+'      { id: \'bm-help-host-event\',    label: \'Host a meet & greet or other event\' },',
+'      { id: \'bm-help-inkind\',        label: \'In-kind contribution or venue space\' },',
+'      { id: \'bm-help-other\',         label: \'Other — contact me directly\' }',
 '    ];',
 '    var howToHelp = helpOptions',
 '      .filter(function(o) { return bmChk(o.id); })',
@@ -2164,7 +2214,10 @@ function adminHTML() { return `<!DOCTYPE html>
     <div id="evt-embed-label" style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px;"></div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Paste this into your Duda widget HTML block.</div>
     <textarea class="modal-code" id="evt-embed-code" readonly style="height:220px;"></textarea>
-    <button class="modal-copy" onclick="copyEmbedCode()">Copy Code</button>
+    <div style="display:flex;gap:10px;margin-top:12px;">
+      <button class="modal-copy" onclick="copyEmbedCode()" style="flex:1;">Copy Code</button>
+      <button class="modal-copy" id="evt-preview-btn" onclick="openWidgetPreview()" style="flex:0 0 auto;background:#e9edf3;color:var(--navy);">&#128065; Preview</button>
+    </div>
   </div>
 </div>
 
@@ -2679,14 +2732,24 @@ loadData();
 
 var HELP_OPTIONS = [
   'Yard Sign',
-  'Provide Sign Location',
-  'Make Phone Calls',
-  'Knock on Doors',
-  'Sign Wave',
-  'Run Errands for Committee',
-  'Host a Meet & Greet or Event',
-  'In-Kind Contribution or Venue Space'
+  'Make phone calls',
+  'Knock on doors',
+  'Wave signs',
+  'Run errands for the committee',
+  'Host a meet & greet or other event',
+  'In-kind contribution or venue space',
+  'Other — contact me directly'
 ];
+// Legacy label aliases for counting old data
+var HELP_ALIASES = {
+  'Make phone calls':                   ['Make Phone Calls'],
+  'Knock on doors':                     ['Knock on Doors'],
+  'Wave signs':                         ['Sign Wave', 'Wave Signs'],
+  'Run errands for the committee':      ['Run Errands for Committee'],
+  'Host a meet & greet or other event': ['Host a Meet & Greet or Event'],
+  'In-kind contribution or venue space':['In-Kind Contribution or Venue Space'],
+  'Other — contact me directly':        ['Other', 'Other - contact me directly']
+};
 
 function filtered() {
   var base = activeEvent ? all.filter(function(r){ return r.event === activeEvent; }) : all;
@@ -2777,7 +2840,14 @@ function snapshot(d) {
     if (r.how_to_help && r.how_to_help !== 'None selected') {
       r.how_to_help.split(',').forEach(function(h){
         var t = h.trim();
-        if (helpCounts.hasOwnProperty(t)) helpCounts[t]++;
+        if (helpCounts.hasOwnProperty(t)) {
+          helpCounts[t]++;
+        } else {
+          // Check legacy aliases
+          Object.keys(HELP_ALIASES).forEach(function(canonical){
+            if (HELP_ALIASES[canonical].indexOf(t) > -1) helpCounts[canonical]++;
+          });
+        }
       });
     }
   });
@@ -3638,7 +3708,7 @@ function buildEventsView(d) {
             (metaParts.length ? '<div style="font-size:11px;color:var(--muted);">' + x(metaParts.join(' · ')) + '</div>' : '') +
             '<div style="display:flex;gap:8px;margin-top:4px;">' +
               '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;" data-evtid="' + ev.id + '" onclick="openEditEventModal(this.dataset.evtid)">Edit</button>' +
-              '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;" data-title="' + x(ev.title) + '" data-date="' + x(ev.date||'') + '" data-time="' + x(ev.time||'') + '" data-loc="' + x(ev.location||'') + '" data-fields="' + x(ev.fields||'{}') + '" data-endtime="' + x(ev.end_time||'') + '" onclick="var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f,this.dataset.endtime)">Embed Code</button>' +
+              '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;" data-evtid="' + ev.id + '" data-title="' + x(ev.title) + '" data-date="' + x(ev.date||'') + '" data-time="' + x(ev.time||'') + '" data-loc="' + x(ev.location||'') + '" data-fields="' + x(ev.fields||'{}') + '" data-endtime="' + x(ev.end_time||'') + '" onclick="var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.evtid,this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f,this.dataset.endtime)">Embed Code</button>' +
               '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;color:#9a3412;border-color:#fca5a5;" data-evtid="' + ev.id + '" data-title="' + x(ev.title) + '" onclick="deleteEvent(this.dataset.evtid,this.dataset.title)">Delete</button>' +
             '</div>' +
           '</div>';
@@ -3775,7 +3845,10 @@ function deleteEvent(id, title) {
     .catch(function(){ alert('Network error.'); });
 }
 
-function showEmbedCode(title, date, time, location, fields, endTime) {
+var _currentEmbedEventId = null;
+
+function showEmbedCode(id, title, date, time, location, fields, endTime) {
+  _currentEmbedEventId = id || null;
   var labelEl = document.getElementById('evt-embed-label');
   var codeEl  = document.getElementById('evt-embed-code');
   if (labelEl) labelEl.textContent = title + (date ? '  —  ' + date : '');
@@ -3785,6 +3858,11 @@ function showEmbedCode(title, date, time, location, fields, endTime) {
 
 function closeEmbedModal() {
   document.getElementById('evt-embed-overlay').classList.remove('open');
+}
+
+function openWidgetPreview() {
+  if (!_currentEmbedEventId) return;
+  window.open('/widget-preview/' + _currentEmbedEventId, '_blank', 'width=900,height=800,scrollbars=yes');
 }
 
 function copyEmbedCode() {
@@ -4885,14 +4963,14 @@ function constituentHTML(id) {
   <div class="tags" id="p-helps" style="display:none;"></div>
   <div id="edit-helps-wrap">
     <div class="edit-checks">
-      <label class="edit-check-item"><input type="checkbox" id="eh-yardsign"/><span class="edit-check-label">Deliver me a yard sign</span></label>
-      <label class="edit-check-item"><input type="checkbox" id="eh-location"/><span class="edit-check-label">Provide Sign Location</span></label>
-      <label class="edit-check-item"><input type="checkbox" id="eh-calls"/><span class="edit-check-label">Make Phone Calls</span></label>
-      <label class="edit-check-item"><input type="checkbox" id="eh-knock"/><span class="edit-check-label">Knock on Doors</span></label>
-      <label class="edit-check-item"><input type="checkbox" id="eh-wave"/><span class="edit-check-label">Sign Wave</span></label>
-      <label class="edit-check-item"><input type="checkbox" id="eh-errands"/><span class="edit-check-label">Run Errands for Committee</span></label>
-      <label class="edit-check-item"><input type="checkbox" id="eh-host"/><span class="edit-check-label">Host a Meet &amp; Greet or Event</span></label>
-      <label class="edit-check-item"><input type="checkbox" id="eh-inkind"/><span class="edit-check-label">In-Kind Contribution or Venue Space</span></label>
+      <label class="edit-check-item"><input type="checkbox" id="eh-yardsign"/><span class="edit-check-label">Provide a sign location</span></label>
+      <label class="edit-check-item"><input type="checkbox" id="eh-calls"/><span class="edit-check-label">Make phone calls</span></label>
+      <label class="edit-check-item"><input type="checkbox" id="eh-knock"/><span class="edit-check-label">Knock on doors</span></label>
+      <label class="edit-check-item"><input type="checkbox" id="eh-wave"/><span class="edit-check-label">Wave signs</span></label>
+      <label class="edit-check-item"><input type="checkbox" id="eh-errands"/><span class="edit-check-label">Run errands for the committee</span></label>
+      <label class="edit-check-item"><input type="checkbox" id="eh-host"/><span class="edit-check-label">Host a meet &amp; greet or other event</span></label>
+      <label class="edit-check-item"><input type="checkbox" id="eh-inkind"/><span class="edit-check-label">In-kind contribution or venue space</span></label>
+      <label class="edit-check-item"><input type="checkbox" id="eh-other"/><span class="edit-check-label">Other — contact me directly</span></label>
     </div>
   </div>
 </div>
@@ -5086,17 +5164,20 @@ function paint(d) {
   document.getElementById("eh-yardsign").checked = (d.yard_sign === "Yes");
   var helpLabels = (d.how_to_help && d.how_to_help !== "None selected")
     ? d.how_to_help.split(",").map(function(h){ return h.trim(); }) : [];
+  // Map checkbox id → array of label strings (new label first, legacy aliases after)
   var helpMap = {
-    "eh-location": "Provide Sign Location",
-    "eh-calls":    "Make Phone Calls",
-    "eh-knock":    "Knock on Doors",
-    "eh-wave":     "Sign Wave",
-    "eh-errands":  "Run Errands for Committee",
-    "eh-host":     "Host a Meet & Greet or Event",
-    "eh-inkind":   "In-Kind Contribution or Venue Space"
+    "eh-calls":   ["Make phone calls",                       "Make Phone Calls"],
+    "eh-knock":   ["Knock on doors",                         "Knock on Doors"],
+    "eh-wave":    ["Wave signs",                             "Sign Wave", "Wave Signs"],
+    "eh-errands": ["Run errands for the committee",          "Run Errands for Committee"],
+    "eh-host":    ["Host a meet & greet or other event",     "Host a Meet & Greet or Event"],
+    "eh-inkind":  ["In-kind contribution or venue space",    "In-Kind Contribution or Venue Space"],
+    "eh-other":   ["Other — contact me directly",            "Other", "Other - contact me directly"]
   };
   Object.keys(helpMap).forEach(function(k){
-    document.getElementById(k).checked = helpLabels.indexOf(helpMap[k]) > -1;
+    var el = document.getElementById(k);
+    if (!el) return;
+    el.checked = helpMap[k].some(function(lbl){ return helpLabels.indexOf(lbl) > -1; });
   });
 
   var signEl = document.getElementById("p-sign");
@@ -5383,13 +5464,13 @@ function deleteConstituent() {
 
 function saveEdit() {
   var helpKeys = [
-    {id:"eh-location", label:"Provide Sign Location"},
-    {id:"eh-calls",    label:"Make Phone Calls"},
-    {id:"eh-knock",    label:"Knock on Doors"},
-    {id:"eh-wave",     label:"Sign Wave"},
-    {id:"eh-errands",  label:"Run Errands for Committee"},
-    {id:"eh-host",     label:"Host a Meet & Greet or Event"},
-    {id:"eh-inkind",   label:"In-Kind Contribution or Venue Space"}
+    {id:"eh-calls",   label:"Make phone calls"},
+    {id:"eh-knock",   label:"Knock on doors"},
+    {id:"eh-wave",    label:"Wave signs"},
+    {id:"eh-errands", label:"Run errands for the committee"},
+    {id:"eh-host",    label:"Host a meet & greet or other event"},
+    {id:"eh-inkind",  label:"In-kind contribution or venue space"},
+    {id:"eh-other",   label:"Other — contact me directly"}
   ];
   var howToHelp = helpKeys
     .filter(function(h){ return document.getElementById(h.id).checked; })

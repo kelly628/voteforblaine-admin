@@ -3768,9 +3768,9 @@ function buildEventsView(d) {
               '</div>' +
               (metaParts.length ? '<div style=”font-size:11px;color:var(--muted);”>' + x(metaParts.join(' · ')) + '</div>' : '') +
               '<div style=”display:flex;gap:8px;margin-top:4px;”>' +
-                '<button class=”modal-btn secondary” style=”font-size:10px;padding:6px 12px;” data-evtid=”' + ev.id + '” onclick=”openEditEventModal(this.dataset.evtid)”>Edit</button>' +
-                '<button class=”modal-btn secondary” style=”font-size:10px;padding:6px 12px;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” data-date=”' + x(ev.date||'') + '” data-time=”' + x(ev.time||'') + '” data-loc=”' + x(ev.location||'') + '” data-fields=”' + x(ev.fields||'{}') + '” data-endtime=”' + x(ev.end_time||'') + '” onclick=”var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.evtid,this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f,this.dataset.endtime)”>Embed Code</button>' +
-                '<button class=”modal-btn secondary” style=”font-size:10px;padding:6px 12px;color:#9a3412;border-color:#fca5a5;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” onclick=”deleteEvent(this.dataset.evtid,this.dataset.title)”>Delete</button>' +
+                '<button class=”modal-btn” style=”font-size:10px;padding:6px 14px;background:var(--navy);” data-evtid=”' + ev.id + '” onclick=”openEditEventModal(this.dataset.evtid)”>Edit</button>' +
+                '<button class=”modal-btn” style=”font-size:10px;padding:6px 14px;background:#2798BD;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” data-date=”' + x(ev.date||'') + '” data-time=”' + x(ev.time||'') + '” data-loc=”' + x(ev.location||'') + '” data-fields=”' + x(ev.fields||'{}') + '” data-endtime=”' + x(ev.end_time||'') + '” onclick=”var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.evtid,this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f,this.dataset.endtime)”>Embed Code</button>' +
+                '<button class=”modal-btn secondary” style=”font-size:10px;padding:6px 14px;color:#9a3412;border-color:#fca5a5;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” onclick=”deleteEvent(this.dataset.evtid,this.dataset.title)”>Delete</button>' +
               '</div>' +
             '</div>';
           }).join('');

@@ -2084,7 +2084,7 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
 <div class="wrap">
 <table>
   <thead><tr>
-    <th>#</th><th>Date</th><th>Name</th><th>Phone</th><th>Address</th><th>Zip</th>
+    <th>#</th><th>Date</th><th>Name</th><th>Phone</th><th>Address</th>
     <th>Events</th><th>How to Help</th><th>Yard Sign</th><th>Endorsement</th><th>Comment</th>
   </tr></thead>
   <tbody id="tbody"></tbody>
@@ -2928,8 +2928,7 @@ function render(d) {
           (r.parish && r.parish !== 'Jefferson' ? '<span class="badge-ood" title="Lives in '+x(r.parish)+' Parish — outside the 24th JDC">Out of District</span>' : '')+
           '<div class="c-sub">'+x(r.email)+'</div></td>'+
       '<td class="c-phone">'+fmtPhone(r.phone)+'</td>'+
-      '<td style="font-size:12px;color:var(--muted);line-height:1.5;">'+x(r.address)+(r.city?'<br>'+x(r.city)+(r.state?', '+x(r.state):'')+(r.zip?' '+x(r.zip):''):'')+'</td>'+
-      '<td class="c-zip">'+x(r.zip)+'</td>'+
+      '<td style="font-size:12px;color:var(--muted);line-height:1.6;">'+x(r.address)+(r.city?'<br>'+x(r.city)+(r.state?', '+x(r.state):'')+(r.zip?' '+x(r.zip):''):'')+'</td>'+
       '<td><span class="badge badge-guests">'+all.filter(function(a){ return a.email && a.email === r.email ? true : (!a.email && a.first_name===r.first_name && a.last_name===r.last_name); }).length+'</span></td>'+
       '<td>'+helps+'</td>'+
       '<td>'+sign+'</td>'+

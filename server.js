@@ -41,7 +41,6 @@ async function dbAll(sql, params = []) {
 // ── Schema bootstrap ──────────────────────────────────────────────────
 const TS = `to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')`;
 (async () => {
-  console.log('[DB] DATABASE_URL set:', !!process.env.DATABASE_URL);
   await pool.query(`CREATE TABLE IF NOT EXISTS rsvps (
     id SERIAL PRIMARY KEY,
     created_at TEXT NOT NULL DEFAULT ${TS},
@@ -85,7 +84,7 @@ const TS = `to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')`;
   const upRows = await dbAll("SELECT id, zip FROM rsvps WHERE zip IS NOT NULL AND zip != '' AND (parish IS NULL OR parish='')");
   for (const r of upRows) { if (BP[r.zip]) await dbRun('UPDATE rsvps SET parish=? WHERE id=?', [BP[r.zip], r.id]); }
   console.log('[DB] PostgreSQL ready');
-})().catch(e => console.error('[DB] Setup error:', e.code, e.message, String(e)));
+})().catch(e => console.error('[DB] Setup error:', e.message));
 
 // ── Parish lookup (module-scoped so routes can use it) ─────────────────
 const BP = {"70001":"Jefferson","70002":"Jefferson","70003":"Jefferson","70004":"Jefferson","70005":"Jefferson","70006":"Jefferson","70009":"Jefferson","70010":"Jefferson","70011":"Jefferson","70031":"Jefferson","70033":"Jefferson","70036":"Jefferson","70037":"Jefferson","70047":"Jefferson","70053":"Jefferson","70055":"Jefferson","70056":"Jefferson","70057":"Jefferson","70058":"Jefferson","70059":"Jefferson","70060":"Jefferson","70062":"Jefferson","70063":"Jefferson","70064":"Jefferson","70065":"Jefferson","70067":"Jefferson","70072":"Jefferson","70073":"Jefferson","70094":"Jefferson","70112":"Orleans","70113":"Orleans","70114":"Orleans","70115":"Orleans","70116":"Orleans","70117":"Orleans","70118":"Orleans","70119":"Orleans","70121":"Orleans","70122":"Orleans","70123":"Orleans","70124":"Orleans","70125":"Orleans","70126":"Orleans","70127":"Orleans","70128":"Orleans","70129":"Orleans","70130":"Orleans","70131":"Orleans","70163":"Orleans","70032":"St. Bernard","70043":"St. Bernard","70044":"St. Bernard","70085":"St. Bernard","70086":"St. Bernard","70092":"St. Bernard","70040":"Plaquemines","70041":"Plaquemines","70050":"Plaquemines","70068":"Plaquemines","70069":"Plaquemines","70070":"Plaquemines","70071":"Plaquemines","70074":"Plaquemines","70075":"Plaquemines","70076":"Plaquemines","70082":"Plaquemines","70083":"Plaquemines","70084":"Plaquemines","70090":"Plaquemines","70030":"St. Charles","70039":"St. Charles","70052":"St. Charles","70079":"St. Charles","70087":"St. Charles","70433":"St. Tammany","70434":"St. Tammany","70435":"St. Tammany","70437":"St. Tammany","70444":"St. Tammany","70445":"St. Tammany","70446":"St. Tammany","70447":"St. Tammany","70448":"St. Tammany","70450":"St. Tammany","70452":"St. Tammany","70455":"St. Tammany","70456":"St. Tammany","70458":"St. Tammany","70459":"St. Tammany","70460":"St. Tammany","70461":"St. Tammany","70464":"St. Tammany","70466":"St. Tammany","70471":"St. Tammany","70401":"Tangipahoa","70402":"Tangipahoa","70403":"Tangipahoa","70404":"Tangipahoa","70420":"Tangipahoa","70422":"Tangipahoa","70426":"Tangipahoa","70427":"Tangipahoa","70428":"Tangipahoa","70429":"Tangipahoa","70430":"Tangipahoa","70436":"Tangipahoa","70443":"Tangipahoa","70451":"Tangipahoa","70454":"Tangipahoa","70463":"Tangipahoa","70301":"Terrebonne","70302":"Terrebonne","70310":"Terrebonne","70352":"Terrebonne","70355":"Terrebonne","70356":"Terrebonne","70359":"Terrebonne","70360":"Terrebonne","70361":"Terrebonne","70363":"Terrebonne","70364":"Terrebonne","70380":"Terrebonne","70340":"Lafourche","70341":"Lafourche","70343":"Lafourche","70344":"Lafourche","70345":"Lafourche","70346":"Lafourche","70353":"Lafourche","70354":"Lafourche","70357":"Lafourche","70358":"Lafourche","70373":"Lafourche","70374":"Lafourche","70377":"Lafourche","70501":"Lafayette","70503":"Lafayette","70504":"Lafayette","70505":"Lafayette","70506":"Lafayette","70507":"Lafayette","70508":"Lafayette","70509":"Lafayette"};
@@ -189,7 +188,7 @@ app.post('/admin/constituent', async (req, res) => {
     res.json({ result: 'success' });
   } catch(err) {
     console.error('[constituent POST] DB error:', err.message, err.code);
-    res.status(500).json({ result: 'error', debug: err.message });
+    res.status(500).json({ result: 'error' });
   }
 });
 

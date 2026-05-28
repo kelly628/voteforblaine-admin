@@ -2309,8 +2309,8 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
           </div>
           <div>
             <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin:0 0 8px;">Step 3 — Set your webhook secret</p>
-            <p style="font-size:12px;color:var(--dim);margin:0 0 8px;">Copy the secret Anedot generates and start the server with it:</p>
-            <code style="display:block;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;font-size:12px;color:var(--navy);">ANEDOT_WEBHOOK_SECRET=paste_secret_here node server.js</code>
+            <p style="font-size:12px;color:var(--dim);margin:0 0 8px;">Copy the secret Anedot generates, then add it in Railway:</p>
+            <code style="display:block;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;font-size:12px;color:var(--navy);">Railway → voteforblaine-admin → Variables → ANEDOT_WEBHOOK_SECRET</code>
             <p style="font-size:11px;color:var(--dim);margin:8px 0 0;">Requests without a matching signature will be rejected.</p>
           </div>
           <div>

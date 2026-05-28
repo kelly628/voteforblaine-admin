@@ -670,7 +670,19 @@ app.post('/webhook/anedot', express.raw({ type: '*/*' }), async (req, res) => {
 
 // ── Endorsements ──────────────────────────────────────────────────────
 app.get('/admin/endorsements', async (req, res) => {
-  res.json(await dbAll('SELECT * FROM endorsements ORDER BY tier, name'));
+  const tracked = await dbAll('SELECT * FROM endorsements ORDER BY tier, name');
+  // Also pull contacts who said "Yes" to endorsing on the form but aren't already tracked
+  const fromContacts = await dbAll(`
+    SELECT
+      COALESCE(r.first_name,'') || ' ' || COALESCE(r.last_name,'') AS name,
+      NULL AS org, 'individual' AS tier, 'endorsed' AS status,
+      r.comment AS notes, NULL AS date, r.id AS contact_id, 'contact' AS _src
+    FROM rsvps r
+    WHERE r.endorse = 'Yes'
+    AND NOT EXISTS (SELECT 1 FROM endorsements e WHERE e.contact_id = r.id)
+    ORDER BY r.last_name, r.first_name
+  `);
+  res.json([...tracked, ...fromContacts]);
 });
 app.post('/admin/endorsement', async (req, res) => {
   const { name, org, tier, status, notes, date, contact_id } = req.body;
@@ -3306,13 +3318,18 @@ function buildEndorsementsView() {
     var tierLabel = { bar_assoc:'Bar Assoc.', elected:'Elected Official', civic:'Civic Org', labor:'Labor Org', individual:'Individual' };
     tbody.innerHTML = rows.map(function(r) {
       var icon = tierIcons[r.tier]||'👤';
+      var fromForm = r._src === 'contact';
+      var nameBadge = fromForm ? ' <span style="font-size:9px;background:#e0f2fe;color:#0369a1;padding:2px 7px;border-radius:100px;font-weight:700;letter-spacing:.5px;vertical-align:middle;">FROM FORM</span>' : '';
+      var actions = fromForm
+        ? '<a href="/admin/constituent/' + r.contact_id + '" class="door-result-btn" style="text-decoration:none;">View</a>'
+        : '<button class="door-result-btn" onclick="editEndorsement(' + r.id + ')">Edit</button> <button class="door-result-btn" onclick="deleteEndorsement(' + r.id + ')" style="color:#991b1b;">Del</button>';
       return '<tr>' +
-        '<td><div style="display:flex;align-items:center;gap:10px;"><span class="end-tier-icon" style="background:#f0f4f8;">' + icon + '</span><div><div class="c-name">' + x(r.name) + '</div>' + (r.org ? '<div class="c-sub">' + x(r.org) + '</div>' : '') + '</div></div></td>' +
+        '<td><div style="display:flex;align-items:center;gap:10px;"><span class="end-tier-icon" style="background:#f0f4f8;">' + icon + '</span><div><div class="c-name">' + x(r.name) + nameBadge + '</div>' + (r.org ? '<div class="c-sub">' + x(r.org) + '</div>' : '') + '</div></div></td>' +
         '<td><span class="spill spill-gray">' + x(tierLabel[r.tier]||r.tier) + '</span></td>' +
         '<td>' + (statusMap[r.status]||'<span class="spill spill-gray">Unknown</span>') + '</td>' +
         '<td class="c-date">' + x(r.date||'—') + '</td>' +
         '<td class="c-comment">' + x(r.notes||'—') + '</td>' +
-        '<td style="white-space:nowrap;"><button class="door-result-btn" onclick="editEndorsement(' + r.id + ')">Edit</button> <button class="door-result-btn" onclick="deleteEndorsement(' + r.id + ')" style="color:#991b1b;">Del</button></td>' +
+        '<td style="white-space:nowrap;">' + actions + '</td>' +
         '</tr>';
     }).join('');
   });

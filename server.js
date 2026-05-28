@@ -2920,7 +2920,7 @@ function render(d) {
     var sign = r.yard_sign==='Yes'
       ? '<span class="badge badge-yes">Yes</span>'
       : '<span class="badge badge-no">No</span>';
-    var date = (r.created_at||'').slice(0,10);
+    var date = fmtDate(r.created_at);
     return '<tr>'+
       '<td class="c-id">'+r.id+'</td>'+
       '<td class="c-date">'+date+'</td>'+
@@ -2967,7 +2967,7 @@ function renderSignsModal() {
   }
   tbody.innerHTML = signsData.map(function(r){
     var isDel = r.yard_sign_delivered === 'Yes';
-    var date  = (r.created_at||'').slice(0,10);
+    var date  = fmtDate(r.created_at);
     var btnCls = isDel ? 'delivered' : 'requested';
     var btnTxt = isDel ? '&#10003; Delivered' : 'Mark Delivered';
     return '<tr id="sign-row-'+r.id+'">'+
@@ -3050,7 +3050,7 @@ function drilldown(option) {
     tbody.innerHTML = '<tr><td colspan="5" class="drill-empty">No responses for this option yet.</td></tr>';
   } else {
     tbody.innerHTML = drillData.map(function(r){
-      var date = (r.created_at||'').slice(0,10);
+      var date = fmtDate(r.created_at);
       return '<tr>'+
         '<td class="c-date">'+date+'</td>'+
         '<td><div class="c-name">'+x(r.first_name)+' '+x(r.last_name)+'</div>'+
@@ -3091,6 +3091,7 @@ function exportDrillCSV() {
 
 function x(s){ return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''; }
 function fmtPhone(p){ if(!p) return ''; var d=String(p).replace(/\D/g,''); if(d.length===10) return d.slice(0,3)+'-'+d.slice(3,6)+'-'+d.slice(6); return p; }
+function fmtDate(s){ if(!s) return ''; var p=(s||'').slice(0,10).split('-'); if(p.length!==3) return s; var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return mo[parseInt(p[1],10)-1]+' '+parseInt(p[2],10)+', '+p[0]; }
 
 function switchView(name) {
   ['dashboard','pipeline','constituents','events','donations','volunteers','endorsements','canvassing','compliance'].forEach(function(v) {
@@ -3743,7 +3744,7 @@ function refreshEvtTable() {
     return;
   }
   tbody.innerHTML = sorted.map(function(r) {
-    var date = (r.created_at||'').slice(0,10);
+    var date = fmtDate(r.created_at);
     var isVoterRow = isVoter(r);
     return '<tr>' +
       '<td style="color:var(--dim);font-size:12px;">' + date + '</td>' +
@@ -4759,7 +4760,7 @@ function render(d) {
     var sign = r.yard_sign==='Yes'
       ? '<span class="badge badge-yes">Yes</span>'
       : '<span class="badge badge-no">No</span>';
-    var date = (r.created_at||'').slice(0,10);
+    var date = fmtDate(r.created_at);
     return '<tr>'+
       '<td class="c-id">'+r.id+'</td>'+
       '<td class="c-date">'+date+'</td>'+
@@ -5104,6 +5105,13 @@ function fmtPhone(p) {
   if (d.length === 10) return d.slice(0,3)+"-"+d.slice(3,6)+"-"+d.slice(6);
   return p;
 }
+function fmtDate(s) {
+  if (!s) return "";
+  var p = (s||"").slice(0,10).split("-");
+  if (p.length !== 3) return s;
+  var mo = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return mo[parseInt(p[1],10)-1] + " " + parseInt(p[2],10) + ", " + p[0];
+}
 var ZIP_PARISH = {
   "70001":"Jefferson","70002":"Jefferson","70003":"Jefferson","70004":"Jefferson","70005":"Jefferson",
   "70006":"Jefferson","70009":"Jefferson","70010":"Jefferson","70011":"Jefferson","70031":"Jefferson",
@@ -5177,7 +5185,7 @@ function paint(d) {
   if (!d || d.error) { document.getElementById("p-name").textContent = "Constituent not found."; return; }
   document.title = (d.first_name||"") + " " + (d.last_name||"") + " — Blaine Moncrief";
   document.getElementById("p-name").textContent = (d.first_name||"") + " " + (d.last_name||"");
-  document.getElementById("p-date").textContent  = (d.created_at||"").slice(0,10);
+  document.getElementById("p-date").textContent  = fmtDate(d.created_at);
   document.getElementById("p-id").textContent    = d.id;
   // Events Attended card
   var evts = d._events || (d.event ? [d.event] : []);

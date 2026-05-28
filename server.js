@@ -1,5 +1,5 @@
 const express  = require('express');
-const { DatabaseSync } = require('node:sqlite');
+const { Pool } = require('pg');
 const cors     = require('cors');
 const path     = require('path');
 
@@ -11,120 +11,83 @@ const PASSWORDS = {
   candidate: process.env.CANDIDATE_PASSWORD || 'judge2026'    // Blaine — no donation info
 };
 
-// ── Database ──────────────────────────────────────────────────────────
-const fs      = require('fs');
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'rsvp.db');
-const dbDir   = path.dirname(DB_PATH);
-if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
-const db = new DatabaseSync(DB_PATH);
-db.exec(`
-  CREATE TABLE IF NOT EXISTS rsvps (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-    first_name  TEXT,
-    last_name   TEXT,
-    email       TEXT,
-    phone       TEXT,
-    address     TEXT,
-    zip         TEXT,
-    guests      TEXT,
-    guest_names TEXT,
-    how_to_help TEXT,
-    yard_sign   TEXT,
-    endorse     TEXT,
-    comment     TEXT,
-    event       TEXT
-  )
-`);
-// Migration: add address column if it doesn't exist yet
-try { db.exec(`ALTER TABLE rsvps ADD COLUMN address TEXT`); } catch(e) {}
-try { db.exec(`ALTER TABLE rsvps ADD COLUMN zip TEXT`); } catch(e) {}
-try { db.exec(`ALTER TABLE rsvps ADD COLUMN guest_names TEXT`); } catch(e) {}
-try { db.exec(`ALTER TABLE rsvps ADD COLUMN endorse TEXT`); } catch(e) {}
-try { db.exec(`ALTER TABLE rsvps ADD COLUMN event TEXT`); } catch(e) {}
-try { db.exec(`ALTER TABLE rsvps ADD COLUMN yard_sign_delivered TEXT`); } catch(e) {}
-try { db.exec(`ALTER TABLE rsvps ADD COLUMN city TEXT`); } catch(e) {}
-try { db.exec(`ALTER TABLE rsvps ADD COLUMN state TEXT`); } catch(e) {}
-try { db.exec(`ALTER TABLE rsvps ADD COLUMN parish TEXT`); } catch(e) {}
-try { db.exec(`ALTER TABLE rsvps ADD COLUMN role TEXT`); } catch(e) {}
-try { db.exec(`ALTER TABLE rsvps ADD COLUMN pipeline_stage TEXT`); } catch(e) {}
-try { db.exec(`ALTER TABLE rsvps ADD COLUMN volunteer_role TEXT`); } catch(e) {}
-try { db.exec(`ALTER TABLE rsvps ADD COLUMN volunteer_hours INTEGER DEFAULT 0`); } catch(e) {}
-try { db.exec(`ALTER TABLE rsvps ADD COLUMN volunteer_status TEXT DEFAULT 'new'`); } catch(e) {}
-db.prepare("UPDATE rsvps SET role='Voter' WHERE role IS NULL OR role=''").run();
+// ── Database (PostgreSQL) ─────────────────────────────────────────────
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+});
 
-// ── Endorsements table ────────────────────────────────────────────────
-db.exec(`CREATE TABLE IF NOT EXISTS endorsements (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  name        TEXT NOT NULL,
-  org         TEXT,
-  tier        TEXT DEFAULT 'individual',
-  status      TEXT DEFAULT 'not_contacted',
-  notes       TEXT,
-  date        TEXT,
-  contact_id  INTEGER,
-  created_at  TEXT DEFAULT (datetime('now','localtime'))
-)`);
-try { db.exec(`ALTER TABLE endorsements ADD COLUMN contact_id INTEGER`); } catch(e) {}
+// Convert SQLite ? placeholders → $1,$2,… and auto-add RETURNING id on INSERTs
+function toPostgres(sql) {
+  let i = 0;
+  let s = sql.replace(/\?/g, () => `$${++i}`);
+  if (/^\s*INSERT/i.test(s) && !/RETURNING/i.test(s))
+    s = s.trimEnd().replace(/;?\s*$/, '') + ' RETURNING id';
+  return s;
+}
+async function dbRun(sql, params = []) {
+  const r = await pool.query(toPostgres(sql), params);
+  return { changes: r.rowCount, lastInsertRowid: r.rows[0]?.id };
+}
+async function dbGet(sql, params = []) {
+  const r = await pool.query(toPostgres(sql), params);
+  return r.rows[0];
+}
+async function dbAll(sql, params = []) {
+  const r = await pool.query(toPostgres(sql), params);
+  return r.rows;
+}
 
-// ── Events table ──────────────────────────────────────────────────────
-db.exec(`CREATE TABLE IF NOT EXISTS events (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  title       TEXT NOT NULL,
-  date        TEXT,
-  time        TEXT,
-  location    TEXT,
-  description TEXT,
-  capacity    INTEGER,
-  status      TEXT DEFAULT 'active',
-  created_at  TEXT DEFAULT (datetime('now','localtime'))
-)`);
-
-try { db.exec(`ALTER TABLE events ADD COLUMN fields TEXT`);    } catch(e) {}
-try { db.exec(`ALTER TABLE events ADD COLUMN end_time TEXT`);  } catch(e) {}
-
-// ── Walk lists & doors tables ─────────────────────────────────────────
-db.exec(`CREATE TABLE IF NOT EXISTS walk_lists (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  name        TEXT NOT NULL,
-  area        TEXT,
-  assigned_to TEXT,
-  created_at  TEXT DEFAULT (datetime('now','localtime'))
-)`);
-db.exec(`CREATE TABLE IF NOT EXISTS walk_doors (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  list_id     INTEGER NOT NULL,
-  address     TEXT,
-  voter_name  TEXT,
-  result      TEXT DEFAULT 'pending',
-  volunteer   TEXT,
-  notes       TEXT,
-  knocked_at  TEXT,
-  created_at  TEXT DEFAULT (datetime('now','localtime'))
-)`);
-
-// ── Donations table (ensure it exists at startup) ─────────────────────
-db.exec(`CREATE TABLE IF NOT EXISTS donations (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  donor_name  TEXT, amount REAL, date TEXT, source TEXT,
-  contact_id  INTEGER,
-  created_at  TEXT DEFAULT (datetime('now','localtime'))
-)`);
-try { db.exec(`ALTER TABLE donations ADD COLUMN contact_id INTEGER`); } catch(e) {}
-try { db.exec(`ALTER TABLE donations ADD COLUMN email TEXT`);        } catch(e) {}
-try { db.exec(`ALTER TABLE donations ADD COLUMN anedot_id TEXT`);   } catch(e) {}
-try { db.exec(`ALTER TABLE donations ADD COLUMN tender_type TEXT`);  } catch(e) {}
-try { db.exec(`ALTER TABLE donations ADD COLUMN check_number TEXT`); } catch(e) {}
+// ── Schema bootstrap ──────────────────────────────────────────────────
+const TS = `to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')`;
+(async () => {
+  await pool.query(`CREATE TABLE IF NOT EXISTS rsvps (
+    id SERIAL PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT ${TS},
+    first_name TEXT, last_name TEXT, email TEXT, phone TEXT,
+    address TEXT, city TEXT, state TEXT, zip TEXT, parish TEXT,
+    guests TEXT, guest_names TEXT, how_to_help TEXT,
+    yard_sign TEXT, yard_sign_delivered TEXT, endorse TEXT,
+    comment TEXT, event TEXT, role TEXT, pipeline_stage TEXT,
+    volunteer_role TEXT, volunteer_hours INTEGER DEFAULT 0,
+    volunteer_status TEXT DEFAULT 'new'
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS endorsements (
+    id SERIAL PRIMARY KEY, name TEXT NOT NULL, org TEXT,
+    tier TEXT DEFAULT 'individual', status TEXT DEFAULT 'not_contacted',
+    notes TEXT, date TEXT, contact_id INTEGER,
+    created_at TEXT DEFAULT ${TS}
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS events (
+    id SERIAL PRIMARY KEY, title TEXT NOT NULL,
+    date TEXT, time TEXT, end_time TEXT, location TEXT,
+    description TEXT, capacity INTEGER, status TEXT DEFAULT 'active',
+    fields TEXT, created_at TEXT DEFAULT ${TS}
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS walk_lists (
+    id SERIAL PRIMARY KEY, name TEXT NOT NULL,
+    area TEXT, assigned_to TEXT, created_at TEXT DEFAULT ${TS}
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS walk_doors (
+    id SERIAL PRIMARY KEY, list_id INTEGER NOT NULL,
+    address TEXT, voter_name TEXT, result TEXT DEFAULT 'pending',
+    volunteer TEXT, notes TEXT, knocked_at TEXT,
+    created_at TEXT DEFAULT ${TS}
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS donations (
+    id SERIAL PRIMARY KEY, donor_name TEXT, amount REAL,
+    date TEXT, source TEXT, contact_id INTEGER, email TEXT,
+    anedot_id TEXT, tender_type TEXT, check_number TEXT,
+    created_at TEXT DEFAULT ${TS}
+  )`);
+  await pool.query(`UPDATE rsvps SET role='Voter' WHERE role IS NULL OR role=''`);
+  const upRows = await dbAll("SELECT id, zip FROM rsvps WHERE zip IS NOT NULL AND zip != '' AND (parish IS NULL OR parish='')");
+  for (const r of upRows) { if (BP[r.zip]) await dbRun('UPDATE rsvps SET parish=? WHERE id=?', [BP[r.zip], r.id]); }
+  console.log('[DB] PostgreSQL ready');
+})().catch(e => console.error('[DB] Setup error:', e.message));
 
 // ── Parish lookup (module-scoped so routes can use it) ─────────────────
 const BP = {"70001":"Jefferson","70002":"Jefferson","70003":"Jefferson","70004":"Jefferson","70005":"Jefferson","70006":"Jefferson","70009":"Jefferson","70010":"Jefferson","70011":"Jefferson","70031":"Jefferson","70033":"Jefferson","70036":"Jefferson","70037":"Jefferson","70047":"Jefferson","70053":"Jefferson","70055":"Jefferson","70056":"Jefferson","70057":"Jefferson","70058":"Jefferson","70059":"Jefferson","70060":"Jefferson","70062":"Jefferson","70063":"Jefferson","70064":"Jefferson","70065":"Jefferson","70067":"Jefferson","70072":"Jefferson","70073":"Jefferson","70094":"Jefferson","70112":"Orleans","70113":"Orleans","70114":"Orleans","70115":"Orleans","70116":"Orleans","70117":"Orleans","70118":"Orleans","70119":"Orleans","70121":"Orleans","70122":"Orleans","70123":"Orleans","70124":"Orleans","70125":"Orleans","70126":"Orleans","70127":"Orleans","70128":"Orleans","70129":"Orleans","70130":"Orleans","70131":"Orleans","70163":"Orleans","70032":"St. Bernard","70043":"St. Bernard","70044":"St. Bernard","70085":"St. Bernard","70086":"St. Bernard","70092":"St. Bernard","70040":"Plaquemines","70041":"Plaquemines","70050":"Plaquemines","70068":"Plaquemines","70069":"Plaquemines","70070":"Plaquemines","70071":"Plaquemines","70074":"Plaquemines","70075":"Plaquemines","70076":"Plaquemines","70082":"Plaquemines","70083":"Plaquemines","70084":"Plaquemines","70090":"Plaquemines","70030":"St. Charles","70039":"St. Charles","70052":"St. Charles","70079":"St. Charles","70087":"St. Charles","70433":"St. Tammany","70434":"St. Tammany","70435":"St. Tammany","70437":"St. Tammany","70444":"St. Tammany","70445":"St. Tammany","70446":"St. Tammany","70447":"St. Tammany","70448":"St. Tammany","70450":"St. Tammany","70452":"St. Tammany","70455":"St. Tammany","70456":"St. Tammany","70458":"St. Tammany","70459":"St. Tammany","70460":"St. Tammany","70461":"St. Tammany","70464":"St. Tammany","70466":"St. Tammany","70471":"St. Tammany","70401":"Tangipahoa","70402":"Tangipahoa","70403":"Tangipahoa","70404":"Tangipahoa","70420":"Tangipahoa","70422":"Tangipahoa","70426":"Tangipahoa","70427":"Tangipahoa","70428":"Tangipahoa","70429":"Tangipahoa","70430":"Tangipahoa","70436":"Tangipahoa","70443":"Tangipahoa","70451":"Tangipahoa","70454":"Tangipahoa","70463":"Tangipahoa","70301":"Terrebonne","70302":"Terrebonne","70310":"Terrebonne","70352":"Terrebonne","70355":"Terrebonne","70356":"Terrebonne","70359":"Terrebonne","70360":"Terrebonne","70361":"Terrebonne","70363":"Terrebonne","70364":"Terrebonne","70380":"Terrebonne","70340":"Lafourche","70341":"Lafourche","70343":"Lafourche","70344":"Lafourche","70345":"Lafourche","70346":"Lafourche","70353":"Lafourche","70354":"Lafourche","70357":"Lafourche","70358":"Lafourche","70373":"Lafourche","70374":"Lafourche","70377":"Lafourche","70501":"Lafayette","70503":"Lafayette","70504":"Lafayette","70505":"Lafayette","70506":"Lafayette","70507":"Lafayette","70508":"Lafayette","70509":"Lafayette"};
-
-// ── Backfill parish from zip for existing records ─────────────────────
-{
-  const upd = db.prepare("UPDATE rsvps SET parish=? WHERE id=? AND (parish IS NULL OR parish='')");
-  db.prepare("SELECT id, zip FROM rsvps WHERE zip IS NOT NULL AND zip != '' AND (parish IS NULL OR parish='')").all()
-    .forEach(function(r){ if (BP[r.zip]) upd.run(BP[r.zip], r.id); });
-}
 
 // ── Middleware ────────────────────────────────────────────────────────
 app.use(cors());
@@ -153,15 +116,15 @@ app.use('/admin', (req, res, next) => {
 });
 
 // ── RSVP submission ───────────────────────────────────────────────────
-app.post('/rsvp', (req, res) => {
+app.post('/rsvp', async (req, res) => {
   const { firstName, lastName, email, phone, address, city, state, zip, parish,
           guests, guestNames, howToHelp, yardSign, endorse, comment, event } = req.body;
   try {
-    db.prepare(`
+    await dbRun(`
       INSERT INTO rsvps
         (first_name, last_name, email, phone, address, city, state, zip, parish, guests, guest_names, how_to_help, yard_sign, endorse, comment, event)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(firstName, lastName, email, phone, address, city, state, zip, parish, guests, guestNames, howToHelp, yardSign, endorse, comment, event);
+    `, [firstName, lastName, email, phone, address, city, state, zip, parish, guests, guestNames, howToHelp, yardSign, endorse, comment, event]);
     res.json({ result: 'success' });
   } catch (err) {
     console.error('DB error:', err.message);
@@ -170,42 +133,42 @@ app.post('/rsvp', (req, res) => {
 });
 
 // ── Yard sign delivery toggle ─────────────────────────────────────────
-app.patch('/rsvp/:id/sign', (req, res) => {
+app.patch('/rsvp/:id/sign', async (req, res) => {
   const { delivered } = req.body;
   try {
-    db.prepare('UPDATE rsvps SET yard_sign_delivered=? WHERE id=?')
-      .run(delivered ? 'Yes' : null, req.params.id);
+    await dbRun('UPDATE rsvps SET yard_sign_delivered=? WHERE id=?',
+      [delivered ? 'Yes' : null, req.params.id]);
     res.json({ result: 'success' });
   } catch(err) {
     res.status(500).json({ result: 'error' });
   }
 });
 
-app.patch('/rsvp/:id/role', (req, res) => {
+app.patch('/rsvp/:id/role', async (req, res) => {
   const { role } = req.body;
   try {
-    db.prepare('UPDATE rsvps SET role=? WHERE id=?').run(role, req.params.id);
+    await dbRun('UPDATE rsvps SET role=? WHERE id=?', [role, req.params.id]);
     res.json({ result: 'success' });
   } catch(err) {
     res.status(500).json({ result: 'error' });
   }
 });
 
-app.patch('/rsvp/:id/pipeline', (req, res) => {
+app.patch('/rsvp/:id/pipeline', async (req, res) => {
   const { pipeline_stage } = req.body;
   try {
-    db.prepare('UPDATE rsvps SET pipeline_stage=? WHERE id=?').run(pipeline_stage, req.params.id);
+    await dbRun('UPDATE rsvps SET pipeline_stage=? WHERE id=?', [pipeline_stage, req.params.id]);
     res.json({ result: 'success' });
   } catch(err) {
     res.status(500).json({ result: 'error' });
   }
 });
 
-app.patch('/rsvp/:id/endorse', (req, res) => {
+app.patch('/rsvp/:id/endorse', async (req, res) => {
   const { endorsed } = req.body;
   try {
-    db.prepare('UPDATE rsvps SET endorse=? WHERE id=?')
-      .run(endorsed ? 'Yes' : 'No', req.params.id);
+    await dbRun('UPDATE rsvps SET endorse=? WHERE id=?',
+      [endorsed ? 'Yes' : 'No', req.params.id]);
     res.json({ result: 'success' });
   } catch(err) {
     res.status(500).json({ result: 'error' });
@@ -213,15 +176,15 @@ app.patch('/rsvp/:id/endorse', (req, res) => {
 });
 
 // ── Manual constituent add ────────────────────────────────────────────
-app.post('/admin/constituent', (req, res) => {
+app.post('/admin/constituent', async (req, res) => {
   const { first_name, last_name, email, phone, address, city, state, zip, how_to_help, yard_sign, endorse, comment, role } = req.body;
   const parish = BP[zip] || '';
   try {
-    db.prepare(`
+    await dbRun(`
       INSERT INTO rsvps (first_name, last_name, email, phone, address, city, state, zip, parish, how_to_help, yard_sign, endorse, comment, role, event)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(first_name||'', last_name||'', email||'', phone||'', address||'', city||'', state||'', zip||'', parish,
-           how_to_help||'', yard_sign||'No', endorse||'No', comment||'', role||'Voter', 'Manual Entry');
+    `, [first_name||'', last_name||'', email||'', phone||'', address||'', city||'', state||'', zip||'', parish,
+        how_to_help||'', yard_sign||'No', endorse||'No', comment||'', role||'Voter', 'Manual Entry']);
     res.json({ result: 'success' });
   } catch(err) {
     console.error('DB error:', err.message);
@@ -348,18 +311,17 @@ function makePipelineCsv(rows) {
 }
 
 // Contacts CSV
-app.get('/admin/export.csv', (req, res) => {
-  const rows = db.prepare('SELECT * FROM rsvps ORDER BY created_at DESC').all();
+app.get('/admin/export.csv', async (req, res) => {
+  const rows = await dbAll('SELECT * FROM rsvps ORDER BY created_at DESC');
   res.set('Content-Type', 'text/csv; charset=utf-8');
   res.set('Content-Disposition', 'attachment; filename="contacts.csv"');
   res.send(makeContactsCsv(rows));
 });
 
 // Donors CSV
-app.get('/admin/export/donors.csv', (req, res) => {
+app.get('/admin/export/donors.csv', async (req, res) => {
   try {
-    db.exec(`CREATE TABLE IF NOT EXISTS donations (id INTEGER PRIMARY KEY AUTOINCREMENT, donor_name TEXT, amount REAL, date TEXT, source TEXT, contact_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`);
-    const rows = db.prepare('SELECT * FROM donations ORDER BY date DESC').all();
+    const rows = await dbAll('SELECT * FROM donations ORDER BY date DESC');
     res.set('Content-Type', 'text/csv; charset=utf-8');
     res.set('Content-Disposition', 'attachment; filename="donors.csv"');
     res.send(makeDonorsCsv(rows));
@@ -367,73 +329,74 @@ app.get('/admin/export/donors.csv', (req, res) => {
 });
 
 // Pipeline CSV
-app.get('/admin/export/pipeline.csv', (req, res) => {
-  const rows = db.prepare('SELECT * FROM rsvps ORDER BY last_name, first_name').all();
+app.get('/admin/export/pipeline.csv', async (req, res) => {
+  const rows = await dbAll('SELECT * FROM rsvps ORDER BY last_name, first_name');
   res.set('Content-Type', 'text/csv; charset=utf-8');
   res.set('Content-Disposition', 'attachment; filename="pipeline.csv"');
   res.send(makePipelineCsv(rows));
 });
 
 // Endorsers CSV
-app.get('/admin/export/endorsers.csv', (req, res) => {
-  const rows = db.prepare("SELECT * FROM rsvps WHERE endorse='Yes' ORDER BY last_name, first_name").all();
+app.get('/admin/export/endorsers.csv', async (req, res) => {
+  const rows = await dbAll("SELECT * FROM rsvps WHERE endorse='Yes' ORDER BY last_name, first_name");
   res.set('Content-Type', 'text/csv; charset=utf-8');
   res.set('Content-Disposition', 'attachment; filename="endorsers.csv"');
   res.send(makeContactsCsv(rows));
 });
 
 // Volunteers CSV
-app.get('/admin/export/volunteers.csv', (req, res) => {
-  const rows = db.prepare(`SELECT * FROM rsvps WHERE volunteer_role IS NOT NULL AND volunteer_role != '' ORDER BY last_name, first_name`).all();
+app.get('/admin/export/volunteers.csv', async (req, res) => {
+  const rows = await dbAll(`SELECT * FROM rsvps WHERE volunteer_role IS NOT NULL AND volunteer_role != '' ORDER BY last_name, first_name`);
   res.set('Content-Type', 'text/csv; charset=utf-8');
   res.set('Content-Disposition', 'attachment; filename="volunteers.csv"');
   res.send(makeVolunteersCsv(rows));
 });
 
 // ── Admin data (full) ─────────────────────────────────────────────────
-app.get('/admin/data', auth('admin'), (req, res) => {
-  res.json(db.prepare('SELECT * FROM rsvps ORDER BY created_at DESC').all());
+app.get('/admin/data', auth('admin'), async (req, res) => {
+  res.json(await dbAll('SELECT * FROM rsvps ORDER BY created_at DESC'));
 });
 
 // ── Contact search (typeahead) ─────────────────────────────────────────
-app.get('/admin/contacts/search', (req, res) => {
+app.get('/admin/contacts/search', async (req, res) => {
   const q = (req.query.q || '').trim();
   if (!q || q.length < 2) return res.json([]);
   const like = '%' + q + '%';
-  const rows = db.prepare(
+  const rows = await dbAll(
     `SELECT id, first_name, last_name, email FROM rsvps
      WHERE first_name LIKE ? OR last_name LIKE ? OR email LIKE ?
-     LIMIT 8`
-  ).all(like, like, like);
+     LIMIT 8`,
+    [like, like, like]
+  );
   res.json(rows);
 });
 
 // ── Candidate data (no how_to_help) ──────────────────────────────────
-app.get('/candidate/data', auth('candidate'), (req, res) => {
-  const rows = db.prepare(
+app.get('/candidate/data', auth('candidate'), async (req, res) => {
+  const rows = await dbAll(
     'SELECT id, created_at, first_name, last_name, guests, yard_sign FROM rsvps ORDER BY created_at DESC'
-  ).all();
+  );
   res.json(rows);
 });
 
-app.get('/candidate/donations', auth('candidate'), (req, res) => {
+app.get('/candidate/donations', auth('candidate'), async (req, res) => {
   try {
-    const rows = db.prepare('SELECT * FROM donations ORDER BY date DESC').all();
+    const rows = await dbAll('SELECT * FROM donations ORDER BY date DESC');
     res.json(rows);
   } catch(e) { res.json([]); }
 });
 
-app.get('/candidate/contact-donations/:id', auth('candidate'), (req, res) => {
+app.get('/candidate/contact-donations/:id', auth('candidate'), async (req, res) => {
   try {
-    const rows = db.prepare('SELECT * FROM donations WHERE contact_id=? ORDER BY date DESC').all(req.params.id);
+    const rows = await dbAll('SELECT * FROM donations WHERE contact_id=? ORDER BY date DESC', [req.params.id]);
     res.json(rows);
   } catch(e) { res.json([]); }
 });
 
 // ── Widget preview (standalone full-page render for admin preview) ─────
-app.get('/widget-preview/:id', auth('admin'), (req, res) => {
+app.get('/widget-preview/:id', auth('admin'), async (req, res) => {
   try {
-    const evt = db.prepare("SELECT * FROM events WHERE id=?").get(req.params.id);
+    const evt = await dbGet("SELECT * FROM events WHERE id=?", [req.params.id]);
     if (!evt) return res.status(404).send('Event not found');
     const fields = evt.fields ? JSON.parse(evt.fields) : null;
     const proto = req.headers['x-forwarded-proto'] || req.protocol;
@@ -476,62 +439,62 @@ ${widgetHtml}
 });
 
 // ── Public events API ─────────────────────────────────────────────────
-app.get('/api/events', (req, res) => {
+app.get('/api/events', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   try {
-    const rows = db.prepare("SELECT * FROM events WHERE status='active' ORDER BY date ASC").all();
+    const rows = await dbAll("SELECT * FROM events WHERE status='active' ORDER BY date ASC");
     res.json(rows);
   } catch(e) { res.json([]); }
 });
 
 // ── Admin events API ──────────────────────────────────────────────────
-app.get('/admin/events-list', auth('admin'), (req, res) => {
+app.get('/admin/events-list', auth('admin'), async (req, res) => {
   try {
-    const rows = db.prepare(`
+    const rows = await dbAll(`
       SELECT e.*, COUNT(r.id) as reg_count
       FROM events e
       LEFT JOIN rsvps r ON LOWER(r.event)=LOWER(e.title)
       GROUP BY e.id
       ORDER BY e.date DESC
-    `).all();
+    `);
     res.json(rows);
   } catch(e) { res.status(500).json({ result: 'error', error: e.message }); }
 });
 
-app.post('/admin/event', auth('admin'), (req, res) => {
+app.post('/admin/event', auth('admin'), async (req, res) => {
   const { title, date, time, end_time, location, description, capacity, fields } = req.body;
   try {
-    const r = db.prepare(`INSERT INTO events (title, date, time, end_time, location, description, capacity, fields) VALUES (?,?,?,?,?,?,?,?)`)
-      .run(title||'', date||'', time||'', end_time||'', location||'', description||'', capacity||null, fields ? JSON.stringify(fields) : null);
+    const r = await dbRun(`INSERT INTO events (title, date, time, end_time, location, description, capacity, fields) VALUES (?,?,?,?,?,?,?,?)`,
+      [title||'', date||'', time||'', end_time||'', location||'', description||'', capacity||null, fields ? JSON.stringify(fields) : null]);
     res.json({ result: 'ok', id: r.lastInsertRowid });
   } catch(e) { res.status(500).json({ result: 'error', error: e.message }); }
 });
 
-app.patch('/admin/event/:id', auth('admin'), (req, res) => {
+app.patch('/admin/event/:id', auth('admin'), async (req, res) => {
   const { title, date, time, end_time, location, description, capacity, status, fields } = req.body;
   try {
-    db.prepare(`UPDATE events SET title=?, date=?, time=?, end_time=?, location=?, description=?, capacity=?, status=?, fields=? WHERE id=?`)
-      .run(title||'', date||'', time||'', end_time||'', location||'', description||'', capacity||null, status||'active',
-          fields ? JSON.stringify(fields) : null, req.params.id);
+    await dbRun(`UPDATE events SET title=?, date=?, time=?, end_time=?, location=?, description=?, capacity=?, status=?, fields=? WHERE id=?`,
+      [title||'', date||'', time||'', end_time||'', location||'', description||'', capacity||null, status||'active',
+       fields ? JSON.stringify(fields) : null, req.params.id]);
     res.json({ result: 'ok' });
   } catch(e) { res.status(500).json({ result: 'error', error: e.message }); }
 });
 
-app.delete('/admin/event/:id', auth('admin'), (req, res) => {
+app.delete('/admin/event/:id', auth('admin'), async (req, res) => {
   try {
-    db.prepare('DELETE FROM events WHERE id=?').run(req.params.id);
+    await dbRun('DELETE FROM events WHERE id=?', [req.params.id]);
     res.json({ result: 'ok' });
   } catch(e) { res.status(500).json({ result: 'error', error: e.message }); }
 });
 
 // ── Public widget API: committee members ─────────────────────────────
 // Used by the Duda embeddable widget at voteforblaine.com
-app.get('/api/committee', (req, res) => {
+app.get('/api/committee', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  const rows = db.prepare(
+  const rows = await dbAll(
     "SELECT first_name, last_name FROM rsvps WHERE role LIKE '%Committee Member%' ORDER BY last_name, first_name"
-  ).all();
+  );
   res.json(rows);
 });
 
@@ -547,38 +510,38 @@ app.get('/',      (req, res) => res.redirect('/admin'));
 app.get('/candidate', auth('candidate'), (req, res) => res.send(candidateHTML()));
 
 // ── Constituent profile ───────────────────────────────────────────────
-app.get('/admin/constituent/:id/data', (req, res) => {
-  const row = db.prepare('SELECT * FROM rsvps WHERE id=?').get(req.params.id);
+app.get('/admin/constituent/:id/data', async (req, res) => {
+  const row = await dbGet('SELECT * FROM rsvps WHERE id=?', [req.params.id]);
   if (!row) return res.status(404).json({ error: 'Not found' });
   // Attach all events this person has attended (matched by email, or name fallback)
   const events = row.email
-    ? db.prepare("SELECT event FROM rsvps WHERE email=? AND event IS NOT NULL AND event!='' ORDER BY created_at").all(row.email).map(function(r){ return r.event; })
+    ? (await dbAll("SELECT event FROM rsvps WHERE email=? AND event IS NOT NULL AND event!='' ORDER BY created_at", [row.email])).map(function(r){ return r.event; })
     : (row.event ? [row.event] : []);
   res.json(Object.assign({}, row, { _events: events }));
 });
 
-app.patch('/admin/constituent/:id', (req, res) => {
+app.patch('/admin/constituent/:id', async (req, res) => {
   const { first_name, last_name, email, phone, address, city, state, zip, parish,
           guests, guest_names, how_to_help, yard_sign, endorse, comment, role } = req.body;
   try {
-    db.prepare(`UPDATE rsvps SET
+    await dbRun(`UPDATE rsvps SET
       first_name=?, last_name=?, email=?, phone=?, address=?, city=?, state=?, zip=?, parish=?,
       guests=?, guest_names=?, how_to_help=?, yard_sign=?, endorse=?, comment=?, role=?
-      WHERE id=?`)
-      .run(first_name, last_name, email, phone, address, city, state, zip, parish,
-           guests, guest_names, how_to_help, yard_sign, endorse, comment, role,
-           req.params.id);
+      WHERE id=?`,
+      [first_name, last_name, email, phone, address, city, state, zip, parish,
+       guests, guest_names, how_to_help, yard_sign, endorse, comment, role,
+       req.params.id]);
     res.json({ result: 'success' });
   } catch(err) {
     res.status(500).json({ result: 'error' });
   }
 });
 
-app.get('/admin/constituent/:id', (req, res) => res.send(constituentHTML(req.params.id)));
+app.get('/admin/constituent/:id', async (req, res) => res.send(await constituentHTML(req.params.id)));
 
-app.delete('/admin/constituent/:id', (req, res) => {
+app.delete('/admin/constituent/:id', async (req, res) => {
   try {
-    db.prepare('DELETE FROM rsvps WHERE id=?').run(req.params.id);
+    await dbRun('DELETE FROM rsvps WHERE id=?', [req.params.id]);
     res.json({ result: 'success' });
   } catch(err) {
     res.status(500).json({ result: 'error' });
@@ -586,24 +549,24 @@ app.delete('/admin/constituent/:id', (req, res) => {
 });
 
 // ── Donations ─────────────────────────────────────────────────────────
-app.get('/admin/donations', (req, res) => {
+app.get('/admin/donations', async (req, res) => {
   try {
-    const rows = db.prepare('SELECT * FROM donations ORDER BY date DESC, created_at DESC').all();
+    const rows = await dbAll('SELECT * FROM donations ORDER BY date DESC, created_at DESC');
     res.json(rows);
   } catch(e) { res.status(500).json({ result: 'error' }); }
 });
-app.delete('/admin/donation/:id', (req, res) => {
+app.delete('/admin/donation/:id', async (req, res) => {
   try {
-    db.prepare('DELETE FROM donations WHERE id=?').run(req.params.id);
+    await dbRun('DELETE FROM donations WHERE id=?', [req.params.id]);
     res.json({ result: 'ok' });
   } catch(e) { res.status(500).json({ result: 'error' }); }
 });
-app.post('/admin/donation', (req, res) => {
+app.post('/admin/donation', async (req, res) => {
   const { donor_name, amount, date, source, contact_id, tender_type, check_number } = req.body;
   try {
-    db.prepare('INSERT INTO donations (donor_name, amount, date, source, contact_id, tender_type, check_number) VALUES (?,?,?,?,?,?,?)')
-      .run(donor_name || '', amount || 0, date || '', source || '', contact_id || null,
-          tender_type || null, check_number || null);
+    await dbRun('INSERT INTO donations (donor_name, amount, date, source, contact_id, tender_type, check_number) VALUES (?,?,?,?,?,?,?)',
+      [donor_name || '', amount || 0, date || '', source || '', contact_id || null,
+       tender_type || null, check_number || null]);
     res.json({ result: 'ok' });
   } catch(err) {
     res.status(500).json({ result: 'error', error: err.message });
@@ -611,22 +574,22 @@ app.post('/admin/donation', (req, res) => {
 });
 
 // ── Volunteers ────────────────────────────────────────────────────────
-app.get('/admin/volunteers', (req, res) => {
-  const rows = db.prepare(`SELECT * FROM rsvps WHERE volunteer_role IS NOT NULL AND volunteer_role != '' ORDER BY last_name, first_name`).all();
+app.get('/admin/volunteers', async (req, res) => {
+  const rows = await dbAll(`SELECT * FROM rsvps WHERE volunteer_role IS NOT NULL AND volunteer_role != '' ORDER BY last_name, first_name`);
   res.json(rows);
 });
-app.patch('/admin/volunteer/:id', (req, res) => {
+app.patch('/admin/volunteer/:id', async (req, res) => {
   const { volunteer_role, volunteer_hours, volunteer_status } = req.body;
   try {
-    db.prepare(`UPDATE rsvps SET volunteer_role=?, volunteer_hours=?, volunteer_status=? WHERE id=?`)
-      .run(volunteer_role||'', volunteer_hours||0, volunteer_status||'new', req.params.id);
+    await dbRun(`UPDATE rsvps SET volunteer_role=?, volunteer_hours=?, volunteer_status=? WHERE id=?`,
+      [volunteer_role||'', volunteer_hours||0, volunteer_status||'new', req.params.id]);
     res.json({ result: 'ok' });
   } catch(e) { res.status(500).json({ result: 'error' }); }
 });
-app.delete('/admin/volunteer/:id', (req, res) => {
+app.delete('/admin/volunteer/:id', async (req, res) => {
   try {
-    db.prepare(`UPDATE rsvps SET volunteer_role=NULL, volunteer_hours=0, volunteer_status=NULL WHERE id=?`)
-      .run(req.params.id);
+    await dbRun(`UPDATE rsvps SET volunteer_role=NULL, volunteer_hours=0, volunteer_status=NULL WHERE id=?`,
+      [req.params.id]);
     res.json({ result: 'ok' });
   } catch(e) { res.status(500).json({ result: 'error' }); }
 });
@@ -635,7 +598,7 @@ app.delete('/admin/volunteer/:id', (req, res) => {
 // Public endpoint — no auth middleware — but signature-verified when secret is set.
 // Configure in Anedot: Settings → Webhooks → URL = https://yourdomain.com/webhook/anedot
 // Events to enable: donation_completed, donation_refunded
-app.post('/webhook/anedot', express.raw({ type: '*/*' }), (req, res) => {
+app.post('/webhook/anedot', express.raw({ type: '*/*' }), async (req, res) => {
   try {
     const secret = process.env.ANEDOT_WEBHOOK_SECRET || '';
 
@@ -668,20 +631,20 @@ app.post('/webhook/anedot', express.raw({ type: '*/*' }), (req, res) => {
 
       // Deduplicate — Anedot retries failed deliveries
       if (anedot_id) {
-        const dupe = db.prepare('SELECT id FROM donations WHERE anedot_id=?').get(anedot_id);
+        const dupe = await dbGet('SELECT id FROM donations WHERE anedot_id=?', [anedot_id]);
         if (dupe) { console.log(`[Anedot] Duplicate ${anedot_id}, skipping`); return res.json({ result: 'duplicate' }); }
       }
 
       // Auto-match to existing contact by email
       let contact_id = null;
       if (email) {
-        const contact = db.prepare('SELECT id FROM rsvps WHERE LOWER(email)=?').get(email);
+        const contact = await dbGet('SELECT id FROM rsvps WHERE LOWER(email)=?', [email]);
         if (contact) contact_id = contact.id;
       }
 
-      db.prepare(`INSERT INTO donations (donor_name, amount, date, source, contact_id, email, anedot_id)
-                  VALUES (?,?,?,?,?,?,?)`)
-        .run(donor_name, amount, date, source, contact_id, email || null, anedot_id || null);
+      await dbRun(`INSERT INTO donations (donor_name, amount, date, source, contact_id, email, anedot_id)
+                   VALUES (?,?,?,?,?,?,?)`,
+        [donor_name, amount, date, source, contact_id, email || null, anedot_id || null]);
 
       console.log(`[Anedot] Recorded $${amount} from ${donor_name}`);
       return res.json({ result: 'ok' });
@@ -690,7 +653,7 @@ app.post('/webhook/anedot', express.raw({ type: '*/*' }), (req, res) => {
     if (event === 'donation_refunded') {
       const anedot_id = (data.donation && data.donation.id) ? String(data.donation.id) : null;
       if (anedot_id) {
-        db.prepare(`DELETE FROM donations WHERE anedot_id=?`).run(anedot_id);
+        await dbRun(`DELETE FROM donations WHERE anedot_id=?`, [anedot_id]);
         console.log(`[Anedot] Refund — removed donation ${anedot_id}`);
       }
       return res.json({ result: 'ok' });
@@ -706,111 +669,125 @@ app.post('/webhook/anedot', express.raw({ type: '*/*' }), (req, res) => {
 });
 
 // ── Endorsements ──────────────────────────────────────────────────────
-app.get('/admin/endorsements', (req, res) => {
-  res.json(db.prepare('SELECT * FROM endorsements ORDER BY tier, name').all());
+app.get('/admin/endorsements', async (req, res) => {
+  res.json(await dbAll('SELECT * FROM endorsements ORDER BY tier, name'));
 });
-app.post('/admin/endorsement', (req, res) => {
+app.post('/admin/endorsement', async (req, res) => {
   const { name, org, tier, status, notes, date, contact_id } = req.body;
   try {
-    const r = db.prepare(`INSERT INTO endorsements (name,org,tier,status,notes,date,contact_id) VALUES (?,?,?,?,?,?,?)`)
-      .run(name||'', org||'', tier||'individual', status||'not_contacted', notes||'', date||'', contact_id||null);
+    const r = await dbRun(`INSERT INTO endorsements (name,org,tier,status,notes,date,contact_id) VALUES (?,?,?,?,?,?,?)`,
+      [name||'', org||'', tier||'individual', status||'not_contacted', notes||'', date||'', contact_id||null]);
     res.json({ result: 'ok', id: r.lastInsertRowid });
   } catch(e) { res.status(500).json({ result: 'error' }); }
 });
-app.patch('/admin/endorsement/:id', (req, res) => {
+app.patch('/admin/endorsement/:id', async (req, res) => {
   const { name, org, tier, status, notes, date, contact_id } = req.body;
   try {
-    db.prepare(`UPDATE endorsements SET name=?,org=?,tier=?,status=?,notes=?,date=?,contact_id=? WHERE id=?`)
-      .run(name||'', org||'', tier||'individual', status||'not_contacted', notes||'', date||'', contact_id||null, req.params.id);
+    await dbRun(`UPDATE endorsements SET name=?,org=?,tier=?,status=?,notes=?,date=?,contact_id=? WHERE id=?`,
+      [name||'', org||'', tier||'individual', status||'not_contacted', notes||'', date||'', contact_id||null, req.params.id]);
     res.json({ result: 'ok' });
   } catch(e) { res.status(500).json({ result: 'error' }); }
 });
-app.delete('/admin/endorsement/:id', (req, res) => {
+app.delete('/admin/endorsement/:id', async (req, res) => {
   try {
-    db.prepare('DELETE FROM endorsements WHERE id=?').run(req.params.id);
+    await dbRun('DELETE FROM endorsements WHERE id=?', [req.params.id]);
     res.json({ result: 'ok' });
   } catch(e) { res.status(500).json({ result: 'error' }); }
 });
 
 // ── Walk Lists & Canvassing ───────────────────────────────────────────
-app.get('/admin/walk-lists', (req, res) => {
-  const lists = db.prepare('SELECT * FROM walk_lists ORDER BY created_at DESC').all();
-  lists.forEach(l => {
-    l._total   = db.prepare('SELECT COUNT(*) as c FROM walk_doors WHERE list_id=?').get(l.id).c;
-    l._knocked = db.prepare("SELECT COUNT(*) as c FROM walk_doors WHERE list_id=? AND result!='pending'").get(l.id).c;
-    l._favorable = db.prepare("SELECT COUNT(*) as c FROM walk_doors WHERE list_id=? AND result='favorable'").get(l.id).c;
-  });
+app.get('/admin/walk-lists', async (req, res) => {
+  const lists = await dbAll('SELECT * FROM walk_lists ORDER BY created_at DESC');
+  for (const l of lists) {
+    const t = await dbGet('SELECT COUNT(*) as c FROM walk_doors WHERE list_id=?', [l.id]);
+    const k = await dbGet("SELECT COUNT(*) as c FROM walk_doors WHERE list_id=? AND result!='pending'", [l.id]);
+    const f = await dbGet("SELECT COUNT(*) as c FROM walk_doors WHERE list_id=? AND result='favorable'", [l.id]);
+    l._total     = t ? t.c : 0;
+    l._knocked   = k ? k.c : 0;
+    l._favorable = f ? f.c : 0;
+  }
   res.json(lists);
 });
-app.post('/admin/walk-list', (req, res) => {
+app.post('/admin/walk-list', async (req, res) => {
   const { name, area, assigned_to } = req.body;
   try {
-    const r = db.prepare('INSERT INTO walk_lists (name,area,assigned_to) VALUES (?,?,?)').run(name||'', area||'', assigned_to||'');
+    const r = await dbRun('INSERT INTO walk_lists (name,area,assigned_to) VALUES (?,?,?)',
+      [name||'', area||'', assigned_to||'']);
     res.json({ result: 'ok', id: r.lastInsertRowid });
   } catch(e) { res.status(500).json({ result: 'error' }); }
 });
-app.patch('/admin/walk-list/:id', (req, res) => {
+app.patch('/admin/walk-list/:id', async (req, res) => {
   const { name, area, assigned_to } = req.body;
   try {
-    db.prepare('UPDATE walk_lists SET name=?,area=?,assigned_to=? WHERE id=?')
-      .run(name||'', area||'', assigned_to||'', req.params.id);
+    await dbRun('UPDATE walk_lists SET name=?,area=?,assigned_to=? WHERE id=?',
+      [name||'', area||'', assigned_to||'', req.params.id]);
     res.json({ result: 'ok' });
   } catch(e) { res.status(500).json({ result: 'error' }); }
 });
-app.delete('/admin/walk-list/:id', (req, res) => {
+app.delete('/admin/walk-list/:id', async (req, res) => {
   try {
-    db.prepare('DELETE FROM walk_doors WHERE list_id=?').run(req.params.id);
-    db.prepare('DELETE FROM walk_lists WHERE id=?').run(req.params.id);
+    await dbRun('DELETE FROM walk_doors WHERE list_id=?', [req.params.id]);
+    await dbRun('DELETE FROM walk_lists WHERE id=?', [req.params.id]);
     res.json({ result: 'ok' });
   } catch(e) { res.status(500).json({ result: 'error' }); }
 });
-app.get('/admin/walk-doors/:listId', (req, res) => {
-  res.json(db.prepare('SELECT * FROM walk_doors WHERE list_id=? ORDER BY id').all(req.params.listId));
+app.get('/admin/walk-doors/:listId', async (req, res) => {
+  res.json(await dbAll('SELECT * FROM walk_doors WHERE list_id=? ORDER BY id', [req.params.listId]));
 });
-app.post('/admin/walk-door', (req, res) => {
+app.post('/admin/walk-door', async (req, res) => {
   const { list_id, address, voter_name } = req.body;
   try {
-    const r = db.prepare('INSERT INTO walk_doors (list_id,address,voter_name) VALUES (?,?,?)').run(list_id, address||'', voter_name||'');
+    const r = await dbRun('INSERT INTO walk_doors (list_id,address,voter_name) VALUES (?,?,?)',
+      [list_id, address||'', voter_name||'']);
     res.json({ result: 'ok', id: r.lastInsertRowid });
   } catch(e) { res.status(500).json({ result: 'error' }); }
 });
-app.patch('/admin/walk-door/:id', (req, res) => {
+app.patch('/admin/walk-door/:id', async (req, res) => {
   const { result, volunteer, notes } = req.body;
   try {
-    db.prepare(`UPDATE walk_doors SET result=?,volunteer=?,notes=?,knocked_at=datetime('now','localtime') WHERE id=?`)
-      .run(result||'pending', volunteer||'', notes||'', req.params.id);
+    await dbRun(`UPDATE walk_doors SET result=?,volunteer=?,notes=?,knocked_at=to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS') WHERE id=?`,
+      [result||'pending', volunteer||'', notes||'', req.params.id]);
     res.json({ result: 'ok' });
   } catch(e) { res.status(500).json({ result: 'error' }); }
 });
 
 // ── Bulk CSV import for a walk list ───────────────────────────────────
-app.post('/admin/walk-list/:id/import', (req, res) => {
+app.post('/admin/walk-list/:id/import', async (req, res) => {
   const listId = req.params.id;
   const { rows } = req.body; // [{ address, voter_name }]
   if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ result: 'error', msg: 'No rows' });
+  const client = await pool.connect();
   try {
-    const stmt = db.prepare('INSERT INTO walk_doors (list_id,address,voter_name) VALUES (?,?,?)');
-    const insertMany = db.transaction((items) => {
-      for (const r of items) stmt.run(listId, (r.address||'').trim(), (r.voter_name||'').trim());
-    });
-    insertMany(rows);
+    await client.query('BEGIN');
+    for (const r of rows) {
+      await client.query(
+        'INSERT INTO walk_doors (list_id,address,voter_name) VALUES ($1,$2,$3)',
+        [listId, (r.address||'').trim(), (r.voter_name||'').trim()]
+      );
+    }
+    await client.query('COMMIT');
     res.json({ result: 'ok', imported: rows.length });
-  } catch(e) { res.status(500).json({ result: 'error', msg: e.message }); }
+  } catch(e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ result: 'error', msg: e.message });
+  } finally {
+    client.release();
+  }
 });
 
 // ── Yard sign map ─────────────────────────────────────────────────────
 app.get('/admin/map', (req, res) => res.send(mapHTML()));
-app.get('/admin/sign-map-data', (req, res) => {
-  const rows = db.prepare(
+app.get('/admin/sign-map-data', async (req, res) => {
+  const rows = await dbAll(
     "SELECT id, first_name, last_name, address, city, zip, parish, yard_sign_delivered FROM rsvps WHERE yard_sign='Yes' ORDER BY created_at DESC"
-  ).all();
+  );
   res.json(rows);
 });
 
-app.get('/admin/no-sign-data', (req, res) => {
-  const rows = db.prepare(
+app.get('/admin/no-sign-data', async (req, res) => {
+  const rows = await dbAll(
     "SELECT id, first_name, last_name, address, city, zip, parish FROM rsvps WHERE (yard_sign IS NULL OR yard_sign != 'Yes') AND zip IS NOT NULL AND zip != '' ORDER BY created_at DESC"
-  ).all();
+  );
   res.json(rows);
 });
 
@@ -4785,8 +4762,8 @@ document.getElementById('q').addEventListener('input',function(){
 // ════════════════════════════════════════════════════════════════════════
 //  CONSTITUENT PROFILE HTML
 // ════════════════════════════════════════════════════════════════════════
-function constituentHTML(id) {
-  const _row = db.prepare('SELECT * FROM rsvps WHERE id=?').get(id);
+async function constituentHTML(id) {
+  const _row = await dbGet('SELECT * FROM rsvps WHERE id=?', [id]);
   const _data = JSON.stringify(_row || null);
   return `<!DOCTYPE html>
 <html lang="en">

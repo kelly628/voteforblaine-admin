@@ -2055,6 +2055,11 @@ function adminHTML() { return `<!DOCTYPE html>
 <!-- ═══════════ CONSTITUENTS VIEW ═══════════ -->
 <div class="view view-hidden" id="view-constituents">
 
+<div class="feat-page-hdr">
+  <div class="feat-page-title">Contacts</div>
+  <button class="feat-page-btn" onclick="openAddPerson()">&#xff0b; New Contact</button>
+</div>
+
 <!-- ── District Filter ── -->
 <div class="district-bar">
   <button class="dist-chip active" id="dist-voters"    onclick="setDistrict('voters')">

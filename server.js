@@ -5013,9 +5013,6 @@ function constituentHTML(id) {
   <textarea class="edit-textarea" id="i-comment" placeholder="Comments or questions…"></textarea>
 </div>
 
-  <div class="p-meta">Registered <strong id="p-date">&#8212;</strong> &nbsp;&middot;&nbsp; ID #<strong id="p-id">&#8212;</strong></div>
-</div>
-
 <div class="s-card" id="don-hist-card">
   <div class="s-label">
     Donation History
@@ -5029,6 +5026,9 @@ function constituentHTML(id) {
     <div class="don-hist"><div class="don-hist-num" id="dh-last">—</div><div class="don-hist-lbl">Last Gift</div></div>
   </div>
   <div id="dh-rows"></div>
+</div>
+
+  <div class="p-meta">Registered <strong id="p-date">&#8212;</strong> &nbsp;&middot;&nbsp; ID #<strong id="p-id">&#8212;</strong></div>
 </div>
 
 <footer class="foot">Campaign Admin &nbsp;&middot;&nbsp; Blaine Benge Moncrief for Judge, Division H &nbsp;&middot;&nbsp; 24th JDC</footer>

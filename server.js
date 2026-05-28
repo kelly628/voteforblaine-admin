@@ -3711,11 +3711,12 @@ function buildEventsView(d) {
 var EVT_TIME_SLOTS = (function() {
   var slots = [];
   for (var h = 6; h <= 23; h++) {
-    for (var m = 0; m < 60; m += 30) {
-      if (h === 23 && m === 30) break;
+    for (var m = 0; m < 60; m += 15) {
+      if (h === 23 && m >= 15) break;
       var h12 = h % 12 || 12;
       var ampm = h < 12 ? 'AM' : 'PM';
-      slots.push(h12 + ':' + (m === 0 ? '00' : '30') + ' ' + ampm);
+      var mStr = m === 0 ? '00' : String(m);
+      slots.push(h12 + ':' + mStr + ' ' + ampm);
     }
   }
   return slots;
@@ -3748,7 +3749,7 @@ function evtUpdateEndTimes(resetEnd) {
 
   // Default end time to start + 2 hrs when resetting
   if (resetEnd && startIdx >= 0) {
-    var defaultEnd = EVT_TIME_SLOTS[startIdx + 4]; // +4 slots = +2 hours
+    var defaultEnd = EVT_TIME_SLOTS[startIdx + 8]; // +8 slots = +2 hours at 15-min increments
     if (defaultEnd) endSel.value = defaultEnd;
   }
 }

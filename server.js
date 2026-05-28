@@ -1171,14 +1171,14 @@ function generateWidget(label, displayDate, time, location, fields, endTime) {
 showEmail ? '        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-email">Email Address</label><input class="bm-rsvp-input" type="email" id="bm-email" placeholder="your@email.com"/></div>' : '',
 showPhone ? '        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-phone">Cell Number</label><input class="bm-rsvp-input" type="tel" id="bm-phone" placeholder="(504) 555-0000"/></div>' : '',
 (showEmail || showPhone) ? '      </div>' : '',
-// Zip (always, for parish) + Guests
+// Address (street → city/state → zip is natural geographic order)
+showAddress ? '      <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-address">Street Address</label><input class="bm-rsvp-input" type="text" id="bm-address" placeholder="123 Main St"/></div>' : '',
+showAddress ? '      <div class="bm-rsvp-row"><div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-city">City</label><input class="bm-rsvp-input" type="text" id="bm-city" placeholder="Metairie"/></div><div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-state">State</label><select class="bm-rsvp-select" id="bm-state"><option value="AL">Alabama</option><option value="AK">Alaska</option><option value="AZ">Arizona</option><option value="AR">Arkansas</option><option value="CA">California</option><option value="CO">Colorado</option><option value="CT">Connecticut</option><option value="DE">Delaware</option><option value="FL">Florida</option><option value="GA">Georgia</option><option value="HI">Hawaii</option><option value="ID">Idaho</option><option value="IL">Illinois</option><option value="IN">Indiana</option><option value="IA">Iowa</option><option value="KS">Kansas</option><option value="KY">Kentucky</option><option value="LA" selected>Louisiana</option><option value="ME">Maine</option><option value="MD">Maryland</option><option value="MA">Massachusetts</option><option value="MI">Michigan</option><option value="MN">Minnesota</option><option value="MS">Mississippi</option><option value="MO">Missouri</option><option value="MT">Montana</option><option value="NE">Nebraska</option><option value="NV">Nevada</option><option value="NH">New Hampshire</option><option value="NJ">New Jersey</option><option value="NM">New Mexico</option><option value="NY">New York</option><option value="NC">North Carolina</option><option value="ND">North Dakota</option><option value="OH">Ohio</option><option value="OK">Oklahoma</option><option value="OR">Oregon</option><option value="PA">Pennsylvania</option><option value="RI">Rhode Island</option><option value="SC">South Carolina</option><option value="SD">South Dakota</option><option value="TN">Tennessee</option><option value="TX">Texas</option><option value="UT">Utah</option><option value="VT">Vermont</option><option value="VA">Virginia</option><option value="WA">Washington</option><option value="WV">West Virginia</option><option value="WI">Wisconsin</option><option value="WY">Wyoming</option></select></div></div>' : '',
+// Zip + Guests
 '      <div class="bm-rsvp-row">',
 '        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-zip">Zip Code</label><input class="bm-rsvp-input" type="text" id="bm-zip" placeholder="70001" maxlength="10" oninput="bmAutoParish(this.value)"/></div>',
 showGuests ? '        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-guests">Number of Guests (including yourself)</label><select class="bm-rsvp-select" id="bm-guests"><option value="1">1 — Just me</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5+">5 or more</option></select></div>' : '',
 '      </div>',
-// Address
-showAddress ? '      <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-address">Street Address</label><input class="bm-rsvp-input" type="text" id="bm-address" placeholder="123 Main St"/></div>' : '',
-showAddress ? '      <div class="bm-rsvp-row"><div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-city">City</label><input class="bm-rsvp-input" type="text" id="bm-city" placeholder="Metairie"/></div><div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-state">State</label><select class="bm-rsvp-select" id="bm-state"><option value="AL">Alabama</option><option value="AK">Alaska</option><option value="AZ">Arizona</option><option value="AR">Arkansas</option><option value="CA">California</option><option value="CO">Colorado</option><option value="CT">Connecticut</option><option value="DE">Delaware</option><option value="FL">Florida</option><option value="GA">Georgia</option><option value="HI">Hawaii</option><option value="ID">Idaho</option><option value="IL">Illinois</option><option value="IN">Indiana</option><option value="IA">Iowa</option><option value="KS">Kansas</option><option value="KY">Kentucky</option><option value="LA" selected>Louisiana</option><option value="ME">Maine</option><option value="MD">Maryland</option><option value="MA">Massachusetts</option><option value="MI">Michigan</option><option value="MN">Minnesota</option><option value="MS">Mississippi</option><option value="MO">Missouri</option><option value="MT">Montana</option><option value="NE">Nebraska</option><option value="NV">Nevada</option><option value="NH">New Hampshire</option><option value="NJ">New Jersey</option><option value="NM">New Mexico</option><option value="NY">New York</option><option value="NC">North Carolina</option><option value="ND">North Dakota</option><option value="OH">Ohio</option><option value="OK">Oklahoma</option><option value="OR">Oregon</option><option value="PA">Pennsylvania</option><option value="RI">Rhode Island</option><option value="SC">South Carolina</option><option value="SD">South Dakota</option><option value="TN">Tennessee</option><option value="TX">Texas</option><option value="UT">Utah</option><option value="VT">Vermont</option><option value="VA">Virginia</option><option value="WA">Washington</option><option value="WV">West Virginia</option><option value="WI">Wisconsin</option><option value="WY">Wyoming</option></select></div></div>' : '',
 '      <input type="hidden" id="bm-parish"/>',
 // Ways to get involved
 showHelp ? '      <div class="bm-rsvp-help-group"><span class="bm-rsvp-help-group-label">How would you like to help? (select all that apply)</span><div class="bm-rsvp-help-grid">' : '',
@@ -2725,6 +2725,9 @@ var activeDistrict = 'voters'; // 'voters' | 'ood' | 'all'
 var activeEvtFilter = 'all';   // 'all' | event title string
 var evtSearchQ      = '';
 
+// True for actual event registrations (excludes manually-added contacts)
+function isEvtReg(r) { return r.event && r.event !== 'Manual Entry'; }
+
 function isVoter(r)  { return r.parish === 'Jefferson'; }
 function isOOD(r)    { return r.parish && r.parish !== 'Jefferson'; }
 
@@ -3675,12 +3678,12 @@ function renderCompliance(donCount) {
 function buildEvtFilters(evts) {
   var bar = document.getElementById('evt-filter-bar');
   if (!bar) return;
-  var allCount = all.filter(function(r){ return r.event; }).length;
+  var allCount = all.filter(isEvtReg).length;
   var chips = '<button class="dist-chip' + (activeEvtFilter==='all'?' active':'') +
     '" onclick="setEvtFilter(\'all\')">All Events' +
     '<span class="dist-chip-count">' + allCount + '</span></button>';
   (evts||[]).forEach(function(ev) {
-    var cnt = all.filter(function(r){ return r.event === ev.title; }).length;
+    var cnt = all.filter(function(r){ return isEvtReg(r) && r.event === ev.title; }).length;
     chips += '<button class="dist-chip' + (activeEvtFilter===ev.title?' active':'') +
       '" data-evttitle="' + x(ev.title) + '" onclick="setEvtFilter(this.dataset.evttitle)">' +
       x(ev.title) + '<span class="dist-chip-count">' + cnt + '</span></button>';
@@ -3701,9 +3704,10 @@ function setEvtFilter(val) {
 }
 
 function refreshEvtTable() {
+  var regs = all.filter(isEvtReg);
   var base = activeEvtFilter === 'all'
-    ? all
-    : all.filter(function(r){ return r.event === activeEvtFilter; });
+    ? regs
+    : regs.filter(function(r){ return r.event === activeEvtFilter; });
   var q = evtSearchQ;
   var d = q ? base.filter(function(r){
     var s = ((r.first_name||'') + ' ' + (r.last_name||'') + ' ' + (r.email||'') + ' ' + (r.event||'')).toLowerCase();

@@ -2100,8 +2100,17 @@ function adminHTML() { return `<!DOCTYPE html>
   <!-- Header -->
   <div class="feat-page-hdr">
     <div class="feat-page-title">Events</div>
-    <button class="feat-page-btn" onclick="openNewEventModal()">&#xff0b; New Event</button>
+    <div style="display:flex;align-items:center;gap:12px;margin-left:auto;">
+      <div class="search">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="evt-q" type="text" placeholder="Search registrations&hellip;" style="width:210px;" oninput="evtSearchQ=this.value.trim().toLowerCase();refreshEvtTable()"/>
+      </div>
+      <button class="feat-page-btn" style="margin-left:0;" onclick="openNewEventModal()">&#xff0b; New Event</button>
+    </div>
   </div>
+
+  <!-- Event filter chips (populated dynamically by buildEvtFilters) -->
+  <div class="district-bar" id="evt-filter-bar"></div>
 
   <!-- Event management cards -->
   <div style="padding:24px 32px 0;">
@@ -2111,7 +2120,10 @@ function adminHTML() { return `<!DOCTYPE html>
     </div>
 
     <!-- Registration table -->
-    <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:12px;">All Registrations</div>
+    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:12px;">
+      <div id="evt-reg-label" style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;">All Registrations</div>
+      <span id="evt-reg-tally" style="font-size:11px;color:var(--muted);font-weight:600;"></span>
+    </div>
     <div id="evt-reg-table-wrap" class="don-table-wrap" style="margin-bottom:40px;">
       <table>
         <thead><tr>
@@ -2710,6 +2722,8 @@ var BM_CRM_BASE_URL = '${process.env.PUBLIC_URL || "http://localhost:3002"}';
 var all = [];
 var activeEvent    = null;
 var activeDistrict = 'voters'; // 'voters' | 'ood' | 'all'
+var activeEvtFilter = 'all';   // 'all' | event title string
+var evtSearchQ      = '';
 
 function isVoter(r)  { return r.parish === 'Jefferson'; }
 function isOOD(r)    { return r.parish && r.parish !== 'Jefferson'; }
@@ -3657,60 +3671,109 @@ function renderCompliance(donCount) {
 }
 
 // ── Event Registrations View ──────────────────────────────────────────
+// ── Event filter / search helpers ────────────────────────────────────────
+function buildEvtFilters(evts) {
+  var bar = document.getElementById('evt-filter-bar');
+  if (!bar) return;
+  var allCount = all.filter(function(r){ return r.event; }).length;
+  var chips = '<button class="dist-chip' + (activeEvtFilter==='all'?' active':'') +
+    '" onclick="setEvtFilter(\'all\')">All Events' +
+    '<span class="dist-chip-count">' + allCount + '</span></button>';
+  (evts||[]).forEach(function(ev) {
+    var cnt = all.filter(function(r){ return r.event === ev.title; }).length;
+    chips += '<button class="dist-chip' + (activeEvtFilter===ev.title?' active':'') +
+      '" data-evttitle="' + x(ev.title) + '" onclick="setEvtFilter(this.dataset.evttitle)">' +
+      x(ev.title) + '<span class="dist-chip-count">' + cnt + '</span></button>';
+  });
+  bar.innerHTML = chips;
+}
+
+function setEvtFilter(val) {
+  activeEvtFilter = val;
+  document.querySelectorAll('#evt-filter-bar .dist-chip').forEach(function(btn) {
+    var isAll   = val === 'all' && !btn.dataset.evttitle;
+    var isMatch = btn.dataset.evttitle && btn.dataset.evttitle === val;
+    btn.classList.toggle('active', !!(isAll || isMatch));
+  });
+  var lbl = document.getElementById('evt-reg-label');
+  if (lbl) lbl.textContent = val === 'all' ? 'All Registrations' : val + ' — Registrations';
+  refreshEvtTable();
+}
+
+function refreshEvtTable() {
+  var base = activeEvtFilter === 'all'
+    ? all
+    : all.filter(function(r){ return r.event === activeEvtFilter; });
+  var q = evtSearchQ;
+  var d = q ? base.filter(function(r){
+    var s = ((r.first_name||'') + ' ' + (r.last_name||'') + ' ' + (r.email||'') + ' ' + (r.event||'')).toLowerCase();
+    return s.indexOf(q) > -1;
+  }) : base;
+  var sorted = d.slice().sort(function(a,b){ return (b.created_at||'') < (a.created_at||'') ? -1 : 1; });
+  var tally = document.getElementById('evt-reg-tally');
+  if (tally) tally.textContent = sorted.length + ' registration' + (sorted.length === 1 ? '' : 's');
+  var tbody = document.getElementById('evt-reg-tbody');
+  if (!tbody) return;
+  if (!sorted.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--dim);font-style:italic;padding:24px 0;">No registrations match this filter.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = sorted.map(function(r) {
+    var date = (r.created_at||'').slice(0,10);
+    var isVoterRow = isVoter(r);
+    return '<tr>' +
+      '<td style="color:var(--dim);font-size:12px;">' + date + '</td>' +
+      '<td><a href="/admin/constituent/' + r.id + '" style="color:var(--navy);font-weight:600;text-decoration:none;">' + x(r.first_name) + ' ' + x(r.last_name) + '</a></td>' +
+      '<td style="font-size:12px;font-weight:700;color:var(--navy);">' + x(r.event||'—') + '</td>' +
+      '<td><span style="font-size:11px;' + (isVoterRow ? 'color:var(--mint-d);font-weight:700;' : 'color:var(--dim);') + '">' + x(r.parish||'—') + '</span></td>' +
+      '<td style="text-align:center;font-size:13px;">' + (r.guests||1) + '</td>' +
+      '<td style="text-align:center;">' + (r.yard_sign === 'Yes' ? '<span class="badge badge-yes">Yes</span>' : '<span class="badge badge-no">No</span>') + '</td>' +
+      '<td style="font-size:11px;color:var(--muted);max-width:200px;">' + x(r.how_to_help && r.how_to_help !== 'None selected' ? r.how_to_help : '—') + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
 function buildEventsView(d) {
   _evtGroups = []; // reset drill groups each rebuild
 
-  // Load managed events from /admin/events-list and render management cards
+  // Load managed events from /admin/events-list → render management cards + filter chips
   fetch('/admin/events-list')
     .then(function(r){ return r.json(); })
     .then(function(evts) {
       var grid = document.getElementById('evt-mgmt-grid');
-      if (!grid) return;
-      if (!evts || !evts.length) {
-        grid.innerHTML = '<div style="grid-column:1/-1;font-size:13px;color:var(--dim);font-style:italic;">No events yet. Click “+ New Event” to add one.</div>';
-      } else {
-        grid.innerHTML = evts.map(function(ev) {
-          var dateStr = ev.date ? ev.date : '';
-          var regBadge = '<span style="display:inline-block;background:rgba(95,212,176,0.15);color:#2e9e7e;font-size:10px;font-weight:700;padding:2px 9px;border-radius:100px;letter-spacing:.5px;">' + (ev.reg_count || 0) + ' registered</span>';
-          var metaParts = [];
-          if (dateStr) metaParts.push(dateStr);
-          if (ev.time) metaParts.push(ev.time);
-          if (ev.location) metaParts.push(ev.location);
-          return '<div class="snap-card" style="display:flex;flex-direction:column;gap:10px;">' +
-            '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">' +
-              '<div style="font-size:13px;font-weight:800;color:var(--navy);line-height:1.3;">' + x(ev.title) + '</div>' +
-              regBadge +
-            '</div>' +
-            (metaParts.length ? '<div style="font-size:11px;color:var(--muted);">' + x(metaParts.join(' · ')) + '</div>' : '') +
-            '<div style="display:flex;gap:8px;margin-top:4px;">' +
-              '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;" data-evtid="' + ev.id + '" onclick="openEditEventModal(this.dataset.evtid)">Edit</button>' +
-              '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;" data-evtid="' + ev.id + '" data-title="' + x(ev.title) + '" data-date="' + x(ev.date||'') + '" data-time="' + x(ev.time||'') + '" data-loc="' + x(ev.location||'') + '" data-fields="' + x(ev.fields||'{}') + '" data-endtime="' + x(ev.end_time||'') + '" onclick="var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.evtid,this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f,this.dataset.endtime)">Embed Code</button>' +
-              '<button class="modal-btn secondary" style="font-size:10px;padding:6px 12px;color:#9a3412;border-color:#fca5a5;" data-evtid="' + ev.id + '" data-title="' + x(ev.title) + '" onclick="deleteEvent(this.dataset.evtid,this.dataset.title)">Delete</button>' +
-            '</div>' +
-          '</div>';
-        }).join('');
+      if (grid) {
+        if (!evts || !evts.length) {
+          grid.innerHTML = '<div style=”grid-column:1/-1;font-size:13px;color:var(--dim);font-style:italic;”>No events yet. Click “+ New Event” to add one.</div>';
+        } else {
+          grid.innerHTML = evts.map(function(ev) {
+            var dateStr = ev.date ? ev.date : '';
+            var regBadge = '<span style=”display:inline-block;background:rgba(95,212,176,0.15);color:#2e9e7e;font-size:10px;font-weight:700;padding:2px 9px;border-radius:100px;letter-spacing:.5px;”>' + (ev.reg_count || 0) + ' registered</span>';
+            var metaParts = [];
+            if (dateStr) metaParts.push(dateStr);
+            if (ev.time) metaParts.push(ev.time);
+            if (ev.location) metaParts.push(ev.location);
+            return '<div class=”snap-card” style=”display:flex;flex-direction:column;gap:10px;”>' +
+              '<div style=”display:flex;align-items:flex-start;justify-content:space-between;gap:10px;”>' +
+                '<div style=”font-size:13px;font-weight:800;color:var(--navy);line-height:1.3;”>' + x(ev.title) + '</div>' +
+                regBadge +
+              '</div>' +
+              (metaParts.length ? '<div style=”font-size:11px;color:var(--muted);”>' + x(metaParts.join(' · ')) + '</div>' : '') +
+              '<div style=”display:flex;gap:8px;margin-top:4px;”>' +
+                '<button class=”modal-btn secondary” style=”font-size:10px;padding:6px 12px;” data-evtid=”' + ev.id + '” onclick=”openEditEventModal(this.dataset.evtid)”>Edit</button>' +
+                '<button class=”modal-btn secondary” style=”font-size:10px;padding:6px 12px;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” data-date=”' + x(ev.date||'') + '” data-time=”' + x(ev.time||'') + '” data-loc=”' + x(ev.location||'') + '” data-fields=”' + x(ev.fields||'{}') + '” data-endtime=”' + x(ev.end_time||'') + '” onclick=”var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.evtid,this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f,this.dataset.endtime)”>Embed Code</button>' +
+                '<button class=”modal-btn secondary” style=”font-size:10px;padding:6px 12px;color:#9a3412;border-color:#fca5a5;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” onclick=”deleteEvent(this.dataset.evtid,this.dataset.title)”>Delete</button>' +
+              '</div>' +
+            '</div>';
+          }).join('');
+        }
       }
+      // Build filter chips now that we have event names + counts
+      buildEvtFilters(evts || []);
     })
-    .catch(function(){ });
+    .catch(function(){ buildEvtFilters([]); });
 
-  // Build registration table (most recent first)
-  var sorted = d.slice().sort(function(a, b) { return (b.created_at||'') < (a.created_at||'') ? -1 : 1; });
-  var tbody = document.getElementById('evt-reg-tbody');
-  if (tbody) {
-    tbody.innerHTML = sorted.map(function(r) {
-      var date = (r.created_at||'').slice(0,10);
-      var isVoterRow = isVoter(r);
-      return '<tr>' +
-        '<td style="color:var(--dim);font-size:12px;">' + date + '</td>' +
-        '<td><a href="/admin/constituent/' + r.id + '" style="color:var(--navy);font-weight:600;text-decoration:none;">' + x(r.first_name) + ' ' + x(r.last_name) + '</a></td>' +
-        '<td style="font-size:12px;font-weight:700;color:var(--navy);">' + x(r.event||'—') + '</td>' +
-        '<td><span style="font-size:11px;' + (isVoterRow ? 'color:var(--mint-d);font-weight:700;' : 'color:var(--dim);') + '">' + x(r.parish||'—') + '</span></td>' +
-        '<td style="text-align:center;font-size:13px;">' + (r.guests||1) + '</td>' +
-        '<td style="text-align:center;">' + (r.yard_sign === 'Yes' ? '<span class="badge badge-yes">Yes</span>' : '<span class="badge badge-no">No</span>') + '</td>' +
-        '<td style="font-size:11px;color:var(--muted);max-width:200px;">' + x(r.how_to_help && r.how_to_help !== 'None selected' ? r.how_to_help : '—') + '</td>' +
-      '</tr>';
-    }).join('');
-  }
+  // Render registration table (filter/search state applied)
+  refreshEvtTable();
 }
 
 // ── Time Picker Helpers ───────────────────────────────────────────────

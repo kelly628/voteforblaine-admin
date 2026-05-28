@@ -2167,11 +2167,11 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
       <div class="modal-field">
         <label class="modal-label" for="evt-f-time">Start Time</label>
-        <select class="modal-input" id="evt-f-time" onchange="evtUpdateEndTimes(true)"></select>
+        <input class="modal-input" id="evt-f-time" type="text" placeholder="6:00 PM"/>
       </div>
       <div class="modal-field">
         <label class="modal-label" for="evt-f-end-time">End Time</label>
-        <select class="modal-input" id="evt-f-end-time"></select>
+        <input class="modal-input" id="evt-f-end-time" type="text" placeholder="8:00 PM"/>
       </div>
     </div>
     <div class="modal-field">
@@ -3786,62 +3786,6 @@ function buildEventsView(d) {
 }
 
 // ── Time Picker Helpers ───────────────────────────────────────────────
-var EVT_TIME_SLOTS = (function() {
-  var slots = [];
-  for (var h = 6; h <= 23; h++) {
-    for (var m = 0; m < 60; m += 15) {
-      if (h === 23 && m >= 15) break;
-      var h12 = h % 12 || 12;
-      var ampm = h < 12 ? 'AM' : 'PM';
-      var mStr = m === 0 ? '00' : String(m);
-      slots.push(h12 + ':' + mStr + ' ' + ampm);
-    }
-  }
-  return slots;
-})();
-
-function evtSlotIndex(val) {
-  return val ? EVT_TIME_SLOTS.indexOf(val) : -1;
-}
-
-function evtBuildStartTimes(selectedVal) {
-  var sel = document.getElementById('evt-f-time');
-  sel.innerHTML = '<option value="">— Select —</option>' +
-    EVT_TIME_SLOTS.map(function(t) {
-      return '<option value="' + t + '"' + (t === selectedVal ? ' selected' : '') + '>' + t + '</option>';
-    }).join('');
-}
-
-function evtUpdateEndTimes(resetEnd) {
-  var startVal = document.getElementById('evt-f-time').value;
-  var endSel   = document.getElementById('evt-f-end-time');
-  var prevEnd  = resetEnd ? '' : endSel.value;
-  var startIdx = evtSlotIndex(startVal);
-
-  // End time options = all slots AFTER start time
-  var validSlots = startIdx >= 0 ? EVT_TIME_SLOTS.slice(startIdx + 1) : EVT_TIME_SLOTS;
-  endSel.innerHTML = '<option value="">— Select —</option>' +
-    validSlots.map(function(t) {
-      return '<option value="' + t + '"' + (t === prevEnd ? ' selected' : '') + '>' + t + '</option>';
-    }).join('');
-
-  // Default end time to start + 2 hrs when resetting
-  if (resetEnd && startIdx >= 0) {
-    var defaultEnd = EVT_TIME_SLOTS[startIdx + 8]; // +8 slots = +2 hours at 15-min increments
-    if (defaultEnd) endSel.value = defaultEnd;
-  }
-}
-
-function evtInitTimePickers(startVal, endVal) {
-  evtBuildStartTimes(startVal);
-  var startIdx = evtSlotIndex(startVal);
-  var validSlots = startIdx >= 0 ? EVT_TIME_SLOTS.slice(startIdx + 1) : EVT_TIME_SLOTS;
-  var endSel = document.getElementById('evt-f-end-time');
-  endSel.innerHTML = '<option value="">— Select —</option>' +
-    validSlots.map(function(t) {
-      return '<option value="' + t + '"' + (t === endVal ? ' selected' : '') + '>' + t + '</option>';
-    }).join('');
-}
 
 // ── Event Management Functions ─────────────────────────────────────────
 var EVT_FIELD_KEYS = ['email','phone','address','guests','yard_sign','endorse','how_to_help','comment'];
@@ -3871,7 +3815,8 @@ function openNewEventModal() {
   document.getElementById('evt-f-location').value = '';
   document.getElementById('evt-f-desc').value = '';
   document.getElementById('evt-f-capacity').value = '';
-  evtInitTimePickers('', '');
+  document.getElementById('evt-f-time').value = '';
+  document.getElementById('evt-f-end-time').value = '';
   evtSetFieldCheckboxes(null);
   document.getElementById('evt-modal-overlay').classList.add('open');
   setTimeout(function(){ document.getElementById('evt-f-title').focus(); }, 80);
@@ -3887,7 +3832,8 @@ function openEditEventModal(id) {
       document.getElementById('evt-edit-id').value = ev.id;
       document.getElementById('evt-f-title').value = ev.title || '';
       document.getElementById('evt-f-date').value = ev.date || '';
-      evtInitTimePickers(ev.time || '', ev.end_time || '');
+      document.getElementById('evt-f-time').value = ev.time || '';
+      document.getElementById('evt-f-end-time').value = ev.end_time || '';
       document.getElementById('evt-f-location').value = ev.location || '';
       document.getElementById('evt-f-desc').value = ev.description || '';
       document.getElementById('evt-f-capacity').value = ev.capacity || '';

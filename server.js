@@ -2071,9 +2071,6 @@ function adminHTML() { return `<!DOCTYPE html>
   </button>
 </div>
 
-<!-- ── Event Filter Tabs ── -->
-<div class="evt-tabs" id="evt-tabs"></div>
-
 <div class="toolbar">
   <span class="tally" id="tally"></span>
 </div>
@@ -2720,7 +2717,6 @@ function setDistrict(d) {
 function loadData() {
   fetch('/admin/data').then(r=>r.json()).then(function(d){
     all = d;
-    buildTabs(d);
     refresh();
   });
 }
@@ -2777,30 +2773,6 @@ function refresh() {
   render(fd);
 }
 
-function buildTabs(d) {
-  var events = [];
-  var seen = {};
-  d.forEach(function(r){
-    if (r.event && !seen[r.event]) { seen[r.event]=true; events.push(r.event); }
-  });
-
-  var container = document.getElementById('evt-tabs');
-  var allCount = d.length;
-  var tabs = '<div class="evt-tab active" data-evt="" onclick="selectTab(this)">All Events<span class="evt-label">'+allCount+'</span></div>';
-  events.forEach(function(ev){
-    var n = d.filter(function(r){ return r.event===ev; }).length;
-    tabs += '<div class="evt-tab" data-evt="'+x(ev)+'" onclick="selectTab(this)">'
-          + x(ev) + '<span class="evt-label">'+n+'</span></div>';
-  });
-  container.innerHTML = tabs;
-}
-
-function selectTab(el) {
-  document.querySelectorAll('.evt-tab').forEach(function(t){ t.classList.remove('active'); });
-  el.classList.add('active');
-  activeEvent = el.getAttribute('data-evt') || null;
-  refresh();
-}
 
 function stats(d) {
   document.getElementById('s-rsvp').textContent    = d.length;

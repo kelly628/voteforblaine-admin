@@ -1469,6 +1469,7 @@ function adminHTML() { return `<!DOCTYPE html>
     display: flex;
     align-items: stretch;
     border-top: 1px solid rgba(255,255,255,.08);
+    margin-top: auto;
   }
   .elec-title-block {
     display: flex; flex-direction: column; justify-content: center;

@@ -3679,13 +3679,14 @@ function buildEvtFilters(evts) {
   var bar = document.getElementById('evt-filter-bar');
   if (!bar) return;
   var allCount = all.filter(isEvtReg).length;
-  var chips = '<button class="dist-chip' + (activeEvtFilter==='all'?' active':'') +
-    '" onclick="setEvtFilter(\'all\')">All Events' +
+  // Use data-evtfilter attribute to avoid quoting issues in onclick
+  var chips = '<button class="dist-chip' + (activeEvtFilter === 'all' ? ' active' : '') +
+    '" data-evtfilter="all" onclick="setEvtFilter(this.dataset.evtfilter)">All Events' +
     '<span class="dist-chip-count">' + allCount + '</span></button>';
   (evts||[]).forEach(function(ev) {
     var cnt = all.filter(function(r){ return isEvtReg(r) && r.event === ev.title; }).length;
-    chips += '<button class="dist-chip' + (activeEvtFilter===ev.title?' active':'') +
-      '" data-evttitle="' + x(ev.title) + '" onclick="setEvtFilter(this.dataset.evttitle)">' +
+    chips += '<button class="dist-chip' + (activeEvtFilter === ev.title ? ' active' : '') +
+      '" data-evtfilter="' + x(ev.title) + '" onclick="setEvtFilter(this.dataset.evtfilter)">' +
       x(ev.title) + '<span class="dist-chip-count">' + cnt + '</span></button>';
   });
   bar.innerHTML = chips;
@@ -3694,9 +3695,7 @@ function buildEvtFilters(evts) {
 function setEvtFilter(val) {
   activeEvtFilter = val;
   document.querySelectorAll('#evt-filter-bar .dist-chip').forEach(function(btn) {
-    var isAll   = val === 'all' && !btn.dataset.evttitle;
-    var isMatch = btn.dataset.evttitle && btn.dataset.evttitle === val;
-    btn.classList.toggle('active', !!(isAll || isMatch));
+    btn.classList.toggle('active', btn.dataset.evtfilter === val);
   });
   var lbl = document.getElementById('evt-reg-label');
   if (lbl) lbl.textContent = val === 'all' ? 'All Registrations' : val + ' — Registrations';

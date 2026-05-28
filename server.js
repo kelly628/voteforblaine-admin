@@ -2096,7 +2096,6 @@ function adminHTML() { return `<!DOCTYPE html>
 
   <!-- Header -->
   <div class="feat-page-hdr">
-    <div class="feat-page-eyebrow">Campaign Events</div>
     <div class="feat-page-title">Events</div>
     <button class="feat-page-btn" onclick="openNewEventModal()">&#xff0b; New Event</button>
   </div>
@@ -2226,7 +2225,6 @@ function adminHTML() { return `<!DOCTYPE html>
 <!-- ═══════════ DONATIONS VIEW ═══════════ -->
 <div class="view view-hidden" id="view-donations">
   <div class="feat-page-hdr">
-    <div class="feat-page-eyebrow">Fundraising</div>
     <div class="feat-page-title">Donations</div>
     <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);margin-right:8px;text-decoration:none;" href="/admin/export/donors.csv" download>&#8595; Export CSV</a>
     <button class="feat-page-btn" onclick="openDonationModal()">&#xff0b; Record Donation</button>
@@ -2304,7 +2302,6 @@ function adminHTML() { return `<!DOCTYPE html>
 <!-- ═══════════ VOLUNTEERS VIEW ═══════════ -->
 <div class="view view-hidden" id="view-volunteers">
   <div class="feat-page-hdr">
-    <div class="feat-page-eyebrow">Campaign Operations</div>
     <div class="feat-page-title">Volunteers</div>
     <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);margin-right:4px;text-decoration:none;" href="/admin/export/volunteers.csv" download>&#8595; CSV</a>
     <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);margin-right:4px;text-decoration:none;" href="/admin/export/volunteers.csv" onclick="exportAsExcel(event,'Volunteers')">&#8595; Excel</a>
@@ -2328,7 +2325,6 @@ function adminHTML() { return `<!DOCTYPE html>
 <!-- ═══════════ ENDORSEMENTS VIEW ═══════════ -->
 <div class="view view-hidden" id="view-endorsements">
   <div class="feat-page-hdr">
-    <div class="feat-page-eyebrow">Campaign Operations</div>
     <div class="feat-page-title">Endorsements</div>
     <button class="feat-page-btn" onclick="openAddEndorsementModal()">&#xff0b; Add Endorsement</button>
   </div>
@@ -2349,7 +2345,6 @@ function adminHTML() { return `<!DOCTYPE html>
 <!-- ═══════════ CANVASSING VIEW ═══════════ -->
 <div class="view view-hidden" id="view-canvassing">
   <div class="feat-page-hdr">
-    <div class="feat-page-eyebrow">Field Operations</div>
     <div class="feat-page-title">Walk Lists &amp; Canvassing</div>
     <button class="feat-page-btn" onclick="openAddListModal()">&#xff0b; New Walk List</button>
   </div>
@@ -2391,7 +2386,6 @@ function adminHTML() { return `<!DOCTYPE html>
 <!-- ═══════════ COMPLIANCE VIEW ═══════════ -->
 <div class="view view-hidden" id="view-compliance">
   <div class="feat-page-hdr">
-    <div class="feat-page-eyebrow">Judicial Campaign</div>
     <div class="feat-page-title">Compliance Dashboard</div>
   </div>
   <div style="padding:0 32px 40px;max-width:780px;">

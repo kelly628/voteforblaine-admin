@@ -436,7 +436,9 @@ app.get('/widget-preview/:id', auth('admin'), (req, res) => {
     const evt = db.prepare("SELECT * FROM events WHERE id=?").get(req.params.id);
     if (!evt) return res.status(404).send('Event not found');
     const fields = evt.fields ? JSON.parse(evt.fields) : null;
-    const widgetHtml = generateWidget(evt.title, evt.date, evt.time, evt.location, fields, evt.end_time);
+    const proto = req.headers['x-forwarded-proto'] || req.protocol;
+    const base  = process.env.PUBLIC_URL || (proto + '://' + req.get('host'));
+    const widgetHtml = generateWidget(evt.title, evt.date, evt.time, evt.location, fields, evt.end_time, base);
     res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -534,7 +536,11 @@ app.get('/api/committee', (req, res) => {
 });
 
 // ── Admin panel ───────────────────────────────────────────────────────
-app.get('/admin', auth('admin'), (req, res) => res.send(adminHTML()));
+app.get('/admin', auth('admin'), (req, res) => {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol;
+  const base  = process.env.PUBLIC_URL || (proto + '://' + req.get('host'));
+  res.send(adminHTML(base));
+});
 app.get('/',      (req, res) => res.redirect('/admin'));
 
 // ── Candidate panel ───────────────────────────────────────────────────
@@ -1083,9 +1089,9 @@ const BASE_CSS = `
 // ════════════════════════════════════════════════════════════════════════
 //  WIDGET GENERATOR — defined here so .toString() preserves escape seqs
 // ════════════════════════════════════════════════════════════════════════
-function generateWidget(label, displayDate, time, location, fields, endTime) {
+function generateWidget(label, displayDate, time, location, fields, endTime, crmBaseUrl) {
   var BM_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxBW4GzNFR9rb3kmqYjS93wxw43XH2q4c-kb-gqQBAuqQCIEgJHggtyNWp1Kvouured/exec';
-  var BM_CRM_URL = (typeof window !== 'undefined' && window.BM_CRM_BASE_URL) || (typeof process !== 'undefined' && process.env && process.env.PUBLIC_URL) || 'http://localhost:3002';
+  var BM_CRM_URL = crmBaseUrl || (typeof window !== 'undefined' && window.BM_CRM_BASE_URL) || (typeof process !== 'undefined' && process.env && process.env.PUBLIC_URL) || 'http://localhost:3002';
   var safeLabel = label || 'New Event';
   // Format ISO date (YYYY-MM-DD) → "Wednesday, May 27, 2026"
   var safeDate = (function(d) {
@@ -1279,7 +1285,7 @@ showComment ? '      <div class="bm-rsvp-field"><label class="bm-rsvp-label" for
 // ════════════════════════════════════════════════════════════════════════
 //  ADMIN HTML — full view (campaign staff)
 // ════════════════════════════════════════════════════════════════════════
-function adminHTML() { return `<!DOCTYPE html>
+function adminHTML(baseUrl) { return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -2718,7 +2724,7 @@ function adminHTML() { return `<!DOCTYPE html>
 </div>
 
 <script>
-var BM_CRM_BASE_URL = '${process.env.PUBLIC_URL || "http://localhost:3002"}';
+var BM_CRM_BASE_URL = '${baseUrl || process.env.PUBLIC_URL || "http://localhost:3002"}';
 var all = [];
 var activeEvent    = null;
 var activeDistrict = 'voters'; // 'voters' | 'ood' | 'all'

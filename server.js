@@ -1568,6 +1568,11 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
   .modal-btn:hover { background: #1f7fa0; }
   .modal-btn.secondary { background: var(--bg); color: var(--navy); border: 1px solid var(--border); }
   .modal-btn.secondary:hover { border-color: #78E0C4; background: #f0fbf7; }
+  /* Time chips */
+  .time-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .time-chip { font-size:11px; font-weight:700; font-family:'Montserrat',sans-serif; padding:5px 13px; border-radius:100px; border:1.5px solid var(--border); background:var(--bg); color:var(--navy); cursor:pointer; transition:all .15s; }
+  .time-chip:hover { border-color:var(--mint-d); background:#f0fbf7; }
+  .time-chip.active { background:var(--navy); color:#fff; border-color:var(--navy); }
   /* Export modal */
   .exp-overlay { display:none;position:fixed;inset:0;z-index:200;background:rgba(9,37,79,.6);align-items:center;justify-content:center;padding:20px; }
   .exp-overlay.open { display:flex; }
@@ -2166,12 +2171,28 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
       <div class="modal-field">
-        <label class="modal-label" for="evt-f-time">Start Time</label>
-        <input class="modal-input" id="evt-f-time" type="text" placeholder="6:00 PM"/>
+        <label class="modal-label">Start Time</label>
+        <div class="time-chips" id="start-chips">
+          <button type="button" class="time-chip" data-val="5:00 PM" onclick="setTimeChip('start','5:00 PM')">5 PM</button>
+          <button type="button" class="time-chip" data-val="5:30 PM" onclick="setTimeChip('start','5:30 PM')">5:30 PM</button>
+          <button type="button" class="time-chip" data-val="6:00 PM" onclick="setTimeChip('start','6:00 PM')">6 PM</button>
+          <button type="button" class="time-chip" data-val="6:30 PM" onclick="setTimeChip('start','6:30 PM')">6:30 PM</button>
+          <button type="button" class="time-chip" data-val="7:00 PM" onclick="setTimeChip('start','7:00 PM')">7 PM</button>
+          <button type="button" class="time-chip" data-val="8:00 PM" onclick="setTimeChip('start','8:00 PM')">8 PM</button>
+        </div>
+        <input class="modal-input" id="evt-f-time" type="text" placeholder="or type a custom time…" style="font-size:12px;" oninput="syncTimeChips()"/>
       </div>
       <div class="modal-field">
-        <label class="modal-label" for="evt-f-end-time">End Time</label>
-        <input class="modal-input" id="evt-f-end-time" type="text" placeholder="8:00 PM"/>
+        <label class="modal-label">End Time</label>
+        <div class="time-chips" id="end-chips">
+          <button type="button" class="time-chip" data-val="7:00 PM" onclick="setTimeChip('end','7:00 PM')">7 PM</button>
+          <button type="button" class="time-chip" data-val="7:30 PM" onclick="setTimeChip('end','7:30 PM')">7:30 PM</button>
+          <button type="button" class="time-chip" data-val="8:00 PM" onclick="setTimeChip('end','8:00 PM')">8 PM</button>
+          <button type="button" class="time-chip" data-val="8:30 PM" onclick="setTimeChip('end','8:30 PM')">8:30 PM</button>
+          <button type="button" class="time-chip" data-val="9:00 PM" onclick="setTimeChip('end','9:00 PM')">9 PM</button>
+          <button type="button" class="time-chip" data-val="10:00 PM" onclick="setTimeChip('end','10:00 PM')">10 PM</button>
+        </div>
+        <input class="modal-input" id="evt-f-end-time" type="text" placeholder="or type a custom time…" style="font-size:12px;" oninput="syncTimeChips()"/>
       </div>
     </div>
     <div class="modal-field">
@@ -3787,6 +3808,22 @@ function buildEventsView(d) {
 
 // ── Time Picker Helpers ───────────────────────────────────────────────
 
+// ── Time chip helpers ─────────────────────────────────────────────────
+function setTimeChip(field, val) {
+  var inputId = field === 'start' ? 'evt-f-time' : 'evt-f-end-time';
+  var chipsId = field === 'start' ? 'start-chips' : 'end-chips';
+  document.getElementById(inputId).value = val;
+  document.querySelectorAll('#' + chipsId + ' .time-chip').forEach(function(c) {
+    c.classList.toggle('active', c.dataset.val === val);
+  });
+}
+function syncTimeChips() {
+  var sv = document.getElementById('evt-f-time').value.trim();
+  var ev = document.getElementById('evt-f-end-time').value.trim();
+  document.querySelectorAll('#start-chips .time-chip').forEach(function(c) { c.classList.toggle('active', c.dataset.val === sv); });
+  document.querySelectorAll('#end-chips .time-chip').forEach(function(c) { c.classList.toggle('active', c.dataset.val === ev); });
+}
+
 // ── Event Management Functions ─────────────────────────────────────────
 var EVT_FIELD_KEYS = ['email','phone','address','guests','yard_sign','endorse','how_to_help','comment'];
 var EVT_FIELD_DEFAULTS = { email:true, phone:true, address:true, guests:true, yard_sign:true, endorse:true, how_to_help:true, comment:true };
@@ -3817,6 +3854,7 @@ function openNewEventModal() {
   document.getElementById('evt-f-capacity').value = '';
   document.getElementById('evt-f-time').value = '';
   document.getElementById('evt-f-end-time').value = '';
+  syncTimeChips();
   evtSetFieldCheckboxes(null);
   document.getElementById('evt-modal-overlay').classList.add('open');
   setTimeout(function(){ document.getElementById('evt-f-title').focus(); }, 80);
@@ -3834,6 +3872,7 @@ function openEditEventModal(id) {
       document.getElementById('evt-f-date').value = ev.date || '';
       document.getElementById('evt-f-time').value = ev.time || '';
       document.getElementById('evt-f-end-time').value = ev.end_time || '';
+      syncTimeChips();
       document.getElementById('evt-f-location').value = ev.location || '';
       document.getElementById('evt-f-desc').value = ev.description || '';
       document.getElementById('evt-f-capacity').value = ev.capacity || '';

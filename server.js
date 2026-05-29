@@ -4697,7 +4697,7 @@ function showEmbedCode(id, title, date, time, location, fields, endTime) {
   if (labelEl) labelEl.textContent = title + (date ? '  —  ' + date : '');
   // Dynamic embed: a small loader that renders the always-current widget in an
   // iframe. Paste once — future form changes appear automatically, no re-paste.
-  if (codeEl) codeEl.value = '<div class="bm-rsvp-embed" data-event="' + id + '"></div>\n'
+  if (codeEl) codeEl.value = '<div class="bm-rsvp-embed" data-event="' + id + '"></div>\\n'
     + '<scr' + 'ipt src="' + BM_CRM_BASE_URL + '/embed.js" async></scr' + 'ipt>';
   document.getElementById('evt-embed-overlay').classList.add('open');
 }

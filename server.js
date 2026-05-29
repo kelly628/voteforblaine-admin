@@ -1028,6 +1028,12 @@ const BASE_CSS = `
     color: var(--mint); font-weight: 700;
   }
   .hdr-divider { width: 1px; height: 20px; background: rgba(255,255,255,0.12); }
+  .hdr-logout {
+    font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+    color: #fff; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25);
+    padding: 6px 14px; border-radius: 100px; text-decoration: none; transition: background .15s; white-space: nowrap;
+  }
+  .hdr-logout:hover { background: rgba(255,255,255,0.22); }
   .csv-btn {
     font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
     color: var(--navy); background: var(--mint); text-decoration: none;
@@ -2125,12 +2131,27 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
     .donation-section { padding:20px 16px !important; }
     .snap-card { padding:16px 16px !important; }
 
-    /* ── Pipeline: grid of full-width cards on mobile (no truncated labels) ── */
-    .pipeline-track { display:grid !important; grid-template-columns:repeat(2,1fr) !important; gap:10px !important; }
+    /* ── Donation goal strip: sleek stacked layout on mobile ── */
+    .don-goal-strip { padding:18px 18px 16px !important; }
+    .don-goal-labels { flex-wrap:wrap !important; align-items:center !important; gap:10px !important; }
+    .don-goal-raised { font-size:24px !important; }
+    .don-goal-pct { order:3 !important; width:100% !important; text-align:center !important; }
+
+    /* ── Pipeline: sleek full-width rows on mobile (dot · count · label, bar below) ── */
+    .pipeline-track { display:flex !important; flex-direction:column !important; gap:8px !important; }
     .pipe-stage-wrap { display:block !important; }
     .pipe-arrow { display:none !important; }
-    .pipe-stage { padding:14px 12px !important; }
-    .pipe-stage-label { font-size:10px !important; white-space:normal !important; overflow:visible !important; text-overflow:clip !important; }
+    .pipe-stage {
+      display:grid !important;
+      grid-template-columns:auto auto 1fr !important;
+      grid-template-areas:'dot count label' 'bar bar bar' !important;
+      align-items:center !important; column-gap:12px !important; row-gap:10px !important;
+      padding:14px 16px !important;
+    }
+    .pipe-stage-dot { grid-area:dot !important; margin:0 !important; }
+    .pipe-stage-count { grid-area:count !important; font-size:20px !important; }
+    .pipe-stage-label { grid-area:label !important; margin:0 !important; font-size:10px !important; white-space:normal !important; }
+    .pipe-stage-bar { grid-area:bar !important; margin:0 !important; }
 
     /* ── Event card: buttons go full-width below title ── */
     .snap-card > div:first-child { flex-wrap:wrap !important; }
@@ -2315,6 +2336,10 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
     <button class="mob-sheet-btn" id="mob-new-donation" style="background:#2798BD;color:#fff;" onclick="closeMobSheet();openDonationModal()">&#xff0b; Donation</button>
     <button class="mob-sheet-btn" style="background:#0E356C;color:#fff;" onclick="closeMobSheet();openNewEventModal()">&#xff0b; Event</button>
   </div>
+  <div class="mob-sheet-divider"></div>
+  <a class="mob-sheet-item" href="/logout" style="color:#b45309;">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Log out
+  </a>
 </div>
 
 <nav class="bottom-nav">
@@ -2352,7 +2377,8 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
     <div id="q-dropdown" class="q-drop"></div>
   </div>
   <div class="hdr-right">
-    <span class="hdr-label">Campaign Admin</span>
+    <span class="hdr-label">${isCand ? 'Candidate View' : 'Campaign Admin'}</span>
+    <a href="/logout" class="hdr-logout">Log out</a>
   </div>
 </header>
 

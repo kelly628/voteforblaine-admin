@@ -962,6 +962,16 @@ const BASE_CSS = `
   }
   .hdr-search input::placeholder { color: var(--dim); }
   .hdr-search input:focus { outline: 2px solid var(--mint); outline-offset: 0; }
+  /* Search autocomplete dropdown */
+  .q-drop { display:none; position:absolute; top:calc(100% + 4px); left:0; right:0; background:var(--white); border:1px solid var(--border); border-radius:6px; box-shadow:0 8px 24px rgba(6,15,30,.15); z-index:300; overflow:hidden; max-height:320px; overflow-y:auto; }
+  .q-drop.open { display:block; }
+  .q-drop-item { display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; border-bottom:1px solid var(--border); text-decoration:none; }
+  .q-drop-item:last-child { border-bottom:none; }
+  .q-drop-item:hover { background:#f0f7ff; }
+  .q-drop-name { font-size:13px; font-weight:700; color:var(--navy); }
+  .q-drop-meta { font-size:11px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+  .q-drop-avatar { width:30px; height:30px; border-radius:50%; background:var(--mint-d); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:#fff; flex-shrink:0; }
+  .q-drop-empty { padding:12px 14px; font-size:12px; color:var(--dim); font-style:italic; }
   .tally { font-size: 11px; color: var(--dim); margin-left: auto; letter-spacing: .5px; }
 
   /* Table */
@@ -2161,7 +2171,8 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
 <header class="hdr" style="position:sticky;top:0;z-index:40;">
   <div class="hdr-search">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <input id="q" type="text" placeholder="Search name, email, zip…" oninput="refresh()"/>
+    <input id="q" type="text" placeholder="Search name, email, zip…" oninput="refresh();qDropdown(this.value)" onblur="setTimeout(function(){qDropClose()},180)" onkeydown="qDropKey(event)" autocomplete="off"/>
+    <div id="q-dropdown" class="q-drop"></div>
   </div>
   <div class="hdr-right">
     <span class="hdr-label">Campaign Admin</span>
@@ -3357,7 +3368,7 @@ function exportDrillCSV() {
   URL.revokeObjectURL(url);
 }
 
-function x(s){ return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''; }
+function x(s){ return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''; }
 function fmtPhone(p){ if(!p) return ''; var d=String(p).replace(/\D/g,''); if(d.length===10) return d.slice(0,3)+'-'+d.slice(3,6)+'-'+d.slice(6); return p; }
 function fmtDate(s){ if(!s) return ''; var p=(s||'').slice(0,10).split('-'); if(p.length!==3) return s; var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return mo[parseInt(p[1],10)-1]+' '+parseInt(p[2],10)+', '+p[0]; }
 
@@ -4077,10 +4088,10 @@ function buildEventsView(d) {
               '<div style=”display:flex;align-items:center;gap:8px;flex-wrap:wrap;”>' +
                 '<span style=”font-size:13px;font-weight:800;color:var(--navy);”>' + x(ev.title) + '</span>' +
                 regBadge +
-                '<div class=”evt-card-actions” style=”display:flex;gap:5px;margin-left:auto;”>' +
-                  '<button class=”dist-chip” style=”text-transform:none;padding:4px 12px;” data-evtid=”' + ev.id + '” onclick=”openEditEventModal(this.dataset.evtid)”>Edit</button>' +
-                  '<button class=”dist-chip” style=”text-transform:none;padding:4px 12px;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” data-date=”' + x(ev.date||'') + '” data-time=”' + x(ev.time||'') + '” data-loc=”' + x(ev.location||'') + '” data-fields=”' + x(ev.fields||'{}') + '” data-endtime=”' + x(ev.end_time||'') + '” onclick=”var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.evtid,this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f,this.dataset.endtime)”>Embed Code</button>' +
-                  '<button class=”dist-chip” style=”text-transform:none;padding:4px 12px;color:#9a3412;border-color:#fca5a5;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” onclick=”deleteEvent(this.dataset.evtid,this.dataset.title)”>Delete</button>' +
+                '<div class=”evt-card-actions” style=”display:flex;gap:6px;margin-left:auto;flex-shrink:0;”>' +
+                  '<button class=”dist-chip” style=”text-transform:none;padding:6px 14px;background:rgba(39,152,189,0.1);color:#1a6fa0;border-color:rgba(39,152,189,0.35);” data-evtid=”' + ev.id + '” onclick=”openEditEventModal(this.dataset.evtid)”>Edit</button>' +
+                  '<button class=”dist-chip” style=”text-transform:none;padding:6px 14px;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” data-date=”' + x(ev.date||'') + '” data-time=”' + x(ev.time||'') + '” data-loc=”' + x(ev.location||'') + '” data-fields=”' + x(ev.fields||'{}') + '” data-endtime=”' + x(ev.end_time||'') + '” onclick=”var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.evtid,this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f,this.dataset.endtime)”>Embed Code</button>' +
+                  '<button class=”dist-chip” style=”text-transform:none;padding:6px 14px;background:rgba(217,119,6,0.1);color:#b45309;border-color:rgba(217,119,6,0.35);” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” onclick=”deleteEvent(this.dataset.evtid,this.dataset.title)”>Delete</button>' +
                 '</div>' +
               '</div>' +
               (metaParts.length ? '<div style=”font-size:11px;color:var(--muted);”>' + x(metaParts.join(' · ')) + '</div>' : '') +
@@ -4572,9 +4583,65 @@ document.addEventListener('click', function(e) {
   if (card) window.location = card.getAttribute('data-href');
 });
 
-document.getElementById('q').addEventListener('input',function(){
-  refresh();
-});
+// ── Search autocomplete ───────────────────────────────────────────────
+var _qDropFocus = -1;
+function qDropdown(val) {
+  var drop = document.getElementById('q-dropdown');
+  if (!drop) return;
+  var q = (val || '').trim().toLowerCase();
+  if (q.length < 2) { qDropClose(); return; }
+  var matches = all.filter(function(r) {
+    return ['first_name','last_name','email','phone','zip'].some(function(f){
+      return r[f] && String(r[f]).toLowerCase().includes(q);
+    });
+  }).slice(0, 8);
+  if (!matches.length) {
+    drop.innerHTML = '<div class="q-drop-empty">No contacts found</div>';
+    drop.classList.add('open');
+    return;
+  }
+  _qDropFocus = -1;
+  drop.innerHTML = matches.map(function(r, i) {
+    var name = [r.first_name, r.last_name].filter(Boolean).join(' ') || '—';
+    var initials = ((r.first_name||'').charAt(0) + (r.last_name||'').charAt(0)).toUpperCase() || '?';
+    var meta = [r.email, r.phone ? fmtPhone(r.phone) : null].filter(Boolean).join(' · ') || (r.zip||'');
+    return '<a class="q-drop-item" href="/admin/constituent/' + r.id + '" data-idx="' + i + '">' +
+      '<div class="q-drop-avatar">' + x(initials) + '</div>' +
+      '<div style="min-width:0;">' +
+        '<div class="q-drop-name">' + x(name) + '</div>' +
+        (meta ? '<div class="q-drop-meta">' + x(meta) + '</div>' : '') +
+      '</div>' +
+    '</a>';
+  }).join('');
+  drop.classList.add('open');
+}
+function qDropClose() {
+  var drop = document.getElementById('q-dropdown');
+  if (drop) drop.classList.remove('open');
+  _qDropFocus = -1;
+}
+function qDropKey(e) {
+  var drop = document.getElementById('q-dropdown');
+  if (!drop || !drop.classList.contains('open')) return;
+  var items = drop.querySelectorAll('.q-drop-item');
+  if (!items.length) return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _qDropFocus = Math.min(_qDropFocus + 1, items.length - 1);
+    items.forEach(function(el, i){ el.style.background = i === _qDropFocus ? '#f0f7ff' : ''; });
+    items[_qDropFocus].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _qDropFocus = Math.max(_qDropFocus - 1, 0);
+    items.forEach(function(el, i){ el.style.background = i === _qDropFocus ? '#f0f7ff' : ''; });
+    items[_qDropFocus].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'Enter' && _qDropFocus >= 0) {
+    e.preventDefault();
+    items[_qDropFocus].click();
+  } else if (e.key === 'Escape') {
+    qDropClose();
+  }
+}
 
 // ── Address autocomplete ──────────────────────────────────────────────
 (function() {
@@ -5249,7 +5316,7 @@ function render(d) {
   }).join('');
 }
 
-function x(s){ return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''; }
+function x(s){ return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''; }
 
 document.getElementById('q').addEventListener('input',function(){
   var q=this.value.toLowerCase();

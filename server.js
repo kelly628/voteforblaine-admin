@@ -2123,8 +2123,14 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
     .snapshot { padding:20px 16px !important; }
     .pipeline-section { padding:18px 16px 20px !important; }
     .donation-section { padding:20px 16px !important; }
-    .pipe-stage { padding:10px 10px 9px !important; }
     .snap-card { padding:16px 16px !important; }
+
+    /* ── Pipeline: grid of full-width cards on mobile (no truncated labels) ── */
+    .pipeline-track { display:grid !important; grid-template-columns:repeat(2,1fr) !important; gap:10px !important; }
+    .pipe-stage-wrap { display:block !important; }
+    .pipe-arrow { display:none !important; }
+    .pipe-stage { padding:14px 12px !important; }
+    .pipe-stage-label { font-size:10px !important; white-space:normal !important; overflow:visible !important; text-overflow:clip !important; }
 
     /* ── Event card: buttons go full-width below title ── */
     .snap-card > div:first-child { flex-wrap:wrap !important; }

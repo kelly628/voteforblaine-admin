@@ -6551,6 +6551,19 @@ function mapHTML() { return `<!DOCTYPE html>
   .tog input:checked + .tog-slider { background: var(--mint-d); }
   .tog input:checked + .tog-slider:before { transform: translateX(16px); }
 
+  /* ── Sign requests list ── */
+  #sign-list { max-height: 340px; overflow-y: auto; margin: 0 -6px; }
+  .sign-item { display: flex; align-items: center; gap: 10px; padding: 8px 6px; border-radius: 3px; transition: background .1s; }
+  .sign-item:hover { background: #eaf9f5; }
+  .sign-item + .sign-item { border-top: 1px solid var(--border); }
+  .sign-item-main { flex: 1; min-width: 0; }
+  .sign-item-name { font-size: 12px; font-weight: 700; color: var(--navy); display: flex; align-items: center; gap: 6px; }
+  .sign-item-flag { font-size: 8px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; background: #fde68a; color: #92400e; padding: 1px 5px; border-radius: 2px; flex-shrink: 0; }
+  .sign-item-addr { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .sign-item-status { font-size: 9px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; flex-shrink: 0; }
+  .sign-item-status.del { color: var(--mint-d); }
+  .sign-item-status.pen { color: #b07d10; }
+
   @media(max-width:900px) {
     html, body { overflow: auto; }
     .map-layout { flex-direction: column; height: auto; }
@@ -6596,6 +6609,11 @@ function mapHTML() { return `<!DOCTYPE html>
         <div class="sb-stat-box"><div class="sb-stat-num accent" id="ms-del">—</div><div class="sb-stat-lbl">Delivered</div></div>
         <div class="sb-stat-box"><div class="sb-stat-num" id="ms-zips">—</div><div class="sb-stat-lbl">Zip Codes</div></div>
       </div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-title">Sign Requests &nbsp;<span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">(toggle = delivered)</span></div>
+      <div id="sign-list"></div>
     </div>
 
     <div class="sb-section">
@@ -6754,9 +6772,49 @@ function buildNoSignLayer(data){
   });
 }
 
+var SIGN_DATA = [];
 fetch('/admin/sign-map-data').then(function(r){return r.json();}).then(function(data){
-  buildStats(data); buildMap(data); buildZipGrid(data); buildGaps(data);
+  SIGN_DATA = data || [];
+  buildStats(SIGN_DATA); buildMap(SIGN_DATA); buildZipGrid(SIGN_DATA); buildGaps(SIGN_DATA); buildSignList(SIGN_DATA);
 });
+
+// Per-person sign request list — shows EVERY requester (including off-map zips),
+// with a delivered toggle that writes to the same endpoint the profile uses.
+function buildSignList(data){
+  var el = document.getElementById('sign-list');
+  if(!el) return;
+  if(!data.length){ el.innerHTML='<div style="font-size:12px;color:var(--muted);font-style:italic;">No sign requests yet.</div>'; return; }
+  el.innerHTML = data.map(function(r){
+    var del = r.yard_sign_delivered === 'Yes';
+    var mapped = !!ZIP_COORDS[r.zip];
+    var loc = [r.address, r.city, r.zip].filter(Boolean).map(xe).join(', ');
+    if(r.parish && r.parish !== 'Jefferson') loc += (loc?' · ':'') + xe(r.parish) + ' Parish';
+    return '<div class="sign-item">'+
+      '<span class="sign-item-status '+(del?'del':'pen')+'">'+(del?'&#10003;':'&#9679;')+'</span>'+
+      '<div class="sign-item-main">'+
+        '<div class="sign-item-name">'+xe(r.first_name)+' '+xe(r.last_name)+
+          (mapped?'':' <span class="sign-item-flag" title="Zip not in the parish map coordinates, so no pin appears">off-map</span>')+
+        '</div>'+
+        '<div class="sign-item-addr">'+(loc||'No address on file')+'</div>'+
+      '</div>'+
+      '<label class="tog" title="Mark delivered">'+
+        '<input type="checkbox" '+(del?'checked':'')+' onchange="toggleSignDelivered('+r.id+',this.checked)">'+
+        '<span class="tog-slider"></span>'+
+      '</label>'+
+    '</div>';
+  }).join('');
+}
+
+function toggleSignDelivered(id, checked){
+  fetch('/rsvp/'+id+'/sign',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({delivered:checked})})
+    .then(function(r){return r.json();})
+    .then(function(){
+      var rec = SIGN_DATA.find(function(x){return x.id===id;});
+      if(rec) rec.yard_sign_delivered = checked?'Yes':null;
+      buildStats(SIGN_DATA); buildMap(SIGN_DATA); buildSignList(SIGN_DATA);
+    })
+    .catch(function(){ alert('Could not update delivery status. Please try again.'); });
+}
 
 function buildStats(data){
   var del=data.filter(function(r){return r.yard_sign_delivered==='Yes';}).length;

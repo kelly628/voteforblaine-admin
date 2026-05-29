@@ -83,6 +83,8 @@ const TS = `to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')`;
   await pool.query(`UPDATE rsvps SET role='Voter' WHERE role IS NULL OR role=''`);
   const upRows = await dbAll("SELECT id, zip FROM rsvps WHERE zip IS NOT NULL AND zip != '' AND (parish IS NULL OR parish='')");
   for (const r of upRows) { if (BP[r.zip]) await dbRun('UPDATE rsvps SET parish=? WHERE id=?', [BP[r.zip], r.id]); }
+  // Add company column if missing (idempotent migration)
+  await pool.query(`ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS company TEXT`);
   console.log('[DB] PostgreSQL ready');
 })().catch(e => console.error('[DB] Setup error:', e.message));
 
@@ -177,14 +179,14 @@ app.patch('/rsvp/:id/endorse', async (req, res) => {
 
 // ── Manual constituent add ────────────────────────────────────────────
 app.post('/admin/constituent', async (req, res) => {
-  const { first_name, last_name, email, phone, address, city, state, zip, how_to_help, yard_sign, endorse, comment, role } = req.body;
+  const { first_name, last_name, email, phone, address, city, state, zip, how_to_help, yard_sign, endorse, comment, role, company } = req.body;
   const parish = BP[zip] || '';
   try {
     await dbRun(`
-      INSERT INTO rsvps (first_name, last_name, email, phone, address, city, state, zip, parish, how_to_help, yard_sign, endorse, comment, role, event)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO rsvps (first_name, last_name, email, phone, address, city, state, zip, parish, how_to_help, yard_sign, endorse, comment, role, event, company)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [first_name||'', last_name||'', email||'', phone||'', address||'', city||'', state||'', zip||'', parish,
-        how_to_help||'', yard_sign||'No', endorse||'No', comment||'', role||'Voter', 'Manual Entry']);
+        how_to_help||'', yard_sign||'No', endorse||'No', comment||'', role||'Voter', 'Manual Entry', company||'']);
     res.json({ result: 'success' });
   } catch(err) {
     console.error('[constituent POST] DB error:', err.message, err.code);
@@ -522,14 +524,14 @@ app.get('/admin/constituent/:id/data', async (req, res) => {
 
 app.patch('/admin/constituent/:id', async (req, res) => {
   const { first_name, last_name, email, phone, address, city, state, zip, parish,
-          guests, guest_names, how_to_help, yard_sign, endorse, comment, role } = req.body;
+          guests, guest_names, how_to_help, yard_sign, endorse, comment, role, company } = req.body;
   try {
     await dbRun(`UPDATE rsvps SET
       first_name=?, last_name=?, email=?, phone=?, address=?, city=?, state=?, zip=?, parish=?,
-      guests=?, guest_names=?, how_to_help=?, yard_sign=?, endorse=?, comment=?, role=?
+      guests=?, guest_names=?, how_to_help=?, yard_sign=?, endorse=?, comment=?, role=?, company=?
       WHERE id=?`,
       [first_name, last_name, email, phone, address, city, state, zip, parish,
-       guests, guest_names, how_to_help, yard_sign, endorse, comment, role,
+       guests, guest_names, how_to_help, yard_sign, endorse, comment, role, company||'',
        req.params.id]);
     res.json({ result: 'success' });
   } catch(err) {
@@ -560,11 +562,11 @@ app.post('/admin/contacts/import', async (req, res) => {
       const parish = BP[zip]   || (r.parish || '');
       const state  = (r.state  || '').trim() || 'LA';
       await client.query(
-        `INSERT INTO rsvps (first_name,last_name,email,phone,address,city,state,zip,parish,role,event,comment)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'imported','',$10)`,
+        `INSERT INTO rsvps (first_name,last_name,email,phone,address,city,state,zip,parish,role,event,comment,company)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'imported','',$10,$11)`,
         [(r.first_name||'').trim(),(r.last_name||'').trim(),(r.email||'').trim(),
          (r.phone||'').trim(),(r.address||'').trim(),(r.city||'').trim(),
-         state, zip, parish, (r.comment||'').trim()]
+         state, zip, parish, (r.comment||'').trim(), (r.company||'').trim()]
       );
     }
     await client.query('COMMIT');
@@ -2842,6 +2844,10 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
         <input class="ap-input" id="ap-phone" type="tel" placeholder="(504) 555-0000"/>
       </div>
     </div>
+    <div class="ap-field">
+      <label class="ap-label" for="ap-company">Company / Organization</label>
+      <input class="ap-input" id="ap-company" type="text" placeholder="Law firm, employer, organization…"/>
+    </div>
     <div class="ap-field ap-addr-wrap">
       <label class="ap-label" for="ap-address">Street Address</label>
       <input class="ap-input" id="ap-address" type="text" placeholder="123 Main St" autocomplete="off"/>
@@ -4762,6 +4768,7 @@ var IMPORT_FIELDS = [
   {val:'last_name',  label:'Last Name'},
   {val:'email',      label:'Email'},
   {val:'phone',      label:'Phone'},
+  {val:'company',    label:'Company / Org'},
   {val:'address',    label:'Address'},
   {val:'city',       label:'City'},
   {val:'state',      label:'State'},
@@ -4775,6 +4782,7 @@ var IMPORT_AUTO = {
   last_name:  ['last_name','last name','lastname','last','lname','surname','family name'],
   email:      ['email','email address','e-mail','mail'],
   phone:      ['phone','phone number','mobile','cell','telephone','tel'],
+  company:    ['company','company/org','organization','organisation','org','employer','firm','business','law firm'],
   address:    ['address','street','street address','addr','street addr'],
   city:       ['city','town'],
   state:      ['state','st'],
@@ -4982,7 +4990,8 @@ function submitAddPerson() {
                    document.getElementById('ap-role-committee').checked ? 'Committee Member' : '',
                    document.getElementById('ap-role-attorney').checked ? 'Attorney' : '']
                   .filter(Boolean).join(', ') || 'Voter',
-      comment:    document.getElementById('ap-comment').value.trim()
+      comment:    document.getElementById('ap-comment').value.trim(),
+      company:    document.getElementById('ap-company').value.trim()
     })
   }).then(function(r){ return r.json(); }).then(function(d){
     if (d.result === 'success') {
@@ -5457,7 +5466,19 @@ async function constituentHTML(id) {
   .ct-sug-item:hover, .ct-sug-item.ct-focused { background:#eaf9f5; color:var(--navy); }
   .ct-sug-searching { padding:9px 12px; font-size:12px; color:var(--dim); font-style:italic; }
   @media(max-width:900px) { .p-cards{grid-template-columns:1fr 1fr;} }
-  @media(max-width:640px) { .p-cards{grid-template-columns:1fr 1fr;} .ct-grid{grid-template-columns:1fr;} .p-hero{padding:24px 20px; flex-direction:column;} .p-hero-map{width:100%; height:180px;} .page-body{padding:16px 16px 40px;} .edit-checks{grid-template-columns:1fr;} }
+  @media(max-width:640px) {
+    .p-cards{grid-template-columns:1fr 1fr;}
+    .ct-grid{grid-template-columns:1fr;}
+    .p-hero{padding:24px 20px; flex-direction:column;}
+    .p-hero-map{width:100%; height:180px;}
+    .page-body{padding:16px 16px 40px;}
+    .edit-checks{grid-template-columns:1fr;}
+    /* Header: hide label, shrink buttons */
+    .hdr-label { display:none; }
+    .hdr-divider { display:none; }
+    #hdr-save-btn { padding:7px 14px !important; font-size:10px !important; }
+    .hdr-right { gap:8px !important; }
+  }
 </style>
 </head>
 <body>
@@ -5484,6 +5505,7 @@ async function constituentHTML(id) {
   <div class="p-hero-left">
     <div class="p-eyebrow">Constituent Profile</div>
     <div class="p-name" id="p-name">Loading&#8230;</div>
+    <div id="p-company" style="font-size:12px;color:rgba(255,255,255,.55);font-weight:600;margin-top:4px;letter-spacing:.3px;display:none;"></div>
     <div id="p-district-badge" style="display:none;margin-top:10px;"></div>
     <div id="p-role"></div>
   </div>
@@ -5585,6 +5607,11 @@ async function constituentHTML(id) {
       <div class="ct-lbl">Parish</div>
       <div class="ct-val" id="v-parish"></div>
       <input class="ct-input" id="i-parish" type="text" placeholder="Jefferson"/>
+    </div>
+    <div class="ct-field" style="grid-column:1/-1;">
+      <div class="ct-lbl">Company / Organization</div>
+      <div class="ct-val" id="v-company"></div>
+      <input class="ct-input" id="i-company" type="text" placeholder="Law firm, employer, organization…"/>
     </div>
   </div>
   <div class="edit-row">
@@ -5730,6 +5757,8 @@ function paint(d) {
   if (!d || d.error) { document.getElementById("p-name").textContent = "Constituent not found."; return; }
   document.title = (d.first_name||"") + " " + (d.last_name||"") + " — Blaine Moncrief";
   document.getElementById("p-name").textContent = (d.first_name||"") + " " + (d.last_name||"");
+  var compEl = document.getElementById("p-company");
+  if (compEl) { if (d.company) { compEl.textContent = d.company; compEl.style.display = "block"; } else { compEl.style.display = "none"; } }
   document.getElementById("p-date").textContent  = fmtDate(d.created_at);
   document.getElementById("p-id").textContent    = d.id;
   // Events Attended card
@@ -5837,8 +5866,8 @@ function paint(d) {
     ? "<button class='sign-toggle done' onclick='toggleEndorse()'>&#10003; Endorsed</button>"
     : "<button class='sign-toggle pend' onclick='toggleEndorse()'>Mark as Endorsed</button>";
 
-  var FIELDS = ["first","last","email","phone","address","city","state","zip","parish"];
-  var KEYS   = ["first_name","last_name","email","phone","address","city","state","zip","parish"];
+  var FIELDS = ["first","last","email","phone","address","city","state","zip","parish","company"];
+  var KEYS   = ["first_name","last_name","email","phone","address","city","state","zip","parish","company"];
   FIELDS.forEach(function(f,i){
     var raw = d[KEYS[i]];
     document.getElementById("v-"+f).textContent = (f === "phone" ? (fmtPhone(raw) || "—") : (raw || "—"));
@@ -6133,7 +6162,8 @@ function saveEdit() {
     how_to_help: howToHelp,
     endorse:     rec ? rec.endorse : "No",
     comment:     document.getElementById("i-comment").value.trim(),
-    role:        rec ? (rec.role || '') : ''
+    role:        rec ? (rec.role || '') : '',
+    company:     document.getElementById("i-company").value.trim()
   };
   var hdrBtn = document.getElementById("hdr-save-btn");
   var hdrMsg = document.getElementById("hdr-save-msg");

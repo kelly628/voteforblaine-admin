@@ -4233,7 +4233,7 @@ function buildEventsView(d) {
   _evtGroups = [];
 
   var grid = document.getElementById('evt-mgmt-grid');
-  if (grid) grid.innerHTML = '<span style=”font-size:13px;color:var(--dim);font-style:italic;”>Loading&hellip;</span>';
+  if (grid) grid.innerHTML = '<span style="font-size:13px;color:var(--dim);font-style:italic;">Loading&hellip;</span>';
 
   fetch('/admin/events-list')
     .then(function(r) { return r.json(); })
@@ -4241,7 +4241,7 @@ function buildEventsView(d) {
       _evtList = evts || [];   // ← store for button handlers
       if (grid) {
         if (!_evtList.length) {
-          grid.innerHTML = '<div style=”grid-column:1/-1;font-size:13px;color:var(--dim);font-style:italic;”>No events yet — click “+ New Event” to add one.</div>';
+          grid.innerHTML = '<div style="grid-column:1/-1;font-size:13px;color:var(--dim);font-style:italic;">No events yet — click "+ New Event" to add one.</div>';
         } else {
           grid.innerHTML = _evtList.map(function(ev) {
             var dateStr = '';
@@ -4254,23 +4254,23 @@ function buildEventsView(d) {
                 dateStr = ev.date;
               }
             }
-            var regBadge = '<span style=”display:inline-block;background:rgba(95,212,176,0.15);color:#2e9e7e;font-size:10px;font-weight:700;padding:2px 9px;border-radius:100px;letter-spacing:.5px;”>' + (ev.reg_count || 0) + ' registered</span>';
+            var regBadge = '<span style="display:inline-block;background:rgba(95,212,176,0.15);color:#2e9e7e;font-size:10px;font-weight:700;padding:2px 9px;border-radius:100px;letter-spacing:.5px;">' + (ev.reg_count || 0) + ' registered</span>';
             var metaParts = [];
             if (dateStr) metaParts.push(dateStr);
             if (ev.time) metaParts.push(ev.time);
             if (ev.location) metaParts.push(ev.location);
             var eid = Number(ev.id);
-            return '<div class=”snap-card” style=”display:flex;flex-direction:column;gap:5px;”>' +
-              '<div style=”display:flex;align-items:center;gap:8px;flex-wrap:wrap;”>' +
-                '<span style=”font-size:13px;font-weight:800;color:var(--navy);”>' + x(ev.title) + '</span>' +
+            return '<div class="snap-card" style="display:flex;flex-direction:column;gap:5px;">' +
+              '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+                '<span style="font-size:13px;font-weight:800;color:var(--navy);">' + x(ev.title) + '</span>' +
                 regBadge +
-                '<div class=”evt-card-actions” style=”display:flex;gap:6px;margin-left:auto;flex-shrink:0;”>' +
-                  '<button type=”button” class=”dist-chip” style=”text-transform:none;padding:6px 14px;background:rgba(39,152,189,0.1);color:#1a6fa0;border-color:rgba(39,152,189,0.35);” data-action=”edit” data-eid=”' + eid + '”>Edit</button>' +
-                  '<button type=”button” class=”dist-chip” style=”text-transform:none;padding:6px 14px;” data-action=”embed” data-eid=”' + eid + '”>Embed Code</button>' +
-                  '<button type=”button” class=”dist-chip” style=”text-transform:none;padding:6px 14px;background:rgba(217,119,6,0.1);color:#b45309;border-color:rgba(217,119,6,0.35);” data-action=”del” data-eid=”' + eid + '”>Delete</button>' +
+                '<div class="evt-card-actions" style="display:flex;gap:6px;margin-left:auto;flex-shrink:0;">' +
+                  '<button type="button" class="dist-chip" style="text-transform:none;padding:6px 14px;background:rgba(39,152,189,0.1);color:#1a6fa0;border-color:rgba(39,152,189,0.35);" data-action="edit" data-eid="' + eid + '">Edit</button>' +
+                  '<button type="button" class="dist-chip" style="text-transform:none;padding:6px 14px;" data-action="embed" data-eid="' + eid + '">Embed Code</button>' +
+                  '<button type="button" class="dist-chip" style="text-transform:none;padding:6px 14px;background:rgba(217,119,6,0.1);color:#b45309;border-color:rgba(217,119,6,0.35);" data-action="del" data-eid="' + eid + '">Delete</button>' +
                 '</div>' +
               '</div>' +
-              (metaParts.length ? '<div style=”font-size:11px;color:var(--muted);”>' + x(metaParts.join(' \xb7 ')) + '</div>' : '') +
+              (metaParts.length ? '<div style="font-size:11px;color:var(--muted);">' + x(metaParts.join(' \xb7 ')) + '</div>' : '') +
             '</div>';
           }).join('');
         }
@@ -4279,7 +4279,7 @@ function buildEventsView(d) {
     })
     .catch(function(err) {
       console.error('events-list fetch failed', err);
-      if (grid) grid.innerHTML = '<div style=”grid-column:1/-1;color:#b45309;font-size:13px;”>Could not load events. Refresh to try again.</div>';
+      if (grid) grid.innerHTML = '<div style="grid-column:1/-1;color:#b45309;font-size:13px;">Could not load events. Refresh to try again.</div>';
       buildEvtFilters([]);
     });
 
@@ -4326,7 +4326,7 @@ function evtEmbed(id) {
 function evtDel(id) {
   var ev = _evtList.find(function(e) { return Number(e.id) === Number(id); });
   var title = ev ? ev.title : 'this event';
-  if (!confirm('Delete “' + title + '”? This cannot be undone.')) return;
+  if (!confirm('Delete "' + title + '"? This cannot be undone.')) return;
   fetch('/admin/event/' + id, { method: 'DELETE' })
     .then(function(r) { return r.json(); })
     .then(function(data) {

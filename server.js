@@ -412,6 +412,14 @@ function makePipelineCsv(rows) {
   ].join(','))].join('\n');
 }
 
+function makeEventRegsCsv(rows) {
+  const hdrs = ['Date','First Name','Last Name','Email','Phone','Event','Guests','Parish','Yard Sign','How to Help','Comment'];
+  return [hdrs.join(','), ...rows.map(r => [
+    esc(r.created_at), esc(r.first_name), esc(r.last_name), esc(r.email), esc(r.phone),
+    esc(r.event), r.guests || 1, esc(r.parish), esc(r.yard_sign), esc(r.how_to_help), esc(r.comment)
+  ].join(','))].join('\n');
+}
+
 // Contacts CSV
 app.get('/admin/export.csv', auth('admin'), async (req, res) => {
   const rows = await dbAll('SELECT * FROM rsvps ORDER BY created_at DESC');
@@ -452,6 +460,17 @@ app.get('/admin/export/volunteers.csv', auth('admin'), async (req, res) => {
   res.set('Content-Type', 'text/csv; charset=utf-8');
   res.set('Content-Disposition', 'attachment; filename="volunteers.csv"');
   res.send(makeVolunteersCsv(rows));
+});
+
+// Event registrations CSV — all event RSVPs, or one event via ?event=Title
+app.get('/admin/export/event-registrations.csv', auth('admin'), async (req, res) => {
+  const ev = (req.query.event || '').trim();
+  const rows = ev
+    ? await dbAll("SELECT * FROM rsvps WHERE LOWER(event)=LOWER(?) ORDER BY created_at DESC", [ev])
+    : await dbAll("SELECT * FROM rsvps WHERE event IS NOT NULL AND event != '' ORDER BY created_at DESC");
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', 'attachment; filename="event-registrations.csv"');
+  res.send(makeEventRegsCsv(rows));
 });
 
 // ── Admin data (full) ─────────────────────────────────────────────────
@@ -1276,12 +1295,12 @@ function generateWidget(label, displayDate, time, location, fields, endTime, crm
 '  .bm-rsvp-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }',
 '  .bm-rsvp-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }',
 '  .bm-rsvp-label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.45); font-weight: 600; }',
-'  .bm-rsvp-input, .bm-rsvp-select, .bm-rsvp-textarea { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); border-radius: 3px; padding: 12px 14px; font-size: 14px; color: #fff; font-family: \'Montserrat\', sans-serif; outline: none; transition: border-color 0.15s; width: 100%; }',
-'  .bm-rsvp-input::placeholder, .bm-rsvp-textarea::placeholder { color: rgba(255,255,255,0.25); }',
-'  .bm-rsvp-input:focus, .bm-rsvp-select:focus, .bm-rsvp-textarea:focus { border-color: #78E0C4; }',
+'  .bm-rsvp-input, .bm-rsvp-select, .bm-rsvp-textarea { background: #fff; border: 1px solid #cbd5e1; border-radius: 3px; padding: 12px 14px; font-size: 14px; color: #0E356C; font-family: \'Montserrat\', sans-serif; outline: none; transition: border-color 0.15s, box-shadow 0.15s; width: 100%; }',
+'  .bm-rsvp-input::placeholder, .bm-rsvp-textarea::placeholder { color: #94a3b8; }',
+'  .bm-rsvp-input:focus, .bm-rsvp-select:focus, .bm-rsvp-textarea:focus { border-color: #78E0C4; box-shadow: 0 0 0 3px rgba(120,224,196,0.25); }',
 '  .bm-rsvp-textarea { resize: vertical; min-height: 90px; line-height: 1.5; }',
 '  .bm-rsvp-select { cursor: pointer; }',
-'  .bm-rsvp-select option { background: #0E356C; color: #fff; }',
+'  .bm-rsvp-select option { background: #fff; color: #0E356C; }',
 '  .bm-rsvp-help-group { margin: 20px 0 16px; }',
 '  .bm-rsvp-help-group-label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.45); font-weight: 600; margin-bottom: 14px; display: block; }',
 '  .bm-rsvp-help-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 24px; }',
@@ -2365,9 +2384,6 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
 <div class="donation-section" id="donation-section">
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
     <span class="donation-hdr-title">Donations</span>
-    ${process.env.ANEDOT_WEBHOOK_SECRET
-      ? '<span class="donation-preview-badge" style="background:#d1fae5;color:#065f46;border-color:#6ee7b7;">&#10003; Anedot Connected</span>'
-      : '<span class="donation-preview-badge">Preview &mdash; Anedot not yet connected</span>'}
   </div>
 
   <!-- Goal Progress Strip -->
@@ -2515,6 +2531,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
     <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:12px;">
       <div id="evt-reg-label" style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;">All Registrations</div>
       <span id="evt-reg-tally" style="font-size:11px;color:var(--muted);font-weight:600;"></span>
+      <button class="feat-page-btn" style="margin-left:auto;background:#e9edf3;color:var(--navy);" onclick="exportEventRegs()">&#8595; Export CSV</button>
     </div>
     <div id="evt-reg-table-wrap" class="don-table-wrap" style="margin-bottom:40px;">
       <table>
@@ -2854,6 +2871,14 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
         <a class="exp-btn" href="/admin/export/pipeline.csv" download>CSV</a>
         <a class="exp-btn" href="/admin/export/pipeline.csv" download onclick="exportAsExcel(event,'Pipeline')">Excel</a>
         <a class="exp-btn" href="#" onclick="exportAsPdf(event,'Pipeline','/admin/export/pipeline.csv')">PDF</a>
+      </span>
+    </div>
+    <div class="exp-row">
+      <span class="exp-lbl">Event Registrations</span>
+      <span class="exp-btns">
+        <a class="exp-btn" href="/admin/export/event-registrations.csv" download>CSV</a>
+        <a class="exp-btn" href="/admin/export/event-registrations.csv" download onclick="exportAsExcel(event,'Event Registrations')">Excel</a>
+        <a class="exp-btn" href="#" onclick="exportAsPdf(event,'Event Registrations','/admin/export/event-registrations.csv')">PDF</a>
       </span>
     </div>
     <div class="exp-row" id="exp-row-donors">
@@ -4424,6 +4449,14 @@ function evtEdit(id) {
     });
 }
 
+function exportEventRegs() {
+  var url = '/admin/export/event-registrations.csv';
+  if (typeof activeEvtFilter !== 'undefined' && activeEvtFilter && activeEvtFilter !== 'all') {
+    url += '?event=' + encodeURIComponent(activeEvtFilter);
+  }
+  window.location = url;
+}
+
 function evtEmbed(id) {
   var ev = _evtList.find(function(e) { return Number(e.id) === Number(id); });
   if (!ev) { alert('Event data not loaded yet — try refreshing.'); return; }
@@ -5944,9 +5977,6 @@ ${isCand ? '<style>#don-hist-card,#p-giving-block{display:none!important;}</styl
 <div class="s-card" id="don-hist-card">
   <div class="s-label">
     Donation History
-    ${process.env.ANEDOT_WEBHOOK_SECRET
-      ? '<span class="don-hist-preview" style="background:#d1fae5;color:#065f46;border-color:#6ee7b7;">&#10003; Anedot Connected</span>'
-      : '<span class="don-hist-preview">Preview &mdash; Anedot not yet connected</span>'}
   </div>
   <div class="don-hist-summary">
     <div class="don-hist"><div class="don-hist-num accent" id="dh-total">—</div><div class="don-hist-lbl">Total Given</div></div>
@@ -6725,7 +6755,16 @@ var ZIP_COORDS = {
   "70036":[29.7374,-90.1208], "70047":[29.9357,-90.3713], "70053":[29.9157,-90.0537],
   "70056":[29.8869,-90.0461], "70058":[29.8988,-90.0771], "70062":[29.9944,-90.2418],
   "70065":[29.9992,-90.2150], "70067":[29.6690,-90.1126], "70072":[29.8886,-90.1013],
-  "70094":[29.9072,-90.1450]
+  "70094":[29.9072,-90.1450],
+  // Orleans Parish (out of district, but supporters here still get a pin)
+  "70112":[29.9580,-90.0790], "70113":[29.9430,-90.0790], "70114":[29.9320,-90.0480],
+  "70115":[29.9230,-90.0980], "70116":[29.9650,-90.0640], "70117":[29.9620,-90.0330],
+  "70118":[29.9430,-90.1180], "70119":[29.9750,-90.0900], "70122":[30.0180,-90.0670],
+  "70124":[30.0090,-90.1080], "70125":[29.9520,-90.1010], "70126":[30.0150,-90.0350],
+  "70127":[30.0290,-89.9870], "70128":[30.0480,-89.9650], "70129":[30.0150,-89.9300],
+  "70130":[29.9340,-90.0710], "70131":[29.9070,-90.0030],
+  // St. Bernard / nearby
+  "70043":[29.9560,-89.9900], "70075":[29.9330,-89.9200], "70092":[29.9100,-89.9650]
 };
 var ZIP_INFO = {
   "70001":{ name:"Metairie (central)",       bank:"East", tier:1, pop:"~38,800"   },

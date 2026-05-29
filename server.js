@@ -550,6 +550,19 @@ app.delete('/admin/constituent/:id', async (req, res) => {
   }
 });
 
+// Bulk delete contacts
+app.delete('/admin/constituents/bulk', async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || !ids.length) return res.json({ result: 'ok', count: 0 });
+  try {
+    const result = await pool.query('DELETE FROM rsvps WHERE id = ANY($1)', [ids.map(Number)]);
+    res.json({ result: 'ok', count: result.rowCount });
+  } catch(err) {
+    console.error('[bulk-delete]', err.message);
+    res.status(500).json({ result: 'error' });
+  }
+});
+
 // ── Contacts bulk import ──────────────────────────────────────────────
 app.post('/admin/contacts/import', async (req, res) => {
   const { rows } = req.body;
@@ -1570,6 +1583,31 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
   }
   .dist-chip:not(.active) .dist-chip-count { background: var(--border); color: var(--muted); }
 
+  /* ── Bulk select bar ── */
+  .bulk-bar {
+    display: none; align-items: center; gap: 12px;
+    padding: 8px 32px; background: #fffbeb;
+    border-bottom: 1px solid #fde68a;
+  }
+  .bulk-bar.on { display: flex; }
+  .bulk-bar-lbl { font-size: 12px; font-weight: 700; color: #92400e; }
+  .bulk-del-btn {
+    background: #d97706; color: #fff; border: none;
+    padding: 6px 16px; border-radius: 2px;
+    font-size: 11px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase;
+    font-family: 'Montserrat', sans-serif; cursor: pointer; transition: opacity .15s;
+  }
+  .bulk-del-btn:hover { opacity: .85; }
+  .bulk-clr-btn {
+    background: none; border: 1px solid rgba(146,64,14,.3); color: #92400e;
+    padding: 5px 12px; border-radius: 2px;
+    font-size: 11px; font-weight: 700; font-family: 'Montserrat', sans-serif; cursor: pointer;
+  }
+  .bulk-clr-btn:hover { border-color: rgba(146,64,14,.6); }
+  .cb-th, .cb-td { width: 36px; padding-right: 0 !important; }
+  input.row-cb, #sel-all { width: 15px; height: 15px; cursor: pointer; accent-color: var(--navy); }
+  tbody tr.row-selected { background: #f0f7ff !important; }
+
   .evt-tabs { display: flex; flex-wrap: wrap; gap: 6px; background: var(--white); padding: 10px 32px 12px; border-bottom: 1px solid var(--border); }
   .evt-tab { padding: 5px 12px; font-size: 11px; font-weight: 700; cursor: pointer; border-radius: 100px; color: var(--muted); background: var(--bg); border: 1px solid var(--border); white-space: nowrap; user-select: none; transition: background .12s, color .12s, border-color .12s; display: flex; align-items: center; gap: 6px; }
   .evt-tab.active { color: var(--navy); background: var(--white); border-color: var(--navy); }
@@ -2316,9 +2354,16 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
   <span class="tally" id="tally"></span>
 </div>
 
+<div class="bulk-bar" id="bulk-bar">
+  <span class="bulk-bar-lbl" id="bulk-bar-lbl">0 contacts selected</span>
+  <button class="bulk-del-btn" onclick="bulkDelete()">Delete Selected</button>
+  <button class="bulk-clr-btn" onclick="clearSelection()">Clear</button>
+</div>
+
 <div class="wrap">
 <table>
   <thead><tr>
+    <th class="cb-th"><input type="checkbox" id="sel-all" onchange="onSelectAll(this.checked)" title="Select all"></th>
     <th>#</th><th>Date</th><th>Name</th><th>Phone</th><th>Address</th>
     <th>Events</th><th>How to Help</th><th>Yard Sign</th><th>Endorsement</th><th>Comment</th>
   </tr></thead>
@@ -3019,6 +3064,7 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
 <script>
 var BM_CRM_BASE_URL = '${baseUrl || process.env.PUBLIC_URL || "http://localhost:3002"}';
 var all = [];
+var selectedIds = new Set();
 var activeEvent    = null;
 var activeDistrict = 'all'; // 'voters' | 'ood' | 'all'
 var activeEvtFilter = 'all';   // 'all' | event title string
@@ -3194,6 +3240,7 @@ function render(d) {
   document.getElementById('tally').textContent = d.length + ' submission' + (d.length!==1?'s':'');
   var tbody = document.getElementById('tbody');
   var empty = document.getElementById('empty');
+  clearSelection();
   if (!d.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
   tbody.innerHTML = d.map(function(r){
@@ -3204,7 +3251,8 @@ function render(d) {
       ? '<span class="badge badge-yes">Yes</span>'
       : '<span class="badge badge-no">No</span>';
     var date = fmtDate(r.created_at);
-    return '<tr>'+
+    return '<tr data-id="'+r.id+'">'+
+      '<td class="cb-td"><input type="checkbox" class="row-cb" data-id="'+r.id+'" onchange="onBulkCheck('+r.id+',this.checked,this)"></td>'+
       '<td class="c-id">'+r.id+'</td>'+
       '<td class="c-date">'+date+'</td>'+
       '<td><a href="/admin/constituent/'+r.id+'" class="c-name" style="text-decoration:none;">'+x(r.first_name)+' '+x(r.last_name)+'</a>'+
@@ -3219,6 +3267,79 @@ function render(d) {
       '<td class="c-comment">'+x(r.comment)+'</td>'+
     '</tr>';
   }).join('');
+}
+
+// ── Bulk selection helpers ─────────────────────────────────────────────
+function onBulkCheck(id, checked, el) {
+  var tr = el.closest('tr');
+  if (checked) { selectedIds.add(id); if (tr) tr.classList.add('row-selected'); }
+  else          { selectedIds.delete(id); if (tr) tr.classList.remove('row-selected'); }
+  updateBulkBar();
+  var allCbs = document.querySelectorAll('.row-cb');
+  var checkedCount = document.querySelectorAll('.row-cb:checked').length;
+  var sa = document.getElementById('sel-all');
+  if (sa) {
+    sa.indeterminate = checkedCount > 0 && checkedCount < allCbs.length;
+    sa.checked = allCbs.length > 0 && checkedCount === allCbs.length;
+  }
+}
+
+function onSelectAll(checked) {
+  document.querySelectorAll('.row-cb').forEach(function(cb) {
+    var id = parseInt(cb.dataset.id, 10);
+    cb.checked = checked;
+    var tr = cb.closest('tr');
+    if (checked) { selectedIds.add(id); if (tr) tr.classList.add('row-selected'); }
+    else          { selectedIds.delete(id); if (tr) tr.classList.remove('row-selected'); }
+  });
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  var bar = document.getElementById('bulk-bar');
+  var lbl = document.getElementById('bulk-bar-lbl');
+  if (!bar) return;
+  var n = selectedIds.size;
+  if (n > 0) {
+    bar.classList.add('on');
+    if (lbl) lbl.textContent = n + ' contact' + (n !== 1 ? 's' : '') + ' selected';
+  } else {
+    bar.classList.remove('on');
+  }
+}
+
+function clearSelection() {
+  selectedIds = new Set();
+  document.querySelectorAll('.row-cb').forEach(function(cb) {
+    cb.checked = false;
+    var tr = cb.closest('tr');
+    if (tr) tr.classList.remove('row-selected');
+  });
+  var sa = document.getElementById('sel-all');
+  if (sa) { sa.checked = false; sa.indeterminate = false; }
+  updateBulkBar();
+}
+
+function bulkDelete() {
+  var n = selectedIds.size;
+  if (!n) return;
+  if (!confirm('Permanently delete ' + n + ' contact' + (n !== 1 ? 's' : '') + '? This cannot be undone.')) return;
+  var ids = Array.from(selectedIds);
+  fetch('/admin/constituents/bulk', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids: ids })
+  })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if (data.result === 'ok') {
+        all = all.filter(function(r){ return ids.indexOf(r.id) === -1; });
+        refresh();
+      } else {
+        alert('Error deleting contacts. Please try again.');
+      }
+    })
+    .catch(function(){ alert('Network error. Please try again.'); });
 }
 
 // ── Yard Sign Tracker ──

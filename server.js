@@ -1930,7 +1930,20 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
   @media (max-width:768px) {
     /* ── Layout ── */
     .left-nav { display:none !important; }
-    .admin-main { margin-left:0; padding-bottom:calc(58px + env(safe-area-inset-bottom,0px)); }
+    html, body { overflow-x:hidden; }
+    .admin-main { margin-left:0; padding-bottom:calc(58px + env(safe-area-inset-bottom,0px)); overflow-x:hidden; }
+
+    /* ── Dashboard stats ── */
+    .stat { padding:18px 18px !important; }
+    .stat-val { font-size:30px !important; }
+    .stat-lbl { font-size:8px !important; letter-spacing:1.5px !important; }
+
+    /* ── Dashboard section padding ── */
+    .snapshot { padding:20px 16px !important; }
+    .pipeline-section { padding:18px 16px 20px !important; }
+    .donation-section { padding:20px 16px !important; }
+    .pipe-stage { padding:10px 10px 9px !important; }
+    .snap-card { padding:16px 16px !important; }
 
     /* ── Header ── */
     .hdr { padding:0 14px; gap:10px; }

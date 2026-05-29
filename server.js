@@ -6,13 +6,12 @@ const path     = require('path');
 const app  = express();
 const PORT = process.env.PORT || 3002;
 
-// ── Email (Resend) — optional; only active once RESEND_API_KEY is set ──
-// Defensive require so a missing package or key can never crash the panel.
-let Resend = null;
-try { Resend = require('resend').Resend; } catch (e) { console.warn('[email] resend package not available:', e.message); }
-const resend = (Resend && process.env.RESEND_API_KEY) ? new Resend(process.env.RESEND_API_KEY) : null;
-const EMAIL_FROM = process.env.EMAIL_FROM || 'Blaine Moncrief Campaign <rsvp@voteforblaine.com>';
-if (resend) console.log('[email] Resend enabled, sending from', EMAIL_FROM);
+// ── Email (Resend HTTP API) — optional; only active once RESEND_API_KEY is set ──
+// Uses Node's built-in fetch (Node 22+), so there's no extra dependency to install.
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const EMAIL_FROM     = process.env.EMAIL_FROM || 'Blaine Moncrief Campaign <rsvp@voteforblaine.com>';
+const emailEnabled   = !!RESEND_API_KEY;
+if (emailEnabled) console.log('[email] Resend enabled, sending from', EMAIL_FROM);
 else console.log('[email] Resend not configured (set RESEND_API_KEY to enable confirmation emails)');
 
 const PASSWORDS = {
@@ -55,7 +54,7 @@ function escHtml(s) {
 
 // Fire-and-forget: sends an RSVP confirmation. Never throws to the caller.
 async function sendRsvpConfirmation(opts) {
-  if (!resend) return;
+  if (!emailEnabled) return;
   const firstName  = (opts.firstName || '').trim();
   const email      = (opts.email || '').trim();
   const eventTitle = (opts.eventTitle || '').trim();
@@ -102,7 +101,18 @@ async function sendRsvpConfirmation(opts) {
       '</div>' +
     '</div>';
 
-  await resend.emails.send({ from: EMAIL_FROM, to: email, subject: subject, html: html });
+  const resp = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + RESEND_API_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ from: EMAIL_FROM, to: email, subject: subject, html: html })
+  });
+  if (!resp.ok) {
+    const txt = await resp.text().catch(function(){ return ''; });
+    throw new Error('Resend API ' + resp.status + ': ' + txt.slice(0, 200));
+  }
 }
 
 // ── Schema bootstrap ──────────────────────────────────────────────────
@@ -196,7 +206,7 @@ app.post('/rsvp', async (req, res) => {
     `, [firstName, lastName, email, phone, address, city, state, zip, parish, guests, guestNames, howToHelp, yardSign, endorse, comment, event]);
     res.json({ result: 'success' });
     // Send confirmation email — fire-and-forget; never blocks or fails the RSVP
-    if (resend && email) {
+    if (emailEnabled && email) {
       sendRsvpConfirmation({ firstName, email, eventTitle: event })
         .catch(err => console.error('[email] confirmation failed:', err.message));
     }

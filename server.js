@@ -1546,6 +1546,17 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
     .elec-source { padding: 12px 20px; }
   }
 
+  /* Event card action buttons (segmented control) */
+  .evt-btn {
+    background: var(--white); border: none; padding: 6px 13px;
+    font-size: 11px; font-weight: 700; font-family: 'Montserrat', sans-serif;
+    letter-spacing: .4px; color: var(--navy); cursor: pointer;
+    transition: background .12s; white-space: nowrap;
+  }
+  .evt-btn:hover { background: #f0f7ff; }
+  .evt-btn-del { color: #b45309; }
+  .evt-btn-del:hover { background: #fff8f0; }
+
   /* Event tabs */
   /* District filter bar */
   .district-bar {
@@ -1959,18 +1970,8 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
 
     /* ── Event card: buttons go full-width below title ── */
     .snap-card > div:first-child { flex-wrap:wrap !important; }
-    .evt-card-actions {
-      margin-left:0 !important; width:100%;
-      display:flex !important; gap:0 !important;
-      border:1px solid var(--border); border-radius:6px; overflow:hidden;
-    }
-    .evt-card-actions .dist-chip {
-      flex:1; text-align:center; justify-content:center;
-      border:none !important; border-radius:0 !important;
-      padding:10px 6px !important; font-size:11px !important;
-      border-right:1px solid var(--border) !important;
-    }
-    .evt-card-actions .dist-chip:last-child { border-right:none !important; }
+    .evt-btns { margin-left:0 !important; width:100% !important; }
+    .evt-btn { flex:1; text-align:center; padding:10px 6px !important; }
 
     /* ── Profile pipeline: scrollable, no cut-off ── */
     .pipe-progress { overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:10px; }
@@ -4091,10 +4092,10 @@ function buildEventsView(d) {
               '<div style=”display:flex;align-items:center;gap:8px;flex-wrap:wrap;”>' +
                 '<span style=”font-size:13px;font-weight:800;color:var(--navy);”>' + x(ev.title) + '</span>' +
                 regBadge +
-                '<div class=”evt-card-actions” style=”display:flex;gap:6px;margin-left:auto;flex-shrink:0;”>' +
-                  '<button class=”dist-chip” style=”text-transform:none;padding:6px 14px;background:rgba(39,152,189,0.1);color:#1a6fa0;border-color:rgba(39,152,189,0.35);” data-evtid=”' + ev.id + '” onclick=”openEditEventModal(this.dataset.evtid)”>Edit</button>' +
-                  '<button class=”dist-chip” style=”text-transform:none;padding:6px 14px;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” data-date=”' + x(ev.date||'') + '” data-time=”' + x(ev.time||'') + '” data-loc=”' + x(ev.location||'') + '” data-fields=”' + x(ev.fields||'{}') + '” data-endtime=”' + x(ev.end_time||'') + '” onclick=”var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.evtid,this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f,this.dataset.endtime)”>Embed Code</button>' +
-                  '<button class=”dist-chip” style=”text-transform:none;padding:6px 14px;background:rgba(217,119,6,0.1);color:#b45309;border-color:rgba(217,119,6,0.35);” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” onclick=”deleteEvent(this.dataset.evtid,this.dataset.title)”>Delete</button>' +
+                '<div class=”evt-btns” style=”display:inline-flex;border:1px solid var(--border);border-radius:5px;overflow:hidden;margin-left:auto;flex-shrink:0;”>' +
+                  '<button class=”evt-btn” data-evtid=”' + ev.id + '” onclick=”openEditEventModal(this.dataset.evtid)”>Edit</button>' +
+                  '<button class=”evt-btn” style=”border-left:1px solid var(--border);border-right:1px solid var(--border);” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” data-date=”' + x(ev.date||'') + '” data-time=”' + x(ev.time||'') + '” data-loc=”' + x(ev.location||'') + '” data-fields=”' + x(ev.fields||'{}') + '” data-endtime=”' + x(ev.end_time||'') + '” onclick=”var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.evtid,this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f,this.dataset.endtime)”>Embed Code</button>' +
+                  '<button class=”evt-btn evt-btn-del” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” onclick=”deleteEvent(this.dataset.evtid,this.dataset.title)”>Delete</button>' +
                 '</div>' +
               '</div>' +
               (metaParts.length ? '<div style=”font-size:11px;color:var(--muted);”>' + x(metaParts.join(' · ')) + '</div>' : '') +

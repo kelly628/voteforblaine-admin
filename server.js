@@ -1619,6 +1619,13 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
   .new-evt-btn { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #fff; background: var(--navy); border: none; padding: 8px 16px; border-radius: 2px; cursor: pointer; transition: opacity .15s; }
   .new-evt-btn:hover { opacity: .85; }
 
+  /* ── Sortable column header ── */
+  .th-sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+  .th-sortable:hover { color: var(--navy); }
+  .sort-arrow { font-size: 10px; opacity: .45; margin-left: 3px; transition: opacity .12s; }
+  .th-sortable.sort-asc .sort-arrow,
+  .th-sortable.sort-desc .sort-arrow { opacity: 1; color: var(--navy); }
+
   /* Modal */
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(6,15,30,0.7); z-index: 100; align-items: center; justify-content: center; }
   .modal-overlay.open { display: flex; }
@@ -2364,7 +2371,7 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
 <table>
   <thead><tr>
     <th class="cb-th"><input type="checkbox" id="sel-all" onchange="onSelectAll(this.checked)" title="Select all"></th>
-    <th>#</th><th>Date</th><th>Name</th><th>Phone</th><th>Address</th>
+    <th>#</th><th>Date</th><th class="th-sortable" id="th-name" onclick="toggleNameSort()" title="Sort by name">Name <span class="sort-arrow" id="sort-arrow-name">↕</span></th><th>Phone</th><th>Address</th>
     <th>Events</th><th>How to Help</th><th>Yard Sign</th><th>Endorsement</th><th>Comment</th>
   </tr></thead>
   <tbody id="tbody"></tbody>
@@ -3065,6 +3072,7 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
 var BM_CRM_BASE_URL = '${baseUrl || process.env.PUBLIC_URL || "http://localhost:3002"}';
 var all = [];
 var selectedIds = new Set();
+var nameSortDir  = null;    // null | 'asc' | 'desc'
 var activeEvent    = null;
 var activeDistrict = 'all'; // 'voters' | 'ood' | 'all'
 var activeEvtFilter = 'all';   // 'all' | event title string
@@ -3091,6 +3099,24 @@ function loadData() {
   });
 }
 loadData();
+
+// ── Event card delegated click handler (attached once at load) ────────
+// Replaces inline onclick on dynamically-generated event cards.
+// Catches clicks that bubble up from any button with data-action inside evt-mgmt-grid.
+(function() {
+  var grid = document.getElementById('evt-mgmt-grid');
+  if (!grid) return;
+  grid.addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    var action = btn.dataset.action;
+    var id = Number(btn.dataset.eid);
+    if (!id) return;
+    if (action === 'edit')  { evtEdit(id);  return; }
+    if (action === 'embed') { evtEmbed(id); return; }
+    if (action === 'del')   { evtDel(id);   return; }
+  });
+})();
 
 var HELP_OPTIONS = [
   'Yard Sign',
@@ -3243,6 +3269,14 @@ function render(d) {
   clearSelection();
   if (!d.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
+  // Apply name sort if set
+  if (nameSortDir) {
+    d = d.slice().sort(function(a, b) {
+      var na = ((a.last_name||'') + ' ' + (a.first_name||'')).toLowerCase();
+      var nb = ((b.last_name||'') + ' ' + (b.first_name||'')).toLowerCase();
+      return nameSortDir === 'asc' ? (na < nb ? -1 : na > nb ? 1 : 0) : (na > nb ? -1 : na < nb ? 1 : 0);
+    });
+  }
   tbody.innerHTML = d.map(function(r){
     var helps = (r.how_to_help && r.how_to_help!=='None selected')
       ? r.how_to_help.split(',').map(function(h){ return '<span class="tag">'+x(h.trim())+'</span>'; }).join('')
@@ -3260,7 +3294,7 @@ function render(d) {
           '<div class="c-sub">'+x(r.email)+'</div></td>'+
       '<td class="c-phone">'+fmtPhone(r.phone)+'</td>'+
       '<td style="font-size:12px;color:var(--muted);line-height:1.6;">'+x(r.address)+(r.city?'<br>'+x(r.city)+(r.state?', '+x(r.state):'')+(r.zip?' '+x(r.zip):''):'')+'</td>'+
-      '<td><span class="badge badge-guests">'+all.filter(function(a){ return a.email && a.email === r.email ? true : (!a.email && a.first_name===r.first_name && a.last_name===r.last_name); }).length+'</span></td>'+
+      (function(){var c=all.filter(function(a){return(a.email&&a.email===r.email?true:(!a.email&&a.first_name===r.first_name&&a.last_name===r.last_name))&&!!a.event;}).length;return '<td>'+(c?'<span class="badge badge-guests">'+c+'</span>':'<span class="tag-none">—</span>')+'</td>';})() +
       '<td>'+helps+'</td>'+
       '<td>'+sign+'</td>'+
       '<td>'+(r.endorse==='Yes'?'<span class="badge badge-yes">Yes</span>':'<span class="badge badge-no">No</span>')+'</td>'+
@@ -3318,6 +3352,18 @@ function clearSelection() {
   var sa = document.getElementById('sel-all');
   if (sa) { sa.checked = false; sa.indeterminate = false; }
   updateBulkBar();
+}
+
+function toggleNameSort() {
+  nameSortDir = nameSortDir === 'asc' ? 'desc' : 'asc';
+  var th = document.getElementById('th-name');
+  var arrow = document.getElementById('sort-arrow-name');
+  if (th) {
+    th.classList.toggle('sort-asc', nameSortDir === 'asc');
+    th.classList.toggle('sort-desc', nameSortDir === 'desc');
+  }
+  if (arrow) arrow.textContent = nameSortDir === 'asc' ? '↑' : '↓';
+  refresh();
 }
 
 function bulkDelete() {
@@ -4219,9 +4265,9 @@ function buildEventsView(d) {
                 '<span style=”font-size:13px;font-weight:800;color:var(--navy);”>' + x(ev.title) + '</span>' +
                 regBadge +
                 '<div class=”evt-card-actions” style=”display:flex;gap:6px;margin-left:auto;flex-shrink:0;”>' +
-                  '<button class=”dist-chip” style=”text-transform:none;padding:6px 14px;background:rgba(39,152,189,0.1);color:#1a6fa0;border-color:rgba(39,152,189,0.35);” onclick=”evtEdit(' + eid + ')”>Edit</button>' +
-                  '<button class=”dist-chip” style=”text-transform:none;padding:6px 14px;” onclick=”evtEmbed(' + eid + ')”>Embed Code</button>' +
-                  '<button class=”dist-chip” style=”text-transform:none;padding:6px 14px;background:rgba(217,119,6,0.1);color:#b45309;border-color:rgba(217,119,6,0.35);” onclick=”evtDel(' + eid + ')”>Delete</button>' +
+                  '<button type=”button” class=”dist-chip” style=”text-transform:none;padding:6px 14px;background:rgba(39,152,189,0.1);color:#1a6fa0;border-color:rgba(39,152,189,0.35);” data-action=”edit” data-eid=”' + eid + '”>Edit</button>' +
+                  '<button type=”button” class=”dist-chip” style=”text-transform:none;padding:6px 14px;” data-action=”embed” data-eid=”' + eid + '”>Embed Code</button>' +
+                  '<button type=”button” class=”dist-chip” style=”text-transform:none;padding:6px 14px;background:rgba(217,119,6,0.1);color:#b45309;border-color:rgba(217,119,6,0.35);” data-action=”del” data-eid=”' + eid + '”>Delete</button>' +
                 '</div>' +
               '</div>' +
               (metaParts.length ? '<div style=”font-size:11px;color:var(--muted);”>' + x(metaParts.join(' \xb7 ')) + '</div>' : '') +
@@ -4263,7 +4309,10 @@ function evtEdit(id) {
       evtSetFieldCheckboxes(fields);
       document.getElementById('evt-modal-overlay').classList.add('open');
     })
-    .catch(function() { alert('Could not load event data. Check your connection and try again.'); });
+    .catch(function(err) {
+      console.error('evtEdit failed:', err);
+      alert('Could not load event data — ' + (err && err.message ? err.message : 'check your connection') + '. Try refreshing the page.');
+    });
 }
 
 function evtEmbed(id) {

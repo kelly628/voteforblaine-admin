@@ -15,8 +15,10 @@ if (emailEnabled) console.log('[email] Resend enabled, sending from', EMAIL_FROM
 else console.log('[email] Resend not configured (set RESEND_API_KEY to enable confirmation emails)');
 
 const PASSWORDS = {
-  admin:     process.env.ADMIN_PASSWORD     || 'blaine2026',  // campaign staff — full view
-  candidate: process.env.CANDIDATE_PASSWORD || 'judge2026'    // Blaine — no donation info
+  // .trim() guards against a trailing space/newline accidentally saved into the
+  // Railway env var, which would otherwise make the password never match.
+  admin:     (process.env.ADMIN_PASSWORD     || 'blaine2026').trim(),  // campaign staff — full view
+  candidate: (process.env.CANDIDATE_PASSWORD || 'judge2026').trim()    // Blaine — no donation info
 };
 
 // ── Database (PostgreSQL) ─────────────────────────────────────────────
@@ -359,12 +361,13 @@ app.get('/login', (req, res) => {
 
 app.post('/login', express.urlencoded({ extended: false }), (req, res) => {
   const { role, next, password } = req.body;
+  const pw = (password || '').trim();
   const dest = (next && next.startsWith('/')) ? next : (role === 'candidate' ? '/candidate' : '/admin');
-  if (role === 'admin' && password === PASSWORDS.admin) {
+  if (role === 'admin' && pw === PASSWORDS.admin) {
     res.setHeader('Set-Cookie', `vfb_session=${ADMIN_TOKEN}; Path=/; HttpOnly; SameSite=Strict`);
     return res.redirect(dest);
   }
-  if (role === 'candidate' && password === PASSWORDS.candidate) {
+  if (role === 'candidate' && pw === PASSWORDS.candidate) {
     res.setHeader('Set-Cookie', `vfb_session=${CAND_TOKEN}; Path=/; HttpOnly; SameSite=Strict`);
     return res.redirect(dest);
   }

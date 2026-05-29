@@ -3782,17 +3782,18 @@ function buildEventsView(d) {
             if (dateStr) metaParts.push(dateStr);
             if (ev.time) metaParts.push(ev.time);
             if (ev.location) metaParts.push(ev.location);
-            return '<div class=”snap-card” style=”display:flex;flex-direction:column;gap:10px;”>' +
-              '<div style=”display:flex;align-items:flex-start;justify-content:space-between;gap:10px;”>' +
-                '<div style=”font-size:13px;font-weight:800;color:var(--navy);line-height:1.3;”>' + x(ev.title) + '</div>' +
+            var btnBase = 'font-size:11px;font-weight:700;font-family:Montserrat,sans-serif;padding:4px 12px;border-radius:100px;border:1px solid #dde3ec;background:#f4f6f9;cursor:pointer;white-space:nowrap;';
+            return '<div class=”snap-card” style=”display:flex;flex-direction:column;gap:5px;”>' +
+              '<div style=”display:flex;align-items:center;gap:10px;flex-wrap:wrap;”>' +
+                '<span style=”font-size:13px;font-weight:800;color:var(--navy);”>' + x(ev.title) + '</span>' +
                 regBadge +
+                '<div style=”display:flex;gap:5px;margin-left:auto;”>' +
+                  '<button style=”' + btnBase + 'color:#09254f;” data-evtid=”' + ev.id + '” onclick=”openEditEventModal(this.dataset.evtid)”>Edit</button>' +
+                  '<button style=”' + btnBase + 'color:#09254f;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” data-date=”' + x(ev.date||'') + '” data-time=”' + x(ev.time||'') + '” data-loc=”' + x(ev.location||'') + '” data-fields=”' + x(ev.fields||'{}') + '” data-endtime=”' + x(ev.end_time||'') + '” onclick=”var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.evtid,this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f,this.dataset.endtime)”>Embed Code</button>' +
+                  '<button style=”' + btnBase + 'color:#9a3412;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” onclick=”deleteEvent(this.dataset.evtid,this.dataset.title)”>Delete</button>' +
+                '</div>' +
               '</div>' +
               (metaParts.length ? '<div style=”font-size:11px;color:var(--muted);”>' + x(metaParts.join(' · ')) + '</div>' : '') +
-              '<div style=”display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;”>' +
-                '<button style=”font-size:11px;font-weight:700;font-family:Montserrat,sans-serif;padding:5px 13px;border-radius:100px;border:1px solid #dde3ec;background:#f4f6f9;color:#09254f;cursor:pointer;” data-evtid=”' + ev.id + '” onclick=”openEditEventModal(this.dataset.evtid)”>Edit</button>' +
-                '<button style=”font-size:11px;font-weight:700;font-family:Montserrat,sans-serif;padding:5px 13px;border-radius:100px;border:1px solid #dde3ec;background:#f4f6f9;color:#09254f;cursor:pointer;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” data-date=”' + x(ev.date||'') + '” data-time=”' + x(ev.time||'') + '” data-loc=”' + x(ev.location||'') + '” data-fields=”' + x(ev.fields||'{}') + '” data-endtime=”' + x(ev.end_time||'') + '” onclick=”var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.evtid,this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f,this.dataset.endtime)”>Embed Code</button>' +
-                '<button style=”font-size:11px;font-weight:700;font-family:Montserrat,sans-serif;padding:5px 13px;border-radius:100px;border:1px solid #dde3ec;background:#f4f6f9;color:#9a3412;cursor:pointer;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” onclick=”deleteEvent(this.dataset.evtid,this.dataset.title)”>Delete</button>' +
-              '</div>' +
             '</div>';
           }).join('');
         }

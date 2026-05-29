@@ -1945,6 +1945,27 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
     .pipe-stage { padding:10px 10px 9px !important; }
     .snap-card { padding:16px 16px !important; }
 
+    /* ── Event card: buttons go full-width below title ── */
+    .snap-card > div:first-child { flex-wrap:wrap !important; }
+    .evt-card-actions {
+      margin-left:0 !important; width:100%;
+      display:flex !important; gap:0 !important;
+      border:1px solid var(--border); border-radius:6px; overflow:hidden;
+    }
+    .evt-card-actions .dist-chip {
+      flex:1; text-align:center; justify-content:center;
+      border:none !important; border-radius:0 !important;
+      padding:10px 6px !important; font-size:11px !important;
+      border-right:1px solid var(--border) !important;
+    }
+    .evt-card-actions .dist-chip:last-child { border-right:none !important; }
+
+    /* ── Profile pipeline: scrollable, no cut-off ── */
+    .pipe-progress { overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:10px; }
+    .pipe-step-wrap { min-width:72px; flex:0 0 72px; }
+    .pipe-step-label { font-size:8px; letter-spacing:0.3px; word-break:break-word; }
+    .pipe-connector { width:14px; flex-shrink:0; }
+
     /* ── Header ── */
     .hdr { padding:0 14px; gap:10px; }
     .hdr-right { display:none; }
@@ -4056,7 +4077,7 @@ function buildEventsView(d) {
               '<div style=”display:flex;align-items:center;gap:8px;flex-wrap:wrap;”>' +
                 '<span style=”font-size:13px;font-weight:800;color:var(--navy);”>' + x(ev.title) + '</span>' +
                 regBadge +
-                '<div style=”display:flex;gap:5px;margin-left:auto;”>' +
+                '<div class=”evt-card-actions” style=”display:flex;gap:5px;margin-left:auto;”>' +
                   '<button class=”dist-chip” style=”text-transform:none;padding:4px 12px;” data-evtid=”' + ev.id + '” onclick=”openEditEventModal(this.dataset.evtid)”>Edit</button>' +
                   '<button class=”dist-chip” style=”text-transform:none;padding:4px 12px;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” data-date=”' + x(ev.date||'') + '” data-time=”' + x(ev.time||'') + '” data-loc=”' + x(ev.location||'') + '” data-fields=”' + x(ev.fields||'{}') + '” data-endtime=”' + x(ev.end_time||'') + '” onclick=”var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.evtid,this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f,this.dataset.endtime)”>Embed Code</button>' +
                   '<button class=”dist-chip” style=”text-transform:none;padding:4px 12px;color:#9a3412;border-color:#fca5a5;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” onclick=”deleteEvent(this.dataset.evtid,this.dataset.title)”>Delete</button>' +

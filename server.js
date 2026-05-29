@@ -1196,7 +1196,7 @@ function generateWidget(label, displayDate, time, location, fields, endTime, crm
 '  .bm-rsvp-success { display: none; text-align: center; padding: 48px 24px; }',
 '  .bm-rsvp-success-icon { width: 60px; height: 60px; background: rgba(120,224,196,0.15); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }',
 '  .bm-rsvp-success h3 { font-family: \'Playfair Display\', Georgia, serif; font-size: 24px; color: #fff; margin: 0 0 10px; }',
-'  .bm-rsvp-success p { font-size: 14px; color: rgba(255,255,255,0.55); line-height: 1.6; margin: 0; }',
+'  .bm-rsvp-success p { font-size: 17px; font-weight: 600; color: rgba(255,255,255,0.85); line-height: 1.6; margin: 0; }',
 '  .bm-rsvp-note { text-align: center; margin-top: 20px; font-size: 11px; color: rgba(255,255,255,0.25); }',
 '  @media (max-width: 600px) { .bm-rsvp-row { grid-template-columns: 1fr; } .bm-rsvp-help-grid { grid-template-columns: 1fr; } .bm-rsvp-form { padding: 24px 20px; } .bm-rsvp h2 { font-size: 26px; } }',
 '</style>',

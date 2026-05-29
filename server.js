@@ -2297,18 +2297,18 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
 
 <!-- ── District Filter ── -->
 <div class="district-bar">
-  <button class="dist-chip active" id="dist-voters"    onclick="setDistrict('voters')">
+  <button class="dist-chip active" id="dist-all" onclick="setDistrict('all')">
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+    All Contacts
+    <span class="dist-chip-count" id="dist-count-all">—</span>
+  </button>
+  <button class="dist-chip" id="dist-voters" onclick="setDistrict('voters')">
     Potential Voters
     <span class="dist-chip-count" id="dist-count-voters">—</span>
   </button>
   <button class="dist-chip" id="dist-ood" onclick="setDistrict('ood')">
     Out of District
     <span class="dist-chip-count" id="dist-count-ood">—</span>
-  </button>
-  <button class="dist-chip" id="dist-all" onclick="setDistrict('all')">
-    All Contacts
-    <span class="dist-chip-count" id="dist-count-all">—</span>
   </button>
 </div>
 
@@ -2809,9 +2809,6 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
   <div class="elec-source">LA Sec. of State &middot; Oct 2024</div>
 </div>
 
-<footer class="foot">
-  Paid for by The Committee to Elect Blaine Benge Moncrief, Judge &nbsp;&middot;&nbsp; Election Day Nov 3, 2026
-</footer>
 </div><!-- /admin-main -->
 
 <!-- ── Drill-down Modal ── -->
@@ -3023,7 +3020,7 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
 var BM_CRM_BASE_URL = '${baseUrl || process.env.PUBLIC_URL || "http://localhost:3002"}';
 var all = [];
 var activeEvent    = null;
-var activeDistrict = 'voters'; // 'voters' | 'ood' | 'all'
+var activeDistrict = 'all'; // 'voters' | 'ood' | 'all'
 var activeEvtFilter = 'all';   // 'all' | event title string
 var evtSearchQ      = '';
 
@@ -5272,10 +5269,6 @@ function candidateHTML() { return `<!DOCTYPE html>
 </table>
 <div class="empty" id="empty" style="display:none">No RSVPs yet.</div>
 </div>
-
-<footer class="foot">
-  Paid for by The Committee to Elect Blaine Benge Moncrief, Judge &nbsp;&middot;&nbsp; Election Day Nov 3, 2026
-</footer>
 
 <script>
 var all = [];

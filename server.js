@@ -554,6 +554,77 @@ ${widgetHtml}
   } catch(e) { res.status(500).send('Error: ' + e.message); }
 });
 
+// ── Embeddable widget frame (public; rendered live inside an iframe) ───
+// The dynamic embed points an iframe here, so the form is always current
+// and fully isolated from the host page (no ID/CSS collisions).
+app.get('/widget-frame/:id', async (req, res) => {
+  try {
+    const evt = await dbGet("SELECT * FROM events WHERE id=?", [req.params.id]);
+    if (!evt) return res.status(404).send('Event not found');
+    const fields = evt.fields ? JSON.parse(evt.fields) : null;
+    const proto = req.headers['x-forwarded-proto'] || req.protocol;
+    const base  = process.env.PUBLIC_URL || (proto + '://' + req.get('host'));
+    const widgetHtml = generateWidget(evt.title, evt.date, evt.time, evt.location, fields, evt.end_time, base);
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>${evt.title} — RSVP</title>
+<style>*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}html,body{background:transparent;}</style>
+</head>
+<body>
+${widgetHtml}
+<script>
+(function(){
+  var lastH = 0;
+  function postH(){
+    var h = Math.ceil(document.documentElement.scrollHeight || document.body.scrollHeight || 0);
+    if (h && h !== lastH){ lastH = h; parent.postMessage({ bmWidget:true, id:'${req.params.id}', height:h }, '*'); }
+  }
+  window.addEventListener('load', postH);
+  if (window.MutationObserver) new MutationObserver(postH).observe(document.body, { subtree:true, childList:true, attributes:true });
+  setInterval(postH, 700);
+  postH();
+})();
+</script>
+</body>
+</html>`);
+  } catch(e) { res.status(500).send('Error'); }
+});
+
+// ── Embed loader (public) — paste once; renders the live widget in an iframe ──
+app.get('/embed.js', (req, res) => {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol;
+  const base  = process.env.PUBLIC_URL || (proto + '://' + req.get('host'));
+  res.set('Content-Type', 'application/javascript; charset=utf-8');
+  res.set('Cache-Control', 'public, max-age=300');
+  res.send(`(function(){
+  var BASE = '${base}';
+  function init(){
+    var nodes = document.querySelectorAll('.bm-rsvp-embed:not([data-bm-loaded])');
+    for (var i=0;i<nodes.length;i++){ (function(node){
+      var id = node.getAttribute('data-event');
+      if(!id) return;
+      node.setAttribute('data-bm-loaded','1');
+      var iframe = document.createElement('iframe');
+      iframe.src = BASE + '/widget-frame/' + id;
+      iframe.style.cssText = 'width:100%;border:0;overflow:hidden;display:block;min-height:520px;';
+      iframe.setAttribute('scrolling','no');
+      iframe.setAttribute('title','Event Registration');
+      node.appendChild(iframe);
+      window.addEventListener('message', function(e){
+        if(e.data && e.data.bmWidget && String(e.data.id)===String(id) && e.data.height){
+          iframe.style.height = (e.data.height + 8) + 'px';
+        }
+      });
+    })(nodes[i]); }
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();`);
+});
+
 // ── Public events API ─────────────────────────────────────────────────
 app.get('/api/events', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -4621,7 +4692,10 @@ function showEmbedCode(id, title, date, time, location, fields, endTime) {
   var labelEl = document.getElementById('evt-embed-label');
   var codeEl  = document.getElementById('evt-embed-code');
   if (labelEl) labelEl.textContent = title + (date ? '  —  ' + date : '');
-  if (codeEl)  codeEl.value = generateWidget(title, date, time, location, fields, endTime);
+  // Dynamic embed: a small loader that renders the always-current widget in an
+  // iframe. Paste once — future form changes appear automatically, no re-paste.
+  if (codeEl) codeEl.value = '<div class="bm-rsvp-embed" data-event="' + id + '"></div>\n'
+    + '<scr' + 'ipt src="' + BM_CRM_BASE_URL + '/embed.js" async></scr' + 'ipt>';
   document.getElementById('evt-embed-overlay').classList.add('open');
 }
 

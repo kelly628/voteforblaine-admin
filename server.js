@@ -4545,7 +4545,7 @@ function handleImportFile(file) {
   var ext = file.name.split('.').pop().toLowerCase();
   if (ext === 'csv' || ext === 'tsv') {
     var reader = new FileReader();
-    reader.onload = function(e) { parseImportCSV(e.target.result, ext === 'tsv' ? '\t' : null); };
+    reader.onload = function(e) { parseImportCSV(e.target.result, ext === 'tsv' ? '\\t' : null); };
     reader.readAsText(file);
   } else if (ext === 'xlsx' || ext === 'xls') {
     loadSheetJS(function() {
@@ -4568,17 +4568,17 @@ function handleImportFile(file) {
 function importPastePreview() {
   var raw = document.getElementById('import-paste-area').value.trim();
   if (!raw) { document.getElementById('import-preview').style.display = 'none'; return; }
-  parseImportCSV(raw, '\t');
+  parseImportCSV(raw, '\\t');
 }
 
 function parseImportCSV(text, delim) {
   // Auto-detect delimiter if not specified
   if (!delim) {
-    var tabCount   = (text.match(/\t/g)  || []).length;
+    var tabCount   = (text.match(/\\t/g)  || []).length;
     var commaCount = (text.match(/,/g)   || []).length;
-    delim = tabCount > commaCount ? '\t' : ',';
+    delim = tabCount > commaCount ? '\\t' : ',';
   }
-  var lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(function(l){ return l.trim(); });
+  var lines = text.replace(/\\r\\n/g,'\\n').replace(/\\r/g,'\\n').split('\\n').filter(function(l){ return l.trim(); });
   if (lines.length < 2) { alert('Need at least a header row and one data row.'); return; }
   var rows = lines.map(function(l) {
     if (delim === ',') return parseCSVLine(l);

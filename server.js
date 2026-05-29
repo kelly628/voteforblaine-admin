@@ -6,6 +6,15 @@ const path     = require('path');
 const app  = express();
 const PORT = process.env.PORT || 3002;
 
+// ── Email (Resend) — optional; only active once RESEND_API_KEY is set ──
+// Defensive require so a missing package or key can never crash the panel.
+let Resend = null;
+try { Resend = require('resend').Resend; } catch (e) { console.warn('[email] resend package not available:', e.message); }
+const resend = (Resend && process.env.RESEND_API_KEY) ? new Resend(process.env.RESEND_API_KEY) : null;
+const EMAIL_FROM = process.env.EMAIL_FROM || 'Blaine Moncrief Campaign <rsvp@voteforblaine.com>';
+if (resend) console.log('[email] Resend enabled, sending from', EMAIL_FROM);
+else console.log('[email] Resend not configured (set RESEND_API_KEY to enable confirmation emails)');
+
 const PASSWORDS = {
   admin:     process.env.ADMIN_PASSWORD     || 'blaine2026',  // campaign staff — full view
   candidate: process.env.CANDIDATE_PASSWORD || 'judge2026'    // Blaine — no donation info
@@ -36,6 +45,64 @@ async function dbGet(sql, params = []) {
 async function dbAll(sql, params = []) {
   const r = await pool.query(toPostgres(sql), params);
   return r.rows;
+}
+
+// ── Confirmation email ────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Fire-and-forget: sends an RSVP confirmation. Never throws to the caller.
+async function sendRsvpConfirmation(opts) {
+  if (!resend) return;
+  const firstName  = (opts.firstName || '').trim();
+  const email      = (opts.email || '').trim();
+  const eventTitle = (opts.eventTitle || '').trim();
+  if (!email) return;
+
+  // Look up event details (date/time/location) by title
+  let ev = null;
+  if (eventTitle) {
+    try { ev = await dbGet('SELECT * FROM events WHERE LOWER(title)=LOWER(?)', [eventTitle]); } catch (e) {}
+  }
+
+  const bits = [];
+  if (ev) {
+    if (ev.date) {
+      const p = String(ev.date).split('-');
+      if (p.length === 3) {
+        const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        bits.push(months[parseInt(p[1], 10) - 1] + ' ' + parseInt(p[2], 10) + ', ' + p[0]);
+      }
+    }
+    if (ev.time && ev.end_time) bits.push(ev.time + ' – ' + ev.end_time);
+    else if (ev.time)           bits.push(ev.time);
+    if (ev.location) bits.push(ev.location);
+  }
+  const detailLine = bits.join('  ·  ');
+  const eventName  = (ev && ev.title) || eventTitle || '';
+  const greeting   = firstName ? ('Hi ' + firstName + ',') : 'Hi there,';
+  const subject    = eventName ? ('You\'re confirmed for ' + eventName) : 'Thanks for your RSVP';
+
+  const html =
+    '<div style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,Helvetica,sans-serif;">' +
+      '<div style="max-width:520px;margin:0 auto;padding:32px 16px;">' +
+        '<div style="background:#09254f;border-radius:12px 12px 0 0;padding:36px 32px 28px;text-align:center;">' +
+          '<div style="font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#78E0C4;font-weight:bold;margin-bottom:12px;">You&rsquo;re Confirmed</div>' +
+          (eventName ? '<div style="font-size:26px;font-weight:bold;color:#ffffff;line-height:1.25;' + (detailLine ? 'margin-bottom:10px;' : '') + '">' + escHtml(eventName) + '</div>' : '') +
+          (detailLine ? '<div style="font-size:14px;color:#78E0C4;font-weight:bold;">' + escHtml(detailLine) + '</div>' : '') +
+        '</div>' +
+        '<div style="background:#ffffff;border-radius:0 0 12px 12px;padding:32px;">' +
+          '<p style="font-size:16px;color:#09254f;margin:0 0 16px;">' + escHtml(greeting) + '</p>' +
+          '<p style="font-size:15px;color:#3a4a63;line-height:1.6;margin:0 0 16px;">Thank you for your RSVP' + (eventName ? ' to <strong>' + escHtml(eventName) + '</strong>' : '') + '. We look forward to seeing you' + (detailLine ? ' on <strong>' + escHtml(detailLine) + '</strong>' : '') + '.</p>' +
+          '<p style="font-size:15px;color:#3a4a63;line-height:1.6;margin:0;">We&rsquo;re grateful for your support.</p>' +
+        '</div>' +
+        '<p style="font-size:12px;color:#9aa7b8;text-align:center;margin:20px 0 0;line-height:1.5;">Your information is kept private and used only for campaign communications.</p>' +
+      '</div>' +
+    '</div>';
+
+  await resend.emails.send({ from: EMAIL_FROM, to: email, subject: subject, html: html });
 }
 
 // ── Schema bootstrap ──────────────────────────────────────────────────
@@ -128,6 +195,11 @@ app.post('/rsvp', async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [firstName, lastName, email, phone, address, city, state, zip, parish, guests, guestNames, howToHelp, yardSign, endorse, comment, event]);
     res.json({ result: 'success' });
+    // Send confirmation email — fire-and-forget; never blocks or fails the RSVP
+    if (resend && email) {
+      sendRsvpConfirmation({ firstName, email, eventTitle: event })
+        .catch(err => console.error('[email] confirmation failed:', err.message));
+    }
   } catch (err) {
     console.error('DB error:', err.message);
     res.status(500).json({ result: 'error' });

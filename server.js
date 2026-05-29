@@ -4184,52 +4184,110 @@ function refreshEvtTable() {
 }
 
 function buildEventsView(d) {
-  _evtGroups = []; // reset drill groups each rebuild
+  _evtGroups = [];
 
-  // Load managed events from /admin/events-list → render management cards + filter chips
+  var grid = document.getElementById('evt-mgmt-grid');
+  if (grid) grid.innerHTML = '<span style=”font-size:13px;color:var(--dim);font-style:italic;”>Loading&hellip;</span>';
+
   fetch('/admin/events-list')
-    .then(function(r){ return r.json(); })
+    .then(function(r) { return r.json(); })
     .then(function(evts) {
-      var grid = document.getElementById('evt-mgmt-grid');
+      _evtList = evts || [];   // ← store for button handlers
       if (grid) {
-        if (!evts || !evts.length) {
-          grid.innerHTML = '<div style=”grid-column:1/-1;font-size:13px;color:var(--dim);font-style:italic;”>No events yet. Click “+ New Event” to add one.</div>';
+        if (!_evtList.length) {
+          grid.innerHTML = '<div style=”grid-column:1/-1;font-size:13px;color:var(--dim);font-style:italic;”>No events yet — click “+ New Event” to add one.</div>';
         } else {
-          grid.innerHTML = evts.map(function(ev) {
-            var dateStr = (function(d) {
-              if (!d) return '';
-              var p = d.split('-');
-              if (p.length !== 3) return d;
-              var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-              return months[parseInt(p[1],10)-1] + ' ' + parseInt(p[2],10) + ', ' + p[0];
-            })(ev.date);
+          grid.innerHTML = _evtList.map(function(ev) {
+            var dateStr = '';
+            if (ev.date) {
+              var p = ev.date.split('-');
+              if (p.length === 3) {
+                var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                dateStr = months[parseInt(p[1],10)-1] + ' ' + parseInt(p[2],10) + ', ' + p[0];
+              } else {
+                dateStr = ev.date;
+              }
+            }
             var regBadge = '<span style=”display:inline-block;background:rgba(95,212,176,0.15);color:#2e9e7e;font-size:10px;font-weight:700;padding:2px 9px;border-radius:100px;letter-spacing:.5px;”>' + (ev.reg_count || 0) + ' registered</span>';
             var metaParts = [];
             if (dateStr) metaParts.push(dateStr);
             if (ev.time) metaParts.push(ev.time);
             if (ev.location) metaParts.push(ev.location);
+            var eid = Number(ev.id);
             return '<div class=”snap-card” style=”display:flex;flex-direction:column;gap:5px;”>' +
               '<div style=”display:flex;align-items:center;gap:8px;flex-wrap:wrap;”>' +
                 '<span style=”font-size:13px;font-weight:800;color:var(--navy);”>' + x(ev.title) + '</span>' +
                 regBadge +
                 '<div class=”evt-card-actions” style=”display:flex;gap:6px;margin-left:auto;flex-shrink:0;”>' +
-                  '<button class=”dist-chip” style=”text-transform:none;padding:6px 14px;background:rgba(39,152,189,0.1);color:#1a6fa0;border-color:rgba(39,152,189,0.35);” data-evtid=”' + ev.id + '” onclick=”openEditEventModal(this.dataset.evtid)”>Edit</button>' +
-                  '<button class=”dist-chip” style=”text-transform:none;padding:6px 14px;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” data-date=”' + x(ev.date||'') + '” data-time=”' + x(ev.time||'') + '” data-loc=”' + x(ev.location||'') + '” data-fields=”' + x(ev.fields||'{}') + '” data-endtime=”' + x(ev.end_time||'') + '” onclick=”var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.evtid,this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f,this.dataset.endtime)”>Embed Code</button>' +
-                  '<button class=”dist-chip” style=”text-transform:none;padding:6px 14px;background:rgba(217,119,6,0.1);color:#b45309;border-color:rgba(217,119,6,0.35);” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” onclick=”deleteEvent(this.dataset.evtid,this.dataset.title)”>Delete</button>' +
+                  '<button class=”dist-chip” style=”text-transform:none;padding:6px 14px;background:rgba(39,152,189,0.1);color:#1a6fa0;border-color:rgba(39,152,189,0.35);” onclick=”evtEdit(' + eid + ')”>Edit</button>' +
+                  '<button class=”dist-chip” style=”text-transform:none;padding:6px 14px;” onclick=”evtEmbed(' + eid + ')”>Embed Code</button>' +
+                  '<button class=”dist-chip” style=”text-transform:none;padding:6px 14px;background:rgba(217,119,6,0.1);color:#b45309;border-color:rgba(217,119,6,0.35);” onclick=”evtDel(' + eid + ')”>Delete</button>' +
                 '</div>' +
               '</div>' +
-              (metaParts.length ? '<div style=”font-size:11px;color:var(--muted);”>' + x(metaParts.join(' · ')) + '</div>' : '') +
+              (metaParts.length ? '<div style=”font-size:11px;color:var(--muted);”>' + x(metaParts.join(' \xb7 ')) + '</div>' : '') +
             '</div>';
           }).join('');
         }
       }
-      // Build filter chips now that we have event names + counts
-      buildEvtFilters(evts || []);
+      buildEvtFilters(_evtList);
     })
-    .catch(function(){ buildEvtFilters([]); });
+    .catch(function(err) {
+      console.error('events-list fetch failed', err);
+      if (grid) grid.innerHTML = '<div style=”grid-column:1/-1;color:#b45309;font-size:13px;”>Could not load events. Refresh to try again.</div>';
+      buildEvtFilters([]);
+    });
 
-  // Render registration table (filter/search state applied)
   refreshEvtTable();
+}
+
+// ── Event card button handlers (use _evtList — no data-attribute encoding) ──
+function evtEdit(id) {
+  // Re-fetch for freshness so edits always show latest data
+  fetch('/admin/events-list')
+    .then(function(r) { return r.json(); })
+    .then(function(evts) {
+      var ev = evts.find(function(e) { return Number(e.id) === Number(id); });
+      if (!ev) { alert('Event not found — try refreshing the page.'); return; }
+      document.getElementById('evt-modal-title').textContent = 'Edit Event';
+      document.getElementById('evt-edit-id').value = ev.id;
+      document.getElementById('evt-f-title').value = ev.title || '';
+      document.getElementById('evt-f-date').value = ev.date || '';
+      document.getElementById('evt-f-time').value = ev.time || '';
+      document.getElementById('evt-f-end-time').value = ev.end_time || '';
+      syncTimeChips();
+      document.getElementById('evt-f-location').value = ev.location || '';
+      document.getElementById('evt-f-desc').value = ev.description || '';
+      document.getElementById('evt-f-capacity').value = ev.capacity || '';
+      var fields = null;
+      try { if (ev.fields) fields = JSON.parse(ev.fields); } catch(e) {}
+      evtSetFieldCheckboxes(fields);
+      document.getElementById('evt-modal-overlay').classList.add('open');
+    })
+    .catch(function() { alert('Could not load event data. Check your connection and try again.'); });
+}
+
+function evtEmbed(id) {
+  var ev = _evtList.find(function(e) { return Number(e.id) === Number(id); });
+  if (!ev) { alert('Event data not loaded yet — try refreshing.'); return; }
+  var fields = null;
+  try { if (ev.fields) fields = JSON.parse(ev.fields); } catch(e) {}
+  showEmbedCode(id, ev.title, ev.date, ev.time, ev.location, fields, ev.end_time);
+}
+
+function evtDel(id) {
+  var ev = _evtList.find(function(e) { return Number(e.id) === Number(id); });
+  var title = ev ? ev.title : 'this event';
+  if (!confirm('Delete “' + title + '”? This cannot be undone.')) return;
+  fetch('/admin/event/' + id, { method: 'DELETE' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.result === 'ok') {
+        buildEventsView(all);
+      } else {
+        alert('Error deleting event. Try again.');
+      }
+    })
+    .catch(function() { alert('Network error. Try again.'); });
 }
 
 // ── Time Picker Helpers ───────────────────────────────────────────────
@@ -4286,29 +4344,6 @@ function openNewEventModal() {
   setTimeout(function(){ document.getElementById('evt-f-title').focus(); }, 80);
 }
 
-function openEditEventModal(id) {
-  fetch('/admin/events-list')
-    .then(function(r){ return r.json(); })
-    .then(function(evts) {
-      var ev = evts.find(function(e){ return String(e.id) === String(id); });
-      if (!ev) return;
-      document.getElementById('evt-modal-title').textContent = 'Edit Event';
-      document.getElementById('evt-edit-id').value = ev.id;
-      document.getElementById('evt-f-title').value = ev.title || '';
-      document.getElementById('evt-f-date').value = ev.date || '';
-      document.getElementById('evt-f-time').value = ev.time || '';
-      document.getElementById('evt-f-end-time').value = ev.end_time || '';
-      syncTimeChips();
-      document.getElementById('evt-f-location').value = ev.location || '';
-      document.getElementById('evt-f-desc').value = ev.description || '';
-      document.getElementById('evt-f-capacity').value = ev.capacity || '';
-      var fields = null;
-      try { if (ev.fields) fields = JSON.parse(ev.fields); } catch(e) {}
-      evtSetFieldCheckboxes(fields);
-      document.getElementById('evt-modal-overlay').classList.add('open');
-    });
-}
-
 function closeEventModal() {
   document.getElementById('evt-modal-overlay').classList.remove('open');
 }
@@ -4346,20 +4381,6 @@ function saveEvent() {
     .catch(function(){ alert('Network error. Please try again.'); });
 }
 
-function deleteEvent(id, title) {
-  if (!confirm('Delete event "' + title + '"? This cannot be undone.')) return;
-  fetch('/admin/event/' + id, { method: 'DELETE' })
-    .then(function(r){ return r.json(); })
-    .then(function(data) {
-      if (data.result === 'ok') {
-        buildEventsView(all);
-      } else {
-        alert('Error deleting event.');
-      }
-    })
-    .catch(function(){ alert('Network error.'); });
-}
-
 var _currentEmbedEventId = null;
 
 function showEmbedCode(id, title, date, time, location, fields, endTime) {
@@ -4390,6 +4411,7 @@ function copyEmbedCode() {
   });
 }
 var _evtGroups = [];
+var _evtList   = [];  // populated by buildEventsView fetch
 function statMini(val, lbl, rows) {
   if (rows) {
     var idx = _evtGroups.length;

@@ -6878,6 +6878,8 @@ var ZIP_COORDS = {
   "70056":[29.8869,-90.0461], "70058":[29.8988,-90.0771], "70062":[29.9944,-90.2418],
   "70065":[29.9992,-90.2150], "70067":[29.6690,-90.1126], "70072":[29.8886,-90.1013],
   "70094":[29.9072,-90.1450],
+  // River Ridge / Harahan / Jefferson CDP (Jefferson Parish, near the Orleans line)
+  "70121":[29.9550,-90.1670], "70123":[29.9600,-90.2050],
   // Orleans Parish (out of district, but supporters here still get a pin)
   "70112":[29.9580,-90.0790], "70113":[29.9430,-90.0790], "70114":[29.9320,-90.0480],
   "70115":[29.9230,-90.0980], "70116":[29.9650,-90.0640], "70117":[29.9620,-90.0330],
@@ -6888,6 +6890,15 @@ var ZIP_COORDS = {
   // St. Bernard / nearby
   "70043":[29.9560,-89.9900], "70075":[29.9330,-89.9200], "70092":[29.9100,-89.9650]
 };
+// Parish-centroid fallback so EVERY sign requester gets a pin even if their exact
+// zip isn't above — anyone can request a yard sign, so no one should be "off-map".
+var PARISH_COORDS = {
+  "Jefferson":[29.9550,-90.1600], "Orleans":[29.9700,-90.0700], "St. Bernard":[29.8800,-89.9500],
+  "St. Charles":[29.9500,-90.4000], "St. John":[30.0700,-90.4900], "St. Tammany":[30.4000,-90.1000],
+  "Plaquemines":[29.5500,-89.7500], "Tangipahoa":[30.5000,-90.4500], "Terrebonne":[29.5800,-90.7000],
+  "Lafourche":[29.7000,-90.4000], "Lafayette":[30.2200,-92.0200]
+};
+var DEFAULT_COORD = [29.9550,-90.1300]; // metro center — last-resort so no pin is ever dropped
 var ZIP_INFO = {
   "70001":{ name:"Metairie (central)",       bank:"East", tier:1, pop:"~38,800"   },
   "70002":{ name:"Metairie NE / Bucktown",   bank:"East", tier:2, pop:"~19,900"   },
@@ -6990,14 +7001,12 @@ function buildSignList(data){
   if(!data.length){ el.innerHTML='<div style="font-size:12px;color:var(--muted);font-style:italic;">No sign requests yet.</div>'; return; }
   el.innerHTML = data.map(function(r){
     var del = r.yard_sign_delivered === 'Yes';
-    var mapped = !!ZIP_COORDS[r.zip];
     var loc = [r.address, r.city, r.zip].filter(Boolean).map(xe).join(', ');
     if(r.parish && r.parish !== 'Jefferson') loc += (loc?' · ':'') + xe(r.parish) + ' Parish';
     return '<div class="sign-item">'+
       '<span class="sign-item-status '+(del?'del':'pen')+'">'+(del?'&#10003;':'&#9679;')+'</span>'+
       '<div class="sign-item-main">'+
         '<div class="sign-item-name">'+xe(r.first_name)+' '+xe(r.last_name)+
-          (mapped?'':' <span class="sign-item-flag" title="Zip not in the parish map coordinates, so no pin appears">off-map</span>')+
         '</div>'+
         '<div class="sign-item-addr">'+(loc||'No address on file')+'</div>'+
       '</div>'+
@@ -7046,7 +7055,8 @@ function buildMap(data){
   var seed=42;
   function rnd(){seed=(seed*9301+49297)%233280;return seed/233280;}
   data.forEach(function(r){
-    var c=ZIP_COORDS[r.zip]; if(!c)return;
+    // Exact zip → parish centroid → metro default, so EVERY requester gets a pin.
+    var c=ZIP_COORDS[r.zip]||PARISH_COORDS[r.parish]||DEFAULT_COORD;
     var lat=c[0]+(rnd()-0.5)*0.007;
     var lng=c[1]+(rnd()-0.5)*0.009;
     var del=r.yard_sign_delivered==='Yes';

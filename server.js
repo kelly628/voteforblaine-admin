@@ -1893,9 +1893,110 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
   .left-nav-add-btn-blue:hover { background: #1f7fa0 !important; }
   .admin-main { margin-left: 220px; min-height: 100vh; display: flex; flex-direction: column; }
   .view-hidden { display: none !important; }
-  @media(max-width:900px){
-    .left-nav { display: none; }
-    .admin-main { margin-left: 0; }
+  /* ═══════════════════════════════════════════════
+     MOBILE NAV — bottom bar + slide-up "More" sheet
+  ═══════════════════════════════════════════════ */
+  .bottom-nav { display:none; }
+  .mob-sheet-overlay {
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.52);
+    z-index:195; opacity:0; pointer-events:none; transition:opacity .22s;
+  }
+  .mob-sheet-overlay.open { opacity:1; pointer-events:auto; }
+  .mob-sheet {
+    display:none; position:fixed; left:0; right:0; bottom:0;
+    background:#0b2959; border-radius:18px 18px 0 0;
+    z-index:196; transform:translateY(100%);
+    transition:transform .26s cubic-bezier(.4,0,.2,1);
+  }
+  .mob-sheet.open { transform:translateY(0); }
+  .mob-sheet-handle { width:38px; height:4px; background:rgba(255,255,255,.2); border-radius:2px; margin:12px auto 4px; }
+  .mob-sheet-item {
+    display:flex; align-items:center; gap:14px; padding:13px 22px;
+    color:rgba(255,255,255,.6); font-size:13px; font-weight:600;
+    font-family:'Montserrat',sans-serif; border:none; background:none;
+    width:100%; text-align:left; cursor:pointer; text-decoration:none; transition:color .15s;
+  }
+  .mob-sheet-item.active { color:var(--mint); }
+  .mob-sheet-item svg { flex-shrink:0; opacity:.65; }
+  .mob-sheet-item.active svg { opacity:1; }
+  .mob-sheet-divider { height:1px; background:rgba(255,255,255,.09); margin:4px 20px; }
+  .mob-sheet-actions { display:flex; gap:8px; padding:12px 20px 4px; flex-wrap:wrap; }
+  .mob-sheet-btn {
+    flex:1; min-width:100px; padding:13px 10px; border:none; border-radius:3px;
+    font-size:11px; font-weight:800; letter-spacing:1px; text-transform:uppercase;
+    font-family:'Montserrat',sans-serif; cursor:pointer;
+  }
+
+  @media (max-width:768px) {
+    /* ── Layout ── */
+    .left-nav { display:none !important; }
+    .admin-main { margin-left:0; padding-bottom:calc(58px + env(safe-area-inset-bottom,0px)); }
+
+    /* ── Header ── */
+    .hdr { padding:0 14px; gap:10px; }
+    .hdr-right { display:none; }
+    .hdr-search { flex:1; min-width:0; }
+    .hdr-search input { font-size:15px; min-width:0; width:100%; }
+
+    /* ── Feature headers ── */
+    .feat-page-hdr { flex-wrap:wrap; padding:12px 14px; gap:8px; }
+    .feat-page-title { font-size:16px; }
+    .feat-page-btn { padding:9px 14px; font-size:10px; }
+
+    /* ── Scrollable filter bars ── */
+    .district-bar { overflow-x:auto; flex-wrap:nowrap; -webkit-overflow-scrolling:touch; }
+    #evt-filter-bar { overflow-x:auto; flex-wrap:nowrap; -webkit-overflow-scrolling:touch; }
+
+    /* ── Tables ── */
+    .wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    .wrap table { min-width:700px; }
+    .toolbar { padding:6px 14px; }
+
+    /* ── Dashboard ── */
+    .snap-grid { grid-template-columns:1fr 1fr !important; }
+    .snapshot-grid { grid-template-columns:1fr !important; }
+
+    /* ── Pipeline ── */
+    .pipeline-board-container { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+
+    /* ── Modals as bottom sheets ── */
+    .modal-overlay { align-items:flex-end !important; padding:0 !important; }
+    .modal-overlay .modal {
+      width:100% !important; max-width:100% !important; min-width:0 !important;
+      border-radius:14px 14px 0 0 !important; margin:0 !important;
+      max-height:88vh; padding:24px 20px 32px !important;
+    }
+    #don-modal-overlay { align-items:flex-end !important; padding:0 !important; }
+    .evt-drill-overlay { align-items:flex-end !important; padding:0 !important; }
+    .evt-drill-box { max-width:100% !important; border-radius:14px 14px 0 0 !important; max-height:85vh; }
+    #import-contacts-overlay { align-items:flex-end !important; padding:0 !important; }
+    #import-contacts-overlay .modal { border-radius:14px 14px 0 0 !important; max-height:90vh; }
+
+    /* ── Drawers ── */
+    .ap-drawer { width:100% !important; }
+    .profile-drawer { width:100% !important; min-width:0 !important; max-width:100% !important; }
+
+    /* ── Bottom nav ── */
+    .bottom-nav {
+      display:flex; position:fixed; bottom:0; left:0; right:0;
+      height:58px; padding-bottom:env(safe-area-inset-bottom,0px);
+      background:var(--navy); border-top:1px solid rgba(255,255,255,.13);
+      z-index:190; align-items:stretch;
+    }
+    .bnav-item {
+      flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+      gap:3px; background:none; border:none; color:rgba(255,255,255,.45);
+      font-size:9px; font-weight:700; letter-spacing:.5px; text-transform:uppercase;
+      font-family:'Montserrat',sans-serif; cursor:pointer; text-decoration:none;
+      padding:5px 0 0; transition:color .15s; -webkit-tap-highlight-color:transparent;
+    }
+    .bnav-item.active { color:var(--mint); }
+    .bnav-item svg { opacity:.5; transition:opacity .15s; }
+    .bnav-item.active svg { opacity:1; }
+
+    /* ── More sheet (shown on mobile) ── */
+    .mob-sheet-overlay { display:block; }
+    .mob-sheet { display:block; padding-bottom:calc(58px + env(safe-area-inset-bottom,0px)); }
   }
 </style>
 </head>
@@ -1961,6 +2062,61 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
       Exports
     </button>
   </div>
+</nav>
+
+<!-- ══════════════════════════════════════════════
+     MOBILE: SLIDE-UP "MORE" SHEET + BOTTOM NAV
+═══════════════════════════════════════════════ -->
+<div class="mob-sheet-overlay" id="mob-sheet-overlay" onclick="closeMobSheet()"></div>
+<div class="mob-sheet" id="mob-sheet">
+  <div class="mob-sheet-handle"></div>
+  <button class="mob-sheet-item" id="mnav-pipeline" onclick="closeMobSheet();switchView('pipeline')">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 3H2l8 9.46V19l4 2V12.46L22 3z"/></svg>Pipeline
+  </button>
+  <button class="mob-sheet-item" id="mnav-volunteers" onclick="closeMobSheet();switchView('volunteers')">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="23" y1="11" x2="17" y2="11"/><line x1="20" y1="8" x2="20" y2="14"/></svg>Volunteers
+  </button>
+  <button class="mob-sheet-item" id="mnav-endorsements" onclick="closeMobSheet();switchView('endorsements')">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>Endorsements
+  </button>
+  <button class="mob-sheet-item" id="mnav-canvassing" onclick="closeMobSheet();switchView('canvassing')">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Canvassing
+  </button>
+  <button class="mob-sheet-item" id="mnav-compliance" onclick="closeMobSheet();switchView('compliance')">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Compliance
+  </button>
+  <a class="mob-sheet-item" href="/admin/map" onclick="closeMobSheet()">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>Sign Map
+  </a>
+  <div class="mob-sheet-divider"></div>
+  <div class="mob-sheet-actions">
+    <button class="mob-sheet-btn" style="background:var(--mint);color:var(--navy);" onclick="closeMobSheet();openAddPerson()">&#xff0b; Contact</button>
+    <button class="mob-sheet-btn" style="background:#2798BD;color:#fff;" onclick="closeMobSheet();openDonationModal()">&#xff0b; Donation</button>
+    <button class="mob-sheet-btn" style="background:#0E356C;color:#fff;" onclick="closeMobSheet();openNewEventModal()">&#xff0b; Event</button>
+  </div>
+</div>
+
+<nav class="bottom-nav">
+  <button class="bnav-item active" id="bnav-dashboard" onclick="switchView('dashboard')">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+    Home
+  </button>
+  <button class="bnav-item" id="bnav-constituents" onclick="switchView('constituents')">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    Contacts
+  </button>
+  <button class="bnav-item" id="bnav-events" onclick="switchView('events')">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    Events
+  </button>
+  <button class="bnav-item" id="bnav-donations" onclick="switchView('donations')">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+    Donations
+  </button>
+  <button class="bnav-item" id="bnav-more" onclick="openMobSheet()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>
+    More
+  </button>
 </nav>
 
 <!-- ══════════════════════════════════════════════
@@ -3179,15 +3335,37 @@ function switchView(name) {
       else el.classList.add('view-hidden');
     }
   });
+  // Sync left sidebar
   document.querySelectorAll('.left-nav-item').forEach(function(el){ el.classList.remove('active'); });
   var navEl = document.getElementById('nav-' + name);
   if (navEl) navEl.classList.add('active');
+  // Sync bottom nav
+  var bPrimary = ['dashboard','constituents','events','donations'];
+  bPrimary.forEach(function(v) {
+    var el = document.getElementById('bnav-' + v);
+    if (el) el.classList.toggle('active', v === name);
+  });
+  var bMore = document.getElementById('bnav-more');
+  if (bMore) bMore.classList.toggle('active', bPrimary.indexOf(name) === -1);
+  // Sync more sheet active state
+  document.querySelectorAll('.mob-sheet-item').forEach(function(el){ el.classList.remove('active'); });
+  var mEl = document.getElementById('mnav-' + name);
+  if (mEl) mEl.classList.add('active');
+
   if (name === 'events')       buildEventsView(all);
   if (name === 'donations')    buildDonationsView();
   if (name === 'volunteers')   buildVolunteersView();
   if (name === 'endorsements') buildEndorsementsView();
   if (name === 'canvassing')   buildCanvassingView();
   if (name === 'compliance')   buildComplianceView();
+}
+function openMobSheet() {
+  document.getElementById('mob-sheet').classList.add('open');
+  document.getElementById('mob-sheet-overlay').classList.add('open');
+}
+function closeMobSheet() {
+  document.getElementById('mob-sheet').classList.remove('open');
+  document.getElementById('mob-sheet-overlay').classList.remove('open');
 }
 
 // ─────────────────────────────────────────────────────────────────────

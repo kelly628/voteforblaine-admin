@@ -548,6 +548,35 @@ app.delete('/admin/constituent/:id', async (req, res) => {
   }
 });
 
+// ── Contacts bulk import ──────────────────────────────────────────────
+app.post('/admin/contacts/import', async (req, res) => {
+  const { rows } = req.body;
+  if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ result: 'error', msg: 'No rows' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const r of rows) {
+      const zip    = (r.zip    || '').trim();
+      const parish = BP[zip]   || (r.parish || '');
+      const state  = (r.state  || '').trim() || 'LA';
+      await client.query(
+        `INSERT INTO rsvps (first_name,last_name,email,phone,address,city,state,zip,parish,role,event,comment)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'imported','',$10)`,
+        [(r.first_name||'').trim(),(r.last_name||'').trim(),(r.email||'').trim(),
+         (r.phone||'').trim(),(r.address||'').trim(),(r.city||'').trim(),
+         state, zip, parish, (r.comment||'').trim()]
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ result: 'ok', imported: rows.length });
+  } catch(e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ result: 'error', msg: e.message });
+  } finally {
+    client.release();
+  }
+});
+
 // ── Donations ─────────────────────────────────────────────────────────
 app.get('/admin/donations', async (req, res) => {
   try {
@@ -2057,7 +2086,10 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
 
 <div class="feat-page-hdr">
   <div class="feat-page-title">Contacts</div>
-  <button class="feat-page-btn" onclick="openAddPerson()">&#xff0b; New Contact</button>
+  <div style="display:flex;gap:8px;">
+    <button class="feat-page-btn" style="background:var(--bg);color:var(--navy);border:1px solid var(--border);" onclick="openImportContacts()">&#8679; Import</button>
+    <button class="feat-page-btn" onclick="openAddPerson()">&#xff0b; New Contact</button>
+  </div>
 </div>
 
 <!-- ── District Filter ── -->
@@ -2700,6 +2732,53 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
         </tr></thead>
         <tbody id="signs-tbody"></tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── Import Contacts Modal ── -->
+<div class="modal-overlay" id="import-contacts-overlay" onclick="if(event.target===this)closeImportContacts()">
+  <div class="modal" style="max-width:700px;">
+    <button class="modal-close" onclick="closeImportContacts()">&#215;</button>
+    <div class="modal-title">Import Contacts</div>
+
+    <div style="display:flex;gap:6px;margin-bottom:20px;" id="import-tab-bar">
+      <button class="dist-chip active" id="itab-file" onclick="switchImportTab('file')" style="text-transform:none;">&#128196; Upload File (.xlsx / .csv)</button>
+      <button class="dist-chip" id="itab-paste" onclick="switchImportTab('paste')" style="text-transform:none;">&#128203; Paste from Google Sheets</button>
+    </div>
+
+    <!-- File upload panel -->
+    <div id="import-panel-file">
+      <div id="import-drop-zone" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="event.preventDefault();this.classList.remove('dragover');handleImportFile(event.dataTransfer.files[0])"
+           style="border:2px dashed var(--border);border-radius:6px;padding:36px;text-align:center;cursor:pointer;transition:border-color .15s;background:var(--bg);"
+           onclick="document.getElementById('import-file-input').click()">
+        <div style="font-size:28px;margin-bottom:8px;">&#128196;</div>
+        <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px;">Drop file here or click to browse</div>
+        <div style="font-size:11px;color:var(--dim);">Supports .xlsx (Excel) and .csv</div>
+      </div>
+      <input type="file" id="import-file-input" accept=".xlsx,.xls,.csv,.tsv" style="display:none;" onchange="handleImportFile(this.files[0])"/>
+    </div>
+
+    <!-- Paste panel -->
+    <div id="import-panel-paste" style="display:none;">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">In Google Sheets, select your cells (include headers), copy, then paste below.</div>
+      <textarea id="import-paste-area" placeholder="Paste spreadsheet data here…"
+        style="width:100%;height:160px;border:1.5px solid var(--border);border-radius:4px;padding:10px;font-size:12px;font-family:monospace;resize:vertical;outline:none;"
+        oninput="importPastePreview()"></textarea>
+    </div>
+
+    <!-- Preview section -->
+    <div id="import-preview" style="display:none;margin-top:20px;">
+      <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:10px;">Column Mapping</div>
+      <div id="import-col-map" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;"></div>
+      <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:8px;">Preview <span id="import-preview-count"></span></div>
+      <div style="overflow-x:auto;max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;">
+        <table id="import-preview-table" style="width:100%;border-collapse:collapse;font-size:12px;"></table>
+      </div>
+      <div style="margin-top:16px;display:flex;align-items:center;gap:12px;">
+        <button class="modal-btn" id="import-run-btn" onclick="runContactImport()">Import Contacts</button>
+        <span id="import-status" style="font-size:12px;color:var(--muted);"></span>
+      </div>
     </div>
   </div>
 </div>
@@ -3782,15 +3861,14 @@ function buildEventsView(d) {
             if (dateStr) metaParts.push(dateStr);
             if (ev.time) metaParts.push(ev.time);
             if (ev.location) metaParts.push(ev.location);
-            var btnBase = 'font-size:11px;font-weight:700;font-family:Montserrat,sans-serif;padding:4px 12px;border-radius:100px;border:1px solid #dde3ec;background:#f4f6f9;cursor:pointer;white-space:nowrap;';
             return '<div class=”snap-card” style=”display:flex;flex-direction:column;gap:5px;”>' +
-              '<div style=”display:flex;align-items:center;gap:10px;flex-wrap:wrap;”>' +
+              '<div style=”display:flex;align-items:center;gap:8px;flex-wrap:wrap;”>' +
                 '<span style=”font-size:13px;font-weight:800;color:var(--navy);”>' + x(ev.title) + '</span>' +
                 regBadge +
                 '<div style=”display:flex;gap:5px;margin-left:auto;”>' +
-                  '<button style=”' + btnBase + 'color:#09254f;” data-evtid=”' + ev.id + '” onclick=”openEditEventModal(this.dataset.evtid)”>Edit</button>' +
-                  '<button style=”' + btnBase + 'color:#09254f;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” data-date=”' + x(ev.date||'') + '” data-time=”' + x(ev.time||'') + '” data-loc=”' + x(ev.location||'') + '” data-fields=”' + x(ev.fields||'{}') + '” data-endtime=”' + x(ev.end_time||'') + '” onclick=”var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.evtid,this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f,this.dataset.endtime)”>Embed Code</button>' +
-                  '<button style=”' + btnBase + 'color:#9a3412;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” onclick=”deleteEvent(this.dataset.evtid,this.dataset.title)”>Delete</button>' +
+                  '<button class=”dist-chip” style=”text-transform:none;padding:4px 12px;” data-evtid=”' + ev.id + '” onclick=”openEditEventModal(this.dataset.evtid)”>Edit</button>' +
+                  '<button class=”dist-chip” style=”text-transform:none;padding:4px 12px;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” data-date=”' + x(ev.date||'') + '” data-time=”' + x(ev.time||'') + '” data-loc=”' + x(ev.location||'') + '” data-fields=”' + x(ev.fields||'{}') + '” data-endtime=”' + x(ev.end_time||'') + '” onclick=”var f=null;try{f=JSON.parse(this.dataset.fields)}catch(e){}showEmbedCode(this.dataset.evtid,this.dataset.title,this.dataset.date,this.dataset.time,this.dataset.loc,f,this.dataset.endtime)”>Embed Code</button>' +
+                  '<button class=”dist-chip” style=”text-transform:none;padding:4px 12px;color:#9a3412;border-color:#fca5a5;” data-evtid=”' + ev.id + '” data-title=”' + x(ev.title) + '” onclick=”deleteEvent(this.dataset.evtid,this.dataset.title)”>Delete</button>' +
                 '</div>' +
               '</div>' +
               (metaParts.length ? '<div style=”font-size:11px;color:var(--muted);”>' + x(metaParts.join(' · ')) + '</div>' : '') +
@@ -4395,6 +4473,194 @@ document.getElementById('q').addEventListener('input',function(){
     inp.addEventListener('blur', function(){ setTimeout(closeSuggest, 150); });
   });
 })();
+
+// ── Import Contacts ──────────────────────────────────────────────────
+var _importRows = [];   // parsed raw rows (array of objects)
+var _importHeaders = []; // original column headers
+
+var IMPORT_FIELDS = [
+  {val:'first_name', label:'First Name'},
+  {val:'last_name',  label:'Last Name'},
+  {val:'email',      label:'Email'},
+  {val:'phone',      label:'Phone'},
+  {val:'address',    label:'Address'},
+  {val:'city',       label:'City'},
+  {val:'state',      label:'State'},
+  {val:'zip',        label:'Zip'},
+  {val:'comment',    label:'Notes'},
+  {val:'',           label:'— skip —'},
+];
+
+var IMPORT_AUTO = {
+  first_name: ['first_name','first name','firstname','first','fname','given name'],
+  last_name:  ['last_name','last name','lastname','last','lname','surname','family name'],
+  email:      ['email','email address','e-mail','mail'],
+  phone:      ['phone','phone number','mobile','cell','telephone','tel'],
+  address:    ['address','street','street address','addr','street addr'],
+  city:       ['city','town'],
+  state:      ['state','st'],
+  zip:        ['zip','zip code','postal','postal code','zipcode','postcode'],
+  comment:    ['comment','comments','notes','note'],
+};
+
+function autoMapCol(header) {
+  var h = (header||'').toLowerCase().trim();
+  for (var f in IMPORT_AUTO) {
+    if (IMPORT_AUTO[f].indexOf(h) > -1) return f;
+  }
+  return '';
+}
+
+function openImportContacts() {
+  _importRows = []; _importHeaders = [];
+  document.getElementById('import-preview').style.display = 'none';
+  document.getElementById('import-drop-zone').style.borderColor = '';
+  document.getElementById('import-file-input').value = '';
+  document.getElementById('import-paste-area').value = '';
+  document.getElementById('import-status').textContent = '';
+  switchImportTab('file');
+  document.getElementById('import-contacts-overlay').classList.add('open');
+}
+function closeImportContacts() {
+  document.getElementById('import-contacts-overlay').classList.remove('open');
+}
+function switchImportTab(t) {
+  document.getElementById('import-panel-file').style.display  = t === 'file'  ? '' : 'none';
+  document.getElementById('import-panel-paste').style.display = t === 'paste' ? '' : 'none';
+  document.getElementById('itab-file').classList.toggle('active',  t === 'file');
+  document.getElementById('itab-paste').classList.toggle('active', t === 'paste');
+}
+
+function loadSheetJS(cb) {
+  if (window.XLSX) return cb();
+  var s = document.createElement('script');
+  s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+  s.onload = cb;
+  s.onerror = function(){ alert('Could not load Excel parser. Try saving as .csv first.'); };
+  document.head.appendChild(s);
+}
+
+function handleImportFile(file) {
+  if (!file) return;
+  var ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'csv' || ext === 'tsv') {
+    var reader = new FileReader();
+    reader.onload = function(e) { parseImportCSV(e.target.result, ext === 'tsv' ? '\t' : null); };
+    reader.readAsText(file);
+  } else if (ext === 'xlsx' || ext === 'xls') {
+    loadSheetJS(function() {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          var wb = XLSX.read(e.target.result, { type: 'array' });
+          var ws = wb.Sheets[wb.SheetNames[0]];
+          var data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+          parseImportArray(data);
+        } catch(err) { alert('Could not read Excel file: ' + err.message); }
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  } else {
+    alert('Please upload a .xlsx, .csv, or .tsv file.');
+  }
+}
+
+function importPastePreview() {
+  var raw = document.getElementById('import-paste-area').value.trim();
+  if (!raw) { document.getElementById('import-preview').style.display = 'none'; return; }
+  parseImportCSV(raw, '\t');
+}
+
+function parseImportCSV(text, delim) {
+  // Auto-detect delimiter if not specified
+  if (!delim) {
+    var tabCount   = (text.match(/\t/g)  || []).length;
+    var commaCount = (text.match(/,/g)   || []).length;
+    delim = tabCount > commaCount ? '\t' : ',';
+  }
+  var lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(function(l){ return l.trim(); });
+  if (lines.length < 2) { alert('Need at least a header row and one data row.'); return; }
+  var rows = lines.map(function(l) {
+    if (delim === ',') return parseCSVLine(l);
+    return l.split(delim).map(function(c){ return c.trim(); });
+  });
+  parseImportArray(rows);
+}
+
+function parseCSVLine(line) {
+  var result = [], cur = '', inQ = false;
+  for (var i = 0; i < line.length; i++) {
+    var c = line[i];
+    if (c === '"') { if (inQ && line[i+1] === '"') { cur += '"'; i++; } else { inQ = !inQ; } }
+    else if (c === ',' && !inQ) { result.push(cur.trim()); cur = ''; }
+    else cur += c;
+  }
+  result.push(cur.trim());
+  return result;
+}
+
+function parseImportArray(rows) {
+  if (!rows || rows.length < 2) { alert('No data found.'); return; }
+  _importHeaders = rows[0].map(function(h){ return String(h).trim(); });
+  _importRows = rows.slice(1).filter(function(r){ return r.some(function(c){ return (c+'').trim(); }); });
+  renderImportPreview();
+}
+
+function renderImportPreview() {
+  var opts = IMPORT_FIELDS.map(function(f){ return '<option value="'+f.val+'"'+(f.val===''?' selected':'')+'>'+f.label+'</option>'; }).join('');
+  var mapHTML = _importHeaders.map(function(h, i) {
+    var auto = autoMapCol(h);
+    var selOpts = IMPORT_FIELDS.map(function(f){ return '<option value="'+f.val+'"'+(f.val===auto?' selected':'')+'>'+f.label+'</option>'; }).join('');
+    return '<div style="display:flex;flex-direction:column;gap:3px;min-width:100px;">' +
+      '<div style="font-size:10px;color:var(--dim);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;" title="'+h+'">'+h+'</div>' +
+      '<select id="icol-'+i+'" style="font-size:11px;border:1px solid var(--border);border-radius:3px;padding:3px 6px;background:var(--bg);">'+selOpts+'</select>' +
+    '</div>';
+  }).join('');
+  document.getElementById('import-col-map').innerHTML = mapHTML;
+
+  var preview = _importRows.slice(0, 5);
+  var tHead = '<thead><tr style="background:var(--bg);">' + _importHeaders.map(function(h){ return '<th style="padding:6px 10px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);font-weight:700;white-space:nowrap;border-bottom:1px solid var(--border);">'+h+'</th>'; }).join('') + '</tr></thead>';
+  var tBody = '<tbody>' + preview.map(function(r){
+    return '<tr>' + _importHeaders.map(function(h, i){ return '<td style="padding:5px 10px;border-bottom:1px solid var(--border);font-size:12px;white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis;">'+(r[i]||'')+'</td>'; }).join('') + '</tr>';
+  }).join('') + '</tbody>';
+  document.getElementById('import-preview-table').innerHTML = tHead + tBody;
+  document.getElementById('import-preview-count').textContent = '(first ' + Math.min(5, _importRows.length) + ' of ' + _importRows.length + ' rows)';
+  document.getElementById('import-run-btn').textContent = 'Import ' + _importRows.length + ' Contact' + (_importRows.length !== 1 ? 's' : '');
+  document.getElementById('import-preview').style.display = '';
+  document.getElementById('import-status').textContent = '';
+}
+
+function runContactImport() {
+  if (!_importRows.length) return;
+  var mapping = _importHeaders.map(function(h, i){
+    return document.getElementById('icol-'+i).value;
+  });
+  var rows = _importRows.map(function(r){
+    var obj = {};
+    mapping.forEach(function(field, i){ if (field) obj[field] = (r[i]||'').toString().trim(); });
+    return obj;
+  }).filter(function(o){ return o.first_name || o.last_name || o.email; });
+
+  if (!rows.length) { document.getElementById('import-status').textContent = 'No valid rows (need at least First Name, Last Name, or Email mapped).'; return; }
+  document.getElementById('import-run-btn').disabled = true;
+  document.getElementById('import-status').textContent = 'Importing…';
+  fetch('/admin/contacts/import', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ rows: rows })
+  }).then(function(r){ return r.json(); }).then(function(res){
+    if (res.result === 'ok') {
+      document.getElementById('import-status').textContent = '✓ ' + res.imported + ' contact' + (res.imported !== 1 ? 's' : '') + ' imported!';
+      document.getElementById('import-run-btn').disabled = false;
+      setTimeout(function(){ closeImportContacts(); loadData(); }, 1200);
+    } else {
+      document.getElementById('import-status').textContent = 'Error: ' + (res.msg || 'Unknown error');
+      document.getElementById('import-run-btn').disabled = false;
+    }
+  }).catch(function(e){
+    document.getElementById('import-status').textContent = 'Network error.';
+    document.getElementById('import-run-btn').disabled = false;
+  });
+}
 
 // ── Modal ──
 function openAddPerson() {

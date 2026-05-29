@@ -290,14 +290,32 @@ function parseCookies(str) {
   return out;
 }
 
+function tokenRole(req) {
+  const tok = parseCookies(req.headers.cookie)['vfb_session'];
+  if (tok === ADMIN_TOKEN) return 'admin';
+  if (tok === CAND_TOKEN)  return 'candidate';
+  return null;
+}
+
+// Any signed-in user (admin OR candidate). Sets req.userRole so handlers
+// can branch (e.g. the candidate gets the donation-free view). Financial
+// routes use adminOnly instead, so the candidate is blocked there.
 function auth(role) {
   return (req, res, next) => {
-    const cookies = parseCookies(req.headers.cookie);
-    const expected = role === 'admin' ? ADMIN_TOKEN : CAND_TOKEN;
-    if (cookies['vfb_session'] === expected) return next();
+    const who = tokenRole(req);
+    if (who) { req.userRole = who; return next(); }
     const next_ = encodeURIComponent(req.originalUrl);
     res.redirect(`/login?role=${role}&next=${next_}`);
   };
+}
+
+// Admin-only — blocks the candidate from all financial data. Also closes a
+// pre-existing gap where several donation endpoints had no auth at all.
+function adminOnly(req, res, next) {
+  const who = tokenRole(req);
+  if (who === 'admin') { req.userRole = who; return next(); }
+  if (who === 'candidate') return res.status(403).json({ error: 'forbidden' });
+  res.redirect(`/login?role=admin&next=${encodeURIComponent(req.originalUrl)}`);
 }
 
 // ── Login page ────────────────────────────────────────────────────────
@@ -395,15 +413,15 @@ function makePipelineCsv(rows) {
 }
 
 // Contacts CSV
-app.get('/admin/export.csv', async (req, res) => {
+app.get('/admin/export.csv', auth('admin'), async (req, res) => {
   const rows = await dbAll('SELECT * FROM rsvps ORDER BY created_at DESC');
   res.set('Content-Type', 'text/csv; charset=utf-8');
   res.set('Content-Disposition', 'attachment; filename="contacts.csv"');
   res.send(makeContactsCsv(rows));
 });
 
-// Donors CSV
-app.get('/admin/export/donors.csv', async (req, res) => {
+// Donors CSV — admin only (contains donation data)
+app.get('/admin/export/donors.csv', adminOnly, async (req, res) => {
   try {
     const rows = await dbAll('SELECT * FROM donations ORDER BY date DESC');
     res.set('Content-Type', 'text/csv; charset=utf-8');
@@ -413,7 +431,7 @@ app.get('/admin/export/donors.csv', async (req, res) => {
 });
 
 // Pipeline CSV
-app.get('/admin/export/pipeline.csv', async (req, res) => {
+app.get('/admin/export/pipeline.csv', auth('admin'), async (req, res) => {
   const rows = await dbAll('SELECT * FROM rsvps ORDER BY last_name, first_name');
   res.set('Content-Type', 'text/csv; charset=utf-8');
   res.set('Content-Disposition', 'attachment; filename="pipeline.csv"');
@@ -421,7 +439,7 @@ app.get('/admin/export/pipeline.csv', async (req, res) => {
 });
 
 // Endorsers CSV
-app.get('/admin/export/endorsers.csv', async (req, res) => {
+app.get('/admin/export/endorsers.csv', auth('admin'), async (req, res) => {
   const rows = await dbAll("SELECT * FROM rsvps WHERE endorse='Yes' ORDER BY last_name, first_name");
   res.set('Content-Type', 'text/csv; charset=utf-8');
   res.set('Content-Disposition', 'attachment; filename="endorsers.csv"');
@@ -429,7 +447,7 @@ app.get('/admin/export/endorsers.csv', async (req, res) => {
 });
 
 // Volunteers CSV
-app.get('/admin/export/volunteers.csv', async (req, res) => {
+app.get('/admin/export/volunteers.csv', auth('admin'), async (req, res) => {
   const rows = await dbAll(`SELECT * FROM rsvps WHERE volunteer_role IS NOT NULL AND volunteer_role != '' ORDER BY last_name, first_name`);
   res.set('Content-Type', 'text/csv; charset=utf-8');
   res.set('Content-Disposition', 'attachment; filename="volunteers.csv"');
@@ -463,14 +481,9 @@ app.get('/candidate/data', auth('candidate'), async (req, res) => {
   res.json(rows);
 });
 
-app.get('/candidate/donations', auth('candidate'), async (req, res) => {
-  try {
-    const rows = await dbAll('SELECT * FROM donations ORDER BY date DESC');
-    res.json(rows);
-  } catch(e) { res.json([]); }
-});
-
-app.get('/candidate/contact-donations/:id', auth('candidate'), async (req, res) => {
+// Per-contact donation history — admin only (used by the constituent profile).
+// Renamed from /candidate/* and locked to admin so the candidate can't reach it.
+app.get('/admin/contact-donations/:id', adminOnly, async (req, res) => {
   try {
     const rows = await dbAll('SELECT * FROM donations WHERE contact_id=? ORDER BY date DESC', [req.params.id]);
     res.json(rows);
@@ -584,14 +597,21 @@ app.get('/api/committee', async (req, res) => {
 
 // ── Admin panel ───────────────────────────────────────────────────────
 app.get('/admin', auth('admin'), (req, res) => {
+  if (req.userRole === 'candidate') return res.redirect('/candidate');
   const proto = req.headers['x-forwarded-proto'] || req.protocol;
   const base  = process.env.PUBLIC_URL || (proto + '://' + req.get('host'));
-  res.send(adminHTML(base));
+  res.send(adminHTML(base, { candidate: false }));
 });
 app.get('/',      (req, res) => res.redirect('/admin'));
 
 // ── Candidate panel ───────────────────────────────────────────────────
-app.get('/candidate', auth('candidate'), (req, res) => res.send(candidateHTML()));
+// Same full interface as admin, but in candidate mode all financial data
+// (donations, total giving) is hidden and the donation APIs are blocked.
+app.get('/candidate', auth('candidate'), (req, res) => {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol;
+  const base  = process.env.PUBLIC_URL || (proto + '://' + req.get('host'));
+  res.send(adminHTML(base, { candidate: true }));
+});
 
 // ── Constituent profile ───────────────────────────────────────────────
 app.get('/admin/constituent/:id/data', async (req, res) => {
@@ -621,7 +641,7 @@ app.patch('/admin/constituent/:id', async (req, res) => {
   }
 });
 
-app.get('/admin/constituent/:id', async (req, res) => res.send(await constituentHTML(req.params.id)));
+app.get('/admin/constituent/:id', auth('admin'), async (req, res) => res.send(await constituentHTML(req.params.id, { candidate: req.userRole === 'candidate' })));
 
 app.delete('/admin/constituent/:id', async (req, res) => {
   try {
@@ -675,19 +695,19 @@ app.post('/admin/contacts/import', async (req, res) => {
 });
 
 // ── Donations ─────────────────────────────────────────────────────────
-app.get('/admin/donations', async (req, res) => {
+app.get('/admin/donations', adminOnly, async (req, res) => {
   try {
     const rows = await dbAll('SELECT * FROM donations ORDER BY date DESC, created_at DESC');
     res.json(rows);
   } catch(e) { res.status(500).json({ result: 'error' }); }
 });
-app.delete('/admin/donation/:id', async (req, res) => {
+app.delete('/admin/donation/:id', adminOnly, async (req, res) => {
   try {
     await dbRun('DELETE FROM donations WHERE id=?', [req.params.id]);
     res.json({ result: 'ok' });
   } catch(e) { res.status(500).json({ result: 'error' }); }
 });
-app.post('/admin/donation', async (req, res) => {
+app.post('/admin/donation', adminOnly, async (req, res) => {
   const { donor_name, amount, date, source, contact_id, tender_type, check_number } = req.body;
   try {
     await dbRun('INSERT INTO donations (donor_name, amount, date, source, contact_id, tender_type, check_number) VALUES (?,?,?,?,?,?,?)',
@@ -1410,11 +1430,14 @@ showComment ? '      <div class="bm-rsvp-field"><label class="bm-rsvp-label" for
 // ════════════════════════════════════════════════════════════════════════
 //  ADMIN HTML — full view (campaign staff)
 // ════════════════════════════════════════════════════════════════════════
-function adminHTML(baseUrl) { return `<!DOCTYPE html>
+function adminHTML(baseUrl, opts) {
+  const isCand = !!(opts && opts.candidate);
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Campaign Admin — Blaine Moncrief</title>
+<title>${isCand ? 'Candidate View' : 'Campaign Admin'} — Blaine Moncrief</title>
+${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donations,#act-new-donation,#mob-new-donation,#exp-row-donors{display:none!important;}</style>' : ''}
 <style>${BASE_CSS}
   .stats { grid-template-columns: repeat(4,1fr); }
   .badge-ood {
@@ -2228,7 +2251,7 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
     <div class="left-nav-divider"></div>
     <div class="left-nav-section-lbl">Actions</div>
     <button class="left-nav-add-btn" onclick="openAddPerson()">&#xff0b; New Contact</button>
-    <button class="left-nav-add-btn left-nav-add-btn-blue" onclick="openDonationModal()">&#xff0b; New Donation</button>
+    <button class="left-nav-add-btn left-nav-add-btn-blue" id="act-new-donation" onclick="openDonationModal()">&#xff0b; New Donation</button>
     <button class="left-nav-add-btn" style="background:#0E356C !important;color:#fff !important;margin-top:4px !important;" onmouseover="this.style.background=\\'#1a4a8a\\'" onmouseout="this.style.background=\\'#0E356C\\'" onclick="openNewEventModal()">&#xff0b; New Event</button>
     <button class="left-nav-item" onclick="openExportModal()" style="width:100%;text-align:left;">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -2264,7 +2287,7 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
   <div class="mob-sheet-divider"></div>
   <div class="mob-sheet-actions">
     <button class="mob-sheet-btn" style="background:var(--mint);color:var(--navy);" onclick="closeMobSheet();openAddPerson()">&#xff0b; Contact</button>
-    <button class="mob-sheet-btn" style="background:#2798BD;color:#fff;" onclick="closeMobSheet();openDonationModal()">&#xff0b; Donation</button>
+    <button class="mob-sheet-btn" id="mob-new-donation" style="background:#2798BD;color:#fff;" onclick="closeMobSheet();openDonationModal()">&#xff0b; Donation</button>
     <button class="mob-sheet-btn" style="background:#0E356C;color:#fff;" onclick="closeMobSheet();openNewEventModal()">&#xff0b; Event</button>
   </div>
 </div>
@@ -2833,7 +2856,7 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
         <a class="exp-btn" href="#" onclick="exportAsPdf(event,'Pipeline','/admin/export/pipeline.csv')">PDF</a>
       </span>
     </div>
-    <div class="exp-row">
+    <div class="exp-row" id="exp-row-donors">
       <span class="exp-lbl">Donors</span>
       <span class="exp-btns">
         <a class="exp-btn" href="/admin/export/donors.csv" download>CSV</a>
@@ -3152,6 +3175,7 @@ function adminHTML(baseUrl) { return `<!DOCTYPE html>
 
 <script>
 var BM_CRM_BASE_URL = '${baseUrl || process.env.PUBLIC_URL || "http://localhost:3002"}';
+var IS_CANDIDATE = ${isCand};   // candidate view = no financial data
 var all = [];
 var selectedIds = new Set();
 var nameSortDir  = null;    // null | 'asc' | 'desc'
@@ -3670,6 +3694,7 @@ function closeMobSheet() {
 // ─────────────────────────────────────────────────────────────────────
 var _donData = [];
 function buildDonationsView() {
+  if (IS_CANDIDATE) return;   // candidate view has no donation data
   // Populate Anedot webhook URL dynamically
   var whEl = document.getElementById('anedot-wh-url');
   if (whEl && !whEl.textContent) whEl.textContent = window.location.origin + '/webhook/anedot';
@@ -4187,6 +4212,8 @@ function saveDoor() {
 // COMPLIANCE DASHBOARD
 // ─────────────────────────────────────────────────────────────────────
 function buildComplianceView() {
+  // Candidate view: show the compliance guidance but never fetch donation data
+  if (IS_CANDIDATE) { renderCompliance(0); return; }
   var donCount = 0;
   try {
     // Check if donations table exists and count records
@@ -5607,7 +5634,8 @@ document.getElementById('q').addEventListener('input',function(){
 // ════════════════════════════════════════════════════════════════════════
 //  CONSTITUENT PROFILE HTML
 // ════════════════════════════════════════════════════════════════════════
-async function constituentHTML(id) {
+async function constituentHTML(id, opts) {
+  const isCand = !!(opts && opts.candidate);
   const _row = await dbGet('SELECT * FROM rsvps WHERE id=?', [id]);
   const _data = JSON.stringify(_row || null);
   return `<!DOCTYPE html>
@@ -5615,6 +5643,7 @@ async function constituentHTML(id) {
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Constituent Profile — Blaine Moncrief</title>
+${isCand ? '<style>#don-hist-card,#p-giving-block{display:none!important;}</style>' : ''}
 <style>${BASE_CSS}
   .page-body { max-width: 860px; margin: 0 auto; padding: 28px 24px 60px; }
   .back-link { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .5px; text-decoration: none; margin-bottom: 20px; transition: color .15s; }
@@ -5783,6 +5812,7 @@ async function constituentHTML(id) {
 
 <div class="p-cards">
   <div class="p-card">
+    <div id="p-giving-block">
     <div class="p-card-lbl">Total Giving</div>
     <div class="p-card-num" id="p-total-giving" style="font-size:26px;">&#8212;</div>
     <div class="giving-bar-wrap">
@@ -5793,6 +5823,7 @@ async function constituentHTML(id) {
       <div class="giving-bar-track">
         <div class="giving-bar-fill" id="p-giving-bar" style="width:0%;background:#78E0C4;"></div>
       </div>
+    </div>
     </div>
     <!-- Guest edit fields kept for save functionality -->
     <div id="edit-guests-wrap" style="display:none; margin-top:10px;">
@@ -5932,6 +5963,7 @@ async function constituentHTML(id) {
 
 <script>
 var CID = ${id};
+var IS_CANDIDATE = ${isCand};   // candidate view = no financial data
 var rec = null;
 
 function xe(s) {
@@ -6157,8 +6189,9 @@ function paint(d) {
     cEl.innerHTML = "<span class='comment-none'>No comments provided.</span>";
   }
 
-  // Load real donation history for this contact
-  fetch('/candidate/contact-donations/' + d.id)
+  // Load real donation history for this contact (admin only — hidden for the candidate)
+  if (!IS_CANDIDATE)
+  fetch('/admin/contact-donations/' + d.id)
     .then(function(r){ return r.json(); })
     .then(function(gifts) {
       var total = gifts.reduce(function(s,g){ return s + (parseFloat(g.amount)||0); }, 0);

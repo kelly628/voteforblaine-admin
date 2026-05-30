@@ -3332,8 +3332,13 @@ var evtSearchQ      = '';
 // True for actual event registrations (excludes manually-added contacts)
 function isEvtReg(r) { return r.event && r.event !== 'Manual Entry'; }
 
-function isVoter(r)  { return r.parish === 'Jefferson'; }
-function isOOD(r)    { return r.parish && r.parish !== 'Jefferson'; }
+// 24th JDC Division H electorate = East Bank Jefferson Parish (Metairie, Kenner,
+// Harahan / River Ridge). West Bank + far-south Jefferson are still Jefferson but
+// CANNOT vote in Blaine's race, so they are not "Potential Voters".
+var DIVH_ZIPS = {'70001':1,'70002':1,'70003':1,'70004':1,'70005':1,'70006':1,'70009':1,'70010':1,'70011':1,'70033':1,'70055':1,'70062':1,'70063':1,'70064':1,'70065':1,'70121':1,'70123':1};
+function inDivH(r)   { return !!(r && r.zip && DIVH_ZIPS[String(r.zip).trim().slice(0,5)]); }
+function isVoter(r)  { return inDivH(r); }                          // can vote for Blaine (Division H)
+function isOOD(r)    { return !inDivH(r) && !!(r.parish || r.zip); } // known location, but outside Division H
 
 function setDistrict(d) {
   activeDistrict = d;
@@ -3423,8 +3428,8 @@ function refresh() {
 
 function stats(d) {
   document.getElementById('s-rsvp').textContent    = d.length;
-  var voters  = d.filter(function(r){ return r.parish === 'Jefferson'; });
-  var ood     = d.filter(function(r){ return r.parish && r.parish !== 'Jefferson'; });
+  var voters  = d.filter(isVoter);
+  var ood     = d.filter(isOOD);
   document.getElementById('s-voters').textContent  = voters.length;
   var oodEl = document.getElementById('s-rsvp-sub');
   if (oodEl) oodEl.textContent = ood.length ? ood.length + ' out of district' : '';
@@ -3541,7 +3546,7 @@ function render(d) {
       '<td class="c-id">'+r.id+'</td>'+
       '<td class="c-date">'+date+'</td>'+
       '<td><a href="/admin/constituent/'+r.id+'" class="c-name" style="text-decoration:none;">'+x(r.first_name)+' '+x(r.last_name)+'</a>'+
-          (r.parish && r.parish !== 'Jefferson' ? '<span class="badge-ood" title="Lives in '+x(r.parish)+' Parish — outside the 24th JDC">Out of District</span>' : '')+
+          (!inDivH(r) && (r.parish || r.zip) ? '<span class="badge-ood" title="'+(r.parish === 'Jefferson' ? 'Jefferson Parish, but outside Division H (East Bank) — not eligible to vote in this race' : 'Lives in '+x(r.parish||'another')+' Parish — outside Division H')+'">Out of District</span>' : '')+
           '<div class="c-sub">'+x(r.email)+'</div></td>'+
       '<td class="c-phone">'+fmtPhone(r.phone)+'</td>'+
       '<td style="font-size:12px;color:var(--muted);line-height:1.6;">'+x(r.address)+(r.city?'<br>'+x(r.city)+(r.state?', '+x(r.state):'')+(r.zip?' '+x(r.zip):''):'')+'</td>'+
@@ -6177,17 +6182,21 @@ function autoParish(zip) {
   var el = document.getElementById("i-parish");
   if (el && (!el.value || ZIP_PARISH[zip])) {
     el.value = p;
-    refreshDistrictBadge(p);
+    refreshDistrictBadge(p, zip);
   }
 }
-function refreshDistrictBadge(parish) {
+// Division H electorate = East Bank Jefferson zips (Metairie, Kenner, Harahan/River Ridge)
+var DIVH_ZIPS = {'70001':1,'70002':1,'70003':1,'70004':1,'70005':1,'70006':1,'70009':1,'70010':1,'70011':1,'70033':1,'70055':1,'70062':1,'70063':1,'70064':1,'70065':1,'70121':1,'70123':1};
+function inDivHZip(zip){ return !!(zip && DIVH_ZIPS[String(zip).trim().slice(0,5)]); }
+function refreshDistrictBadge(parish, zip) {
   var dbEl = document.getElementById("p-district-badge");
   if (!dbEl) return;
-  if (parish && parish !== "Jefferson") {
-    dbEl.innerHTML = "<span style='display:inline-block;background:rgba(154,170,187,.18);border:1px solid rgba(154,170,187,.35);color:#9aaabb;font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:4px 12px;border-radius:100px;'>Out of District &mdash; " + xe(parish) + " Parish</span>";
+  if (inDivHZip(zip)) {
+    dbEl.innerHTML = "<span style='display:inline-block;background:rgba(120,224,196,.15);border:1px solid rgba(120,224,196,.3);color:#78E0C4;font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:4px 12px;border-radius:100px;'>&#10003; Division H &mdash; Eligible Voter</span>";
     dbEl.style.display = "block";
-  } else if (parish === "Jefferson") {
-    dbEl.innerHTML = "<span style='display:inline-block;background:rgba(120,224,196,.15);border:1px solid rgba(120,224,196,.3);color:#78E0C4;font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:4px 12px;border-radius:100px;'>&#10003; Jefferson Parish &mdash; Eligible Voter</span>";
+  } else if (parish || zip) {
+    var msg = (parish === "Jefferson") ? "Jefferson &mdash; outside Division H" : ("Out of District" + (parish ? " &mdash; " + xe(parish) + " Parish" : ""));
+    dbEl.innerHTML = "<span style='display:inline-block;background:rgba(154,170,187,.18);border:1px solid rgba(154,170,187,.35);color:#9aaabb;font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:4px 12px;border-radius:100px;'>" + msg + "</span>";
     dbEl.style.display = "block";
   } else {
     dbEl.style.display = "none";
@@ -6218,19 +6227,8 @@ function paint(d) {
   document.getElementById("p-evt-count").textContent = evts.length || "0";
   var evtList = document.getElementById("p-evt-list");
   evtList.innerHTML = evts.map(function(ev){ return '<span class="p-evt-item">' + xe(ev) + '</span>'; }).join('');
-  // District eligibility badge
-  var dbEl = document.getElementById("p-district-badge");
-  if (dbEl) {
-    if (d.parish && d.parish !== "Jefferson") {
-      dbEl.innerHTML = "<span style='display:inline-block;background:rgba(154,170,187,.18);border:1px solid rgba(154,170,187,.35);color:#9aaabb;font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:4px 12px;border-radius:100px;'>Out of District &mdash; " + xe(d.parish) + " Parish</span>";
-      dbEl.style.display = "block";
-    } else if (d.parish === "Jefferson") {
-      dbEl.innerHTML = "<span style='display:inline-block;background:rgba(120,224,196,.15);border:1px solid rgba(120,224,196,.3);color:#78E0C4;font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:4px 12px;border-radius:100px;'>&#10003; Jefferson Parish &mdash; Eligible Voter</span>";
-      dbEl.style.display = "block";
-    } else {
-      dbEl.style.display = "none";
-    }
-  }
+  // District eligibility badge (Division H = East Bank Jefferson)
+  refreshDistrictBadge(d.parish, d.zip);
   // Role pills — multi-select, both can be active simultaneously
   var _roles = (d.role || "").split(",").map(function(r){ return r.trim(); });
   var isVoter     = _roles.indexOf("Voter") > -1;
@@ -6816,6 +6814,13 @@ function mapHTML() { return `<!DOCTYPE html>
       <div class="sb-title">Map Layers</div>
       <div class="tog-row">
         <label class="tog">
+          <input type="checkbox" id="toggle-divh" checked onchange="toggleDivH(this.checked)">
+          <span class="tog-slider"></span>
+        </label>
+        <span class="tog-lbl">Show <strong>Division H</strong> &mdash; Blaine&rsquo;s voting district</span>
+      </div>
+      <div class="tog-row" style="margin-top:12px;">
+        <label class="tog">
           <input type="checkbox" id="toggle-nosign" onchange="toggleNoSign(this.checked)">
           <span class="tog-slider"></span>
         </label>
@@ -6865,6 +6870,7 @@ function mapHTML() { return `<!DOCTYPE html>
       <div class="leg-row"><div class="leg-dot del"></div>Delivered</div>
       <div class="leg-row"><div class="leg-dot pen"></div>Pending</div>
       <div class="leg-row"><div class="leg-dot cov"></div>Coverage zone</div>
+      <div class="leg-row"><div class="leg-dot" style="background:rgba(95,212,176,0.2);border:1.5px dashed #09254f;"></div>Division H (Blaine)</div>
       <div class="leg-row" id="leg-nosign" style="display:none;"><div class="leg-dot nos"></div>No sign yet</div>
     </div>
   </div>
@@ -6940,6 +6946,19 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
 var layers = L.layerGroup().addTo(map);
 var noSignLayers = L.layerGroup().addTo(map);
 var noSignCache = null;
+
+// ── Division H overlay (24th JDC, Blaine's race) = East Bank Jefferson ──
+// Approximate boundary (the real district is precinct-level): Metairie, Kenner,
+// Harahan / River Ridge — bounded by Lake Pontchartrain (N), the Orleans line /
+// 17th St Canal (E), the Mississippi River (S) and the St. Charles line (W).
+var DIVH_POLY = [
+  [30.045,-90.255],[30.030,-90.135],[29.940,-90.130],[29.928,-90.170],
+  [29.935,-90.210],[29.945,-90.250],[29.985,-90.275]
+];
+var divHLayer = L.polygon(DIVH_POLY, { color:'#09254f', weight:2, fillColor:'#5fd4b0', fillOpacity:0.12, dashArray:'6 4' })
+  .bindTooltip('Division H electorate (approximate)', { sticky:true });
+divHLayer.addTo(map); // toggle is checked by default
+function toggleDivH(on){ if(on){ divHLayer.addTo(map); } else { map.removeLayer(divHLayer); } }
 
 function pinIcon(color){
   return L.divIcon({className:'',

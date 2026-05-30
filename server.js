@@ -218,11 +218,11 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ── Mockups preview pages ─────────────────────────────────────────────
-app.get('/mockups', (req, res) => {
+// ── Mockups preview pages (internal — require login) ──────────────────
+app.get('/mockups', auth('admin'), (req, res) => {
   res.sendFile(path.join(__dirname, 'mockups.html'));
 });
-app.get('/mockups/canvassing', (req, res) => {
+app.get('/mockups/canvassing', auth('admin'), (req, res) => {
   res.sendFile(path.join(__dirname, 'mockup-canvassing.html'));
 });
 
@@ -265,6 +265,17 @@ app.post('/rsvp', async (req, res) => {
     res.status(500).json({ result: 'error' });
   }
 });
+
+// ══════════════════════════════════════════════════════════════════════
+//  AUTH GATE — everything below requires a logged-in user (admin or candidate)
+//  These endpoints were previously OPEN, exposing the contact list, home
+//  addresses, and write/delete actions to anyone. Public routes live on other
+//  paths (/ , /login, /logout, the /rsvp form post above, /widget-frame,
+//  /embed.js, /api/*, /webhook/anedot) and are unaffected. Donation routes
+//  layer adminOnly on top of this for admin-only access.
+// ══════════════════════════════════════════════════════════════════════
+app.use('/rsvp/:id', auth('admin'));   // /rsvp/:id/sign|role|pipeline|endorse
+app.use('/admin', auth('admin'));       // every /admin/* data + page endpoint
 
 // ── Yard sign delivery toggle ─────────────────────────────────────────
 app.patch('/rsvp/:id/sign', async (req, res) => {
@@ -893,10 +904,13 @@ app.post('/webhook/anedot', express.raw({ type: '*/*' }), async (req, res) => {
     if (secret) {
       const sig = req.headers['x-request-signature'] || '';
       const expected = crypto.createHmac('sha256', secret).update(req.body).digest('hex');
-      if (sig !== expected) {
+      const sigBuf = Buffer.from(String(sig)), expBuf = Buffer.from(expected);
+      if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
         console.warn('[Anedot] Invalid signature — rejected');
         return res.status(401).json({ error: 'Invalid signature' });
       }
+    } else {
+      console.warn('[Anedot] No ANEDOT_WEBHOOK_SECRET set — webhook is unverified');
     }
 
     let body;

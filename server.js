@@ -6951,30 +6951,26 @@ var layers = L.layerGroup().addTo(map);
 var noSignLayers = L.layerGroup().addTo(map);
 var noSignCache = null;
 
-// ── Division H overlay (24th JDC, Blaine's race) = East Bank Jefferson ──
-// Outline hugs the land: Lake Pontchartrain shore (N) → Orleans line / 17th St
-// Canal (E) → Mississippi River (S) → St. Charles line (W). Still an
-// approximation of the precinct-level district, but no longer boxes the water.
+// ── Division H overlay (24th JDC, Blaine's race) ──
+// EXACT boundary from Jefferson Parish GIS — MapServer layer 27 "24th JDC", the
+// election section that elects Divisions A,B,D,F,H,I,K,L,N (so it includes H).
+// Simplified to ~80m and reprojected to WGS84. Source of truth, not a hand trace.
 var DIVH_POLY = [
-  [30.029,-90.140],  // Bucktown / West End — lakefront at the 17th St Canal
-  [30.027,-90.165],  // Bonnabel lakefront
-  [30.028,-90.190],  // Metairie lakefront (Causeway)
-  [30.033,-90.212],  // E. Kenner / Metairie lakefront
-  [30.040,-90.232],  // Kenner lakefront (Williams / Laketown)
-  [30.044,-90.250],  // Kenner NW (airport / Laketown)
-  [30.012,-90.261],  // Kenner west edge (St. Charles line)
-  [29.978,-90.259],  // Kenner SW
-  [29.952,-90.246],  // Kenner riverfront (St. Charles line at the river)
-  [29.936,-90.220],  // River Ridge riverfront
-  [29.924,-90.196],  // Harahan / Huey P. Long bridge (southernmost)
-  [29.922,-90.174],  // Old Jefferson riverfront
-  [29.932,-90.154],  // Jefferson CDP riverfront
-  [29.946,-90.142],  // Old Metairie riverfront (near the Orleans line)
-  [29.978,-90.139],  // Orleans line (Jefferson / Southport)
-  [30.005,-90.139]   // Orleans line heading back up to the lake
+  [29.97410,-90.21620],[29.97560,-90.23760],[29.96510,-90.24040],[29.95940,-90.23130],
+  [29.92600,-90.21410],[29.92300,-90.20610],[29.92470,-90.19720],[29.93180,-90.18400],
+  [29.94870,-90.16430],[29.95420,-90.15600],[29.95580,-90.15060],[29.95370,-90.14410],
+  [29.94770,-90.14000],[29.97180,-90.12510],[30.02340,-90.12150],[30.02300,-90.12550],
+  [30.02040,-90.12600],[30.01990,-90.12840],[30.01940,-90.14310],[30.01980,-90.15120],
+  [30.02170,-90.15400],[30.02030,-90.15760],[30.02220,-90.17960],[30.02990,-90.20950],
+  [30.03930,-90.23410],[30.04110,-90.24620],[30.04690,-90.25450],[30.04880,-90.25980],
+  [30.04770,-90.26590],[30.04980,-90.26980],[30.05000,-90.27760],[30.04870,-90.27910],
+  [30.00660,-90.28020],[30.00770,-90.26620],[30.01030,-90.26650],[30.01060,-90.26180],
+  [30.01260,-90.26200],[30.01380,-90.24650],[30.00930,-90.24510],[30.00950,-90.24230],
+  [29.98820,-90.24810],[29.98200,-90.25070],[29.98140,-90.25260],[29.97980,-90.24450],
+  [29.97790,-90.21310]
 ];
 var divHLayer = L.polygon(DIVH_POLY, { color:'#09254f', weight:2, fillColor:'#5fd4b0', fillOpacity:0.12, dashArray:'6 4' })
-  .bindTooltip('Division H electorate (approximate)', { sticky:true });
+  .bindTooltip('Division H electorate (official boundary)', { sticky:true });
 divHLayer.addTo(map); // toggle is checked by default
 function toggleDivH(on){ if(on){ divHLayer.addTo(map); } else { map.removeLayer(divHLayer); } }
 

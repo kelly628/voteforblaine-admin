@@ -393,8 +393,10 @@ function adminOnly(req, res, next) {
 
 // ── Login page ────────────────────────────────────────────────────────
 app.get('/login', (req, res) => {
-  const role = req.query.role || 'admin';
-  const next = req.query.next || (role === 'candidate' ? '/candidate' : '/admin');
+  const role = req.query.role === 'candidate' ? 'candidate' : 'admin'; // whitelist — no reflected injection
+  const rawNext = req.query.next || '';
+  // Only a clean relative path (single leading slash, no quotes/brackets) is reflected back
+  const next = /^\/[^/\\][^"'<>]*$/.test(rawNext) ? rawNext : (role === 'candidate' ? '/candidate' : '/admin');
   const err  = req.query.err  || '';
   const label = role === 'candidate' ? 'Candidate View' : 'Campaign Admin';
   res.send(`<!DOCTYPE html><html lang="en"><head>
@@ -451,7 +453,8 @@ app.post('/login', express.urlencoded({ extended: false }), (req, res) => {
   if (loginLocked(ip)) return res.status(429).send('Too many failed sign-in attempts. Please wait 15 minutes and try again.');
   const { role, next, password } = req.body;
   const pw = (password || '').trim();
-  const dest = (next && next.startsWith('/')) ? next : (role === 'candidate' ? '/candidate' : '/admin');
+  // Reject protocol-relative ("//evil.com") and backslash tricks — relative paths only
+  const dest = (next && /^\/[^/\\]/.test(next)) ? next : (role === 'candidate' ? '/candidate' : '/admin');
   if (role === 'admin' && pw === PASSWORDS.admin) {
     _loginFails.delete(ip);
     res.setHeader('Set-Cookie', `vfb_session=${ADMIN_TOKEN}; Path=/; HttpOnly; Secure; SameSite=Strict`);

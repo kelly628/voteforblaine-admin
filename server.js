@@ -6948,12 +6948,25 @@ var noSignLayers = L.layerGroup().addTo(map);
 var noSignCache = null;
 
 // ── Division H overlay (24th JDC, Blaine's race) = East Bank Jefferson ──
-// Approximate boundary (the real district is precinct-level): Metairie, Kenner,
-// Harahan / River Ridge — bounded by Lake Pontchartrain (N), the Orleans line /
-// 17th St Canal (E), the Mississippi River (S) and the St. Charles line (W).
+// Outline hugs the land: Lake Pontchartrain shore (N) → Orleans line / 17th St
+// Canal (E) → Mississippi River (S) → St. Charles line (W). Still an
+// approximation of the precinct-level district, but no longer boxes the water.
 var DIVH_POLY = [
-  [30.045,-90.255],[30.030,-90.135],[29.940,-90.130],[29.928,-90.170],
-  [29.935,-90.210],[29.945,-90.250],[29.985,-90.275]
+  [30.012,-90.152],  // Bucktown / West End lakefront (near 17th St Canal)
+  [30.018,-90.178],  // Metairie lakefront (Bonnabel)
+  [30.024,-90.205],  // Metairie / E. Kenner lakefront
+  [30.034,-90.228],  // Kenner lakefront (Williams Blvd)
+  [30.038,-90.246],  // Kenner NW (near the airport)
+  [30.010,-90.258],  // Kenner west edge (St. Charles line)
+  [29.978,-90.258],  // Kenner SW
+  [29.952,-90.246],  // Kenner riverfront (St. Charles line at the river)
+  [29.936,-90.220],  // River Ridge riverfront
+  [29.924,-90.196],  // Harahan / Huey P. Long bridge (southernmost)
+  [29.922,-90.174],  // Old Jefferson riverfront
+  [29.932,-90.154],  // Jefferson CDP riverfront
+  [29.946,-90.142],  // Old Metairie riverfront (near the Orleans line)
+  [29.978,-90.139],  // Orleans line (Jefferson / Southport)
+  [30.000,-90.143]   // Orleans line heading back to the lake
 ];
 var divHLayer = L.polygon(DIVH_POLY, { color:'#09254f', weight:2, fillColor:'#5fd4b0', fillOpacity:0.12, dashArray:'6 4' })
   .bindTooltip('Division H electorate (approximate)', { sticky:true });

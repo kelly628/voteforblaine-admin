@@ -48,6 +48,42 @@ async function dbAll(sql, params = []) {
   return r.rows;
 }
 
+// ── Geocoding (US Census geocoder — free, no API key, US street addresses) ──
+async function geocodeAddress(address, city, state, zip) {
+  const street = (address || '').trim();
+  if (!street) return null;
+  const one = [street, (city || '').trim(), (state || 'LA').trim(), (zip || '').trim()].filter(Boolean).join(', ');
+  const url = 'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address=' +
+    encodeURIComponent(one) + '&benchmark=Public_AR_Current&format=json';
+  try {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 10000);
+    const r = await fetch(url, { signal: ctrl.signal }); clearTimeout(t);
+    const j = await r.json();
+    const m = j && j.result && j.result.addressMatches && j.result.addressMatches[0];
+    if (m && m.coordinates && isFinite(m.coordinates.y) && isFinite(m.coordinates.x)) {
+      return { lat: m.coordinates.y, lng: m.coordinates.x };
+    }
+  } catch (e) { /* geocode is best-effort; fall back to zip */ }
+  return null;
+}
+async function geocodeAndStore(id, address, city, state, zip) {
+  const c = await geocodeAddress(address, city, state, zip);
+  if (c) { try { await dbRun('UPDATE rsvps SET lat=?, lng=? WHERE id=?', [c.lat, c.lng, id]); } catch (e) {} }
+}
+// Background: geocode addressed rows that don't have coordinates yet (throttled, idempotent)
+async function geocodeBackfill() {
+  try {
+    const rows = await dbAll("SELECT id, address, city, state, zip FROM rsvps WHERE address IS NOT NULL AND address != '' AND (lat IS NULL OR lng IS NULL) ORDER BY created_at DESC LIMIT 500");
+    if (!rows.length) return;
+    console.log('[geocode] backfilling ' + rows.length + ' address(es)');
+    for (const r of rows) {
+      await geocodeAndStore(r.id, r.address, r.city, r.state, r.zip);
+      await new Promise(res => setTimeout(res, 250)); // be gentle on the geocoder
+    }
+    console.log('[geocode] backfill complete');
+  } catch (e) { console.error('[geocode] backfill error:', e.message); }
+}
+
 // ── Confirmation email ────────────────────────────────────────────────
 function escHtml(s) {
   return String(s == null ? '' : s)
@@ -168,7 +204,10 @@ const TS = `to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')`;
   await pool.query("UPDATE rsvps SET parish='Jefferson' WHERE zip IN ('70121','70123','70358') AND parish<>'Jefferson'");
   // Add company column if missing (idempotent migration)
   await pool.query(`ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS company TEXT`);
+  await pool.query(`ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION`);
+  await pool.query(`ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION`);
   console.log('[DB] PostgreSQL ready');
+  geocodeBackfill(); // fire-and-forget: geocode any addresses missing coordinates
 })().catch(e => console.error('[DB] Setup error:', e.message));
 
 // ── Parish lookup (module-scoped so routes can use it) ─────────────────
@@ -205,12 +244,17 @@ app.post('/rsvp', async (req, res) => {
   const { firstName, lastName, email, phone, address, city, state, zip, parish,
           guests, guestNames, howToHelp, yardSign, endorse, comment, event } = req.body;
   try {
-    await dbRun(`
+    const ins = await dbRun(`
       INSERT INTO rsvps
         (first_name, last_name, email, phone, address, city, state, zip, parish, guests, guest_names, how_to_help, yard_sign, endorse, comment, event)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [firstName, lastName, email, phone, address, city, state, zip, parish, guests, guestNames, howToHelp, yardSign, endorse, comment, event]);
     res.json({ result: 'success' });
+    // Geocode the real address so the map pin lands on the right street — fire-and-forget
+    if (ins.lastInsertRowid && address) {
+      geocodeAndStore(ins.lastInsertRowid, address, city, state, zip)
+        .catch(err => console.error('[geocode] rsvp failed:', err.message));
+    }
     // Send confirmation email — fire-and-forget; never blocks or fails the RSVP
     if (emailEnabled && email) {
       sendRsvpConfirmation({ firstName, email, eventTitle: event })
@@ -1034,7 +1078,7 @@ app.post('/admin/walk-list/:id/import', async (req, res) => {
 app.get('/admin/map', (req, res) => res.send(mapHTML()));
 app.get('/admin/sign-map-data', async (req, res) => {
   const rows = await dbAll(
-    "SELECT id, first_name, last_name, address, city, zip, parish, yard_sign_delivered FROM rsvps WHERE yard_sign='Yes' ORDER BY created_at DESC"
+    "SELECT id, first_name, last_name, address, city, zip, parish, yard_sign_delivered, lat, lng FROM rsvps WHERE yard_sign='Yes' ORDER BY created_at DESC"
   );
   res.json(rows);
 });
@@ -7092,13 +7136,19 @@ function buildMap(data){
   var seed=42;
   function rnd(){seed=(seed*9301+49297)%233280;return seed/233280;}
   data.forEach(function(r){
-    // Exact zip → parish centroid → metro default, so EVERY requester gets a pin.
-    var c=ZIP_COORDS[r.zip]||PARISH_COORDS[r.parish]||DEFAULT_COORD;
-    var lat=c[0]+(rnd()-0.5)*0.0025;
-    var lng=c[1]+(rnd()-0.5)*0.003;
+    var lat,lng,exact=false;
+    if(r.lat!=null && r.lng!=null && isFinite(r.lat) && isFinite(r.lng)){
+      // Geocoded real address — pin lands on the actual street.
+      lat=+r.lat; lng=+r.lng; exact=true;
+    } else {
+      // No coordinates yet: zip centroid → parish centroid → metro default, jittered.
+      var c=ZIP_COORDS[r.zip]||PARISH_COORDS[r.parish]||DEFAULT_COORD;
+      lat=c[0]+(rnd()-0.5)*0.0025;
+      lng=c[1]+(rnd()-0.5)*0.003;
+    }
     var del=r.yard_sign_delivered==='Yes';
-    // Coverage circle centered on THIS pin (was offset to the zip center before).
-    L.circle([lat,lng],{radius:400,fillColor:'#78E0C4',fillOpacity:0.15,color:'#5fd4b0',weight:1.5}).addTo(layers);
+    // Coverage circle centered on THIS pin. Smaller when we have an exact address.
+    L.circle([lat,lng],{radius:exact?150:400,fillColor:'#78E0C4',fillOpacity:0.15,color:'#5fd4b0',weight:1.5}).addTo(layers);
     var mk=L.marker([lat,lng],{icon:pinIcon(del?'#5fd4b0':'#f5a623')});
     mk.bindPopup(
       '<div style="font-family:Montserrat,sans-serif;min-width:190px;">'+

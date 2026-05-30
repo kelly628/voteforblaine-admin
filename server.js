@@ -6956,13 +6956,14 @@ var noSignCache = null;
 // Canal (E) → Mississippi River (S) → St. Charles line (W). Still an
 // approximation of the precinct-level district, but no longer boxes the water.
 var DIVH_POLY = [
-  [30.012,-90.152],  // Bucktown / West End lakefront (near 17th St Canal)
-  [30.018,-90.178],  // Metairie lakefront (Bonnabel)
-  [30.024,-90.205],  // Metairie / E. Kenner lakefront
-  [30.034,-90.228],  // Kenner lakefront (Williams Blvd)
-  [30.038,-90.246],  // Kenner NW (near the airport)
-  [30.010,-90.258],  // Kenner west edge (St. Charles line)
-  [29.978,-90.258],  // Kenner SW
+  [30.029,-90.140],  // Bucktown / West End — lakefront at the 17th St Canal
+  [30.027,-90.165],  // Bonnabel lakefront
+  [30.028,-90.190],  // Metairie lakefront (Causeway)
+  [30.033,-90.212],  // E. Kenner / Metairie lakefront
+  [30.040,-90.232],  // Kenner lakefront (Williams / Laketown)
+  [30.044,-90.250],  // Kenner NW (airport / Laketown)
+  [30.012,-90.261],  // Kenner west edge (St. Charles line)
+  [29.978,-90.259],  // Kenner SW
   [29.952,-90.246],  // Kenner riverfront (St. Charles line at the river)
   [29.936,-90.220],  // River Ridge riverfront
   [29.924,-90.196],  // Harahan / Huey P. Long bridge (southernmost)
@@ -6970,7 +6971,7 @@ var DIVH_POLY = [
   [29.932,-90.154],  // Jefferson CDP riverfront
   [29.946,-90.142],  // Old Metairie riverfront (near the Orleans line)
   [29.978,-90.139],  // Orleans line (Jefferson / Southport)
-  [30.000,-90.143]   // Orleans line heading back to the lake
+  [30.005,-90.139]   // Orleans line heading back up to the lake
 ];
 var divHLayer = L.polygon(DIVH_POLY, { color:'#09254f', weight:2, fillColor:'#5fd4b0', fillOpacity:0.12, dashArray:'6 4' })
   .bindTooltip('Division H electorate (approximate)', { sticky:true });
@@ -7092,20 +7093,16 @@ function buildStats(data){
 
 function buildMap(data){
   layers.clearLayers();
-  var zipCounts={};
-  data.forEach(function(r){if(r.zip)zipCounts[r.zip]=(zipCounts[r.zip]||0)+1;});
-  Object.keys(zipCounts).forEach(function(z){
-    var c=ZIP_COORDS[z]; if(!c)return;
-    L.circle(c,{radius:400,fillColor:'#78E0C4',fillOpacity:0.18,color:'#5fd4b0',weight:1.5}).addTo(layers);
-  });
   var seed=42;
   function rnd(){seed=(seed*9301+49297)%233280;return seed/233280;}
   data.forEach(function(r){
     // Exact zip → parish centroid → metro default, so EVERY requester gets a pin.
     var c=ZIP_COORDS[r.zip]||PARISH_COORDS[r.parish]||DEFAULT_COORD;
-    var lat=c[0]+(rnd()-0.5)*0.007;
-    var lng=c[1]+(rnd()-0.5)*0.009;
+    var lat=c[0]+(rnd()-0.5)*0.0025;
+    var lng=c[1]+(rnd()-0.5)*0.003;
     var del=r.yard_sign_delivered==='Yes';
+    // Coverage circle centered on THIS pin (was offset to the zip center before).
+    L.circle([lat,lng],{radius:400,fillColor:'#78E0C4',fillOpacity:0.15,color:'#5fd4b0',weight:1.5}).addTo(layers);
     var mk=L.marker([lat,lng],{icon:pinIcon(del?'#5fd4b0':'#f5a623')});
     mk.bindPopup(
       '<div style="font-family:Montserrat,sans-serif;min-width:190px;">'+

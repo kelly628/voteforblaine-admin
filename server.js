@@ -214,9 +214,21 @@ const TS = `to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')`;
 const BP = {"70001":"Jefferson","70002":"Jefferson","70003":"Jefferson","70004":"Jefferson","70005":"Jefferson","70006":"Jefferson","70009":"Jefferson","70010":"Jefferson","70011":"Jefferson","70031":"Jefferson","70033":"Jefferson","70036":"Jefferson","70037":"Jefferson","70047":"Jefferson","70053":"Jefferson","70055":"Jefferson","70056":"Jefferson","70057":"Jefferson","70058":"Jefferson","70059":"Jefferson","70060":"Jefferson","70062":"Jefferson","70063":"Jefferson","70064":"Jefferson","70065":"Jefferson","70067":"Jefferson","70072":"Jefferson","70073":"Jefferson","70094":"Jefferson","70112":"Orleans","70113":"Orleans","70114":"Orleans","70115":"Orleans","70116":"Orleans","70117":"Orleans","70118":"Orleans","70119":"Orleans","70121":"Jefferson","70122":"Orleans","70123":"Jefferson","70124":"Orleans","70125":"Orleans","70126":"Orleans","70127":"Orleans","70128":"Orleans","70129":"Orleans","70130":"Orleans","70131":"Orleans","70163":"Orleans","70032":"St. Bernard","70043":"St. Bernard","70044":"St. Bernard","70085":"St. Bernard","70086":"St. Bernard","70092":"St. Bernard","70040":"Plaquemines","70041":"Plaquemines","70050":"Plaquemines","70068":"Plaquemines","70069":"Plaquemines","70070":"Plaquemines","70071":"Plaquemines","70074":"Plaquemines","70075":"Plaquemines","70076":"Plaquemines","70082":"Plaquemines","70083":"Plaquemines","70084":"Plaquemines","70090":"Plaquemines","70030":"St. Charles","70039":"St. Charles","70052":"St. Charles","70079":"St. Charles","70087":"St. Charles","70433":"St. Tammany","70434":"St. Tammany","70435":"St. Tammany","70437":"St. Tammany","70444":"St. Tammany","70445":"St. Tammany","70446":"St. Tammany","70447":"St. Tammany","70448":"St. Tammany","70450":"St. Tammany","70452":"St. Tammany","70455":"St. Tammany","70456":"St. Tammany","70458":"St. Tammany","70459":"St. Tammany","70460":"St. Tammany","70461":"St. Tammany","70464":"St. Tammany","70466":"St. Tammany","70471":"St. Tammany","70401":"Tangipahoa","70402":"Tangipahoa","70403":"Tangipahoa","70404":"Tangipahoa","70420":"Tangipahoa","70422":"Tangipahoa","70426":"Tangipahoa","70427":"Tangipahoa","70428":"Tangipahoa","70429":"Tangipahoa","70430":"Tangipahoa","70436":"Tangipahoa","70443":"Tangipahoa","70451":"Tangipahoa","70454":"Tangipahoa","70463":"Tangipahoa","70301":"Terrebonne","70302":"Terrebonne","70310":"Terrebonne","70352":"Terrebonne","70355":"Terrebonne","70356":"Terrebonne","70359":"Terrebonne","70360":"Terrebonne","70361":"Terrebonne","70363":"Terrebonne","70364":"Terrebonne","70380":"Terrebonne","70340":"Lafourche","70341":"Lafourche","70343":"Lafourche","70344":"Lafourche","70345":"Lafourche","70346":"Lafourche","70353":"Lafourche","70354":"Lafourche","70357":"Lafourche","70358":"Jefferson","70373":"Lafourche","70374":"Lafourche","70377":"Lafourche","70501":"Lafayette","70503":"Lafayette","70504":"Lafayette","70505":"Lafayette","70506":"Lafayette","70507":"Lafayette","70508":"Lafayette","70509":"Lafayette"};
 
 // ── Middleware ────────────────────────────────────────────────────────
+app.disable('x-powered-by'); // don't advertise the framework
+// Security headers on every response
+app.use((req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.set('Strict-Transport-Security', 'max-age=15552000'); // 180d — site is HTTPS-only
+  // Clickjacking protection — but the public widget MUST be embeddable cross-origin
+  if (!req.path.startsWith('/widget-frame') && req.path !== '/embed.js') {
+    res.set('X-Frame-Options', 'SAMEORIGIN');
+  }
+  next();
+});
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '1mb' }));            // cap body size (DoS guard)
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // ── Mockups preview pages (internal — require login) ──────────────────
 app.get('/mockups', auth('admin'), (req, res) => {
@@ -418,24 +430,45 @@ app.get('/login', (req, res) => {
 </body></html>`);
 });
 
+// ── Brute-force throttle for /login (in-memory, per IP) ───────────────
+const _loginFails = new Map(); // ip -> { fails, lockUntil, last }
+const LOGIN_MAX = 8, LOGIN_WINDOW = 15 * 60 * 1000, LOGIN_LOCK = 15 * 60 * 1000;
+function clientIp(req) {
+  return String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim() || 'unknown';
+}
+function loginLocked(ip) { const r = _loginFails.get(ip); return !!(r && r.lockUntil && Date.now() < r.lockUntil); }
+function noteLoginFail(ip) {
+  const now = Date.now(); const r = _loginFails.get(ip) || { fails: 0, lockUntil: 0, last: 0 };
+  if (now - r.last > LOGIN_WINDOW) r.fails = 0;   // reset count after a quiet window
+  r.fails++; r.last = now;
+  if (r.fails >= LOGIN_MAX) { r.lockUntil = now + LOGIN_LOCK; r.fails = 0; }
+  _loginFails.set(ip, r);
+}
+setInterval(() => { const now = Date.now(); for (const [ip, r] of _loginFails) if ((r.lockUntil || 0) < now && (r.last || 0) < now - LOGIN_WINDOW) _loginFails.delete(ip); }, 10 * 60 * 1000).unref();
+
 app.post('/login', express.urlencoded({ extended: false }), (req, res) => {
+  const ip = clientIp(req);
+  if (loginLocked(ip)) return res.status(429).send('Too many failed sign-in attempts. Please wait 15 minutes and try again.');
   const { role, next, password } = req.body;
   const pw = (password || '').trim();
   const dest = (next && next.startsWith('/')) ? next : (role === 'candidate' ? '/candidate' : '/admin');
   if (role === 'admin' && pw === PASSWORDS.admin) {
-    res.setHeader('Set-Cookie', `vfb_session=${ADMIN_TOKEN}; Path=/; HttpOnly; SameSite=Strict`);
+    _loginFails.delete(ip);
+    res.setHeader('Set-Cookie', `vfb_session=${ADMIN_TOKEN}; Path=/; HttpOnly; Secure; SameSite=Strict`);
     return res.redirect(dest);
   }
   if (role === 'candidate' && pw === PASSWORDS.candidate) {
-    res.setHeader('Set-Cookie', `vfb_session=${CAND_TOKEN}; Path=/; HttpOnly; SameSite=Strict`);
+    _loginFails.delete(ip);
+    res.setHeader('Set-Cookie', `vfb_session=${CAND_TOKEN}; Path=/; HttpOnly; Secure; SameSite=Strict`);
     return res.redirect(dest);
   }
+  noteLoginFail(ip);
   const errNext = encodeURIComponent(dest);
   res.redirect(`/login?role=${role || 'admin'}&next=${errNext}&err=1`);
 });
 
 app.get('/logout', (req, res) => {
-  res.setHeader('Set-Cookie', 'vfb_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT');
+  res.setHeader('Set-Cookie', 'vfb_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Expires=Thu, 01 Jan 1970 00:00:00 GMT');
   res.redirect('/login');
 });
 
@@ -867,7 +900,8 @@ app.post('/admin/donation', adminOnly, async (req, res) => {
        tender_type || null, check_number || null]);
     res.json({ result: 'ok' });
   } catch(err) {
-    res.status(500).json({ result: 'error', error: err.message });
+    console.error('[donation] DB error:', err.message);
+    res.status(500).json({ result: 'error' });
   }
 });
 

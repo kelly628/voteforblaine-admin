@@ -6829,16 +6829,20 @@ function mapHTML() { return `<!DOCTYPE html>
     </div>
 
     <div class="sb-section">
-      <div class="sb-title">East Bank vs West Bank</div>
+      <div class="sb-title">Division H Coverage</div>
       <div class="bank-row">
-        <div class="bank-meta"><span class="bank-label">East Bank</span><span class="bank-count" id="eb-lbl">—</span></div>
-        <div class="bank-track"><div class="bank-fill east" id="eb-bar" style="width:0%"></div></div>
+        <div class="bank-meta"><span class="bank-label">Metairie</span><span class="bank-count" id="dh-met-lbl">—</span></div>
+        <div class="bank-track"><div class="bank-fill east" id="dh-met-bar" style="width:0%"></div></div>
       </div>
       <div class="bank-row">
-        <div class="bank-meta"><span class="bank-label">West Bank</span><span class="bank-count" id="wb-lbl">—</span></div>
-        <div class="bank-track"><div class="bank-fill west" id="wb-bar" style="width:0%"></div></div>
+        <div class="bank-meta"><span class="bank-label">Kenner</span><span class="bank-count" id="dh-ken-lbl">—</span></div>
+        <div class="bank-track"><div class="bank-fill east" id="dh-ken-bar" style="width:0%"></div></div>
       </div>
-      <div class="bank-note">East Bank holds ~65% of Jefferson Parish registered voters (Metairie ~150k + Kenner ~67k). Prioritize <strong style="color:var(--navy)">Veterans Blvd</strong> and <strong style="color:var(--navy)">Clearview Pkwy</strong> corridors for maximum reach.</div>
+      <div class="bank-row">
+        <div class="bank-meta"><span class="bank-label">Harahan / River Ridge</span><span class="bank-count" id="dh-hrr-lbl">—</span></div>
+        <div class="bank-track"><div class="bank-fill east" id="dh-hrr-bar" style="width:0%"></div></div>
+      </div>
+      <div class="bank-note"><span id="dh-out-note"></span>Division H is the East Bank of Jefferson — Metairie (~150k) and Kenner (~67k) hold most of the vote. Prioritize <strong style="color:var(--navy)">Veterans Blvd</strong> and <strong style="color:var(--navy)">Clearview Pkwy</strong> corridors.</div>
     </div>
 
     <div class="sb-section">
@@ -7068,13 +7072,22 @@ function buildStats(data){
   document.getElementById('ms-tot').textContent=data.length;
   document.getElementById('ms-del').textContent=del;
   document.getElementById('ms-zips').textContent=Object.keys(zips).length;
-  var east=0,west=0;
-  data.forEach(function(r){var i=ZIP_INFO[r.zip];if(i){if(i.bank==='East')east++;else west++;}});
-  var tot=east+west||1;
-  document.getElementById('eb-lbl').textContent=east+' signs ('+Math.round(east/tot*100)+'%)';
-  document.getElementById('wb-lbl').textContent=west+' signs ('+Math.round(west/tot*100)+'%)';
-  document.getElementById('eb-bar').style.width=Math.round(east/tot*100)+'%';
-  document.getElementById('wb-bar').style.width=Math.round(west/tot*100)+'%';
+  // Division H (East Bank Jefferson) sign coverage by community
+  var MET={'70001':1,'70002':1,'70003':1,'70004':1,'70005':1,'70006':1,'70009':1,'70010':1,'70011':1,'70033':1,'70055':1};
+  var KEN={'70062':1,'70063':1,'70064':1,'70065':1};
+  var HRR={'70121':1,'70123':1};
+  var met=0,ken=0,hrr=0,outd=0;
+  data.forEach(function(r){
+    var z=r.zip?String(r.zip).trim().slice(0,5):'';
+    if(MET[z])met++; else if(KEN[z])ken++; else if(HRR[z])hrr++; else outd++;
+  });
+  var maxC=Math.max(met,ken,hrr,1);
+  function setRow(lbl,bar,n){ document.getElementById(lbl).textContent=n+' sign'+(n===1?'':'s'); document.getElementById(bar).style.width=Math.round(n/maxC*100)+'%'; }
+  setRow('dh-met-lbl','dh-met-bar',met);
+  setRow('dh-ken-lbl','dh-ken-bar',ken);
+  setRow('dh-hrr-lbl','dh-hrr-bar',hrr);
+  var outEl=document.getElementById('dh-out-note');
+  if(outEl) outEl.innerHTML = outd>0 ? ('<strong style="color:#b07d10">'+outd+' sign'+(outd===1?'':'s')+' outside Division H</strong> (cannot vote in this race).<br>') : '';
 }
 
 function buildMap(data){

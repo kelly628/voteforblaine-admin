@@ -7305,9 +7305,14 @@ function buildNoSignLayer(data){
   var seed2 = 77;
   function rnd2(){ seed2=(seed2*9301+49297)%233280; return seed2/233280; }
   data.forEach(function(r){
-    var c=ZIP_COORDS[r.zip]; if(!c)return;
-    var lat=c[0]+(rnd2()-0.5)*0.007;
-    var lng=c[1]+(rnd2()-0.5)*0.009;
+    var lat, lng;
+    if(r.lat!=null && r.lng!=null && isFinite(r.lat) && isFinite(r.lng)){
+      lat=+r.lat; lng=+r.lng;            // exact geocoded address — pin on the real street
+    } else {
+      var c=ZIP_COORDS[r.zip]; if(!c)return;  // fall back to zip centroid + jitter
+      lat=c[0]+(rnd2()-0.5)*0.007;
+      lng=c[1]+(rnd2()-0.5)*0.009;
+    }
     var mk=L.marker([lat,lng],{icon:ringIcon()});
     mk.bindPopup(
       '<div style="font-family:Montserrat,sans-serif;min-width:190px;">'+

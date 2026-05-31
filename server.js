@@ -2732,13 +2732,22 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
   </div>
 </div>
 
-<!-- ── Campaign Pipeline Summary ── -->
+<!-- ── Campaign Pipeline Summary — two trackers: voters vs supporters ── -->
 <div class="pipeline-section">
   <div class="pipeline-section-hdr">
-    <span class="pipeline-section-title">Campaign Pipeline</span>
-    <span class="pipeline-total" id="pipeline-total"></span>
+    <span class="pipeline-section-title" style="display:inline-flex;align-items:center;gap:7px;"><span style="width:9px;height:9px;border-radius:50%;background:#10b981;display:inline-block;"></span>Voter Pipeline</span>
+    <span class="pipeline-total" id="pipeline-total-voter"></span>
   </div>
-  <div class="pipeline-track" id="pipeline-track">
+  <div class="pipeline-track" id="pipeline-track-voter">
+    <span style="font-size:13px;color:var(--dim);font-style:italic;">Loading&hellip;</span>
+  </div>
+</div>
+<div class="pipeline-section" style="margin-top:16px;">
+  <div class="pipeline-section-hdr">
+    <span class="pipeline-section-title" style="display:inline-flex;align-items:center;gap:7px;"><span style="width:9px;height:9px;border-radius:50%;background:#9aaabb;display:inline-block;"></span>Supporters &amp; Network</span>
+    <span class="pipeline-total" id="pipeline-total-supporter"></span>
+  </div>
+  <div class="pipeline-track" id="pipeline-track-supporter">
     <span style="font-size:13px;color:var(--dim);font-style:italic;">Loading&hellip;</span>
   </div>
 </div>
@@ -3682,8 +3691,8 @@ function refresh() {
   if (q) switchView('constituents');
   stats(all);                    // dashboard stats always use full dataset
   snapshot(d);
-  buildPipelineSummary(all);   // pipeline summary = every contact
-  buildPipelineBoard(all);     // pipeline board   = every contact
+  refreshPipelineSummaries();  // two dashboard trackers: voters + supporters
+  buildPipelineBoard(all);     // board groups voters vs supporters internally
   render(fd);
 }
 

@@ -1583,7 +1583,8 @@ function generateWidget(label, displayDate, time, location, fields, endTime, crm
   var req = (f && f.required) || {};
   var reqEmail = showEmail   && !!req.email;
   var reqPhone = showPhone   && !!req.phone;
-  var reqAddr  = showAddress && !!req.address;
+  // Address is required by default on event forms — only an explicit `false` turns it off.
+  var reqAddr  = showAddress && (req.address !== false);
 
   return [
 '<!-- RSVP Widget — ' + safeLabel + ' -->',
@@ -4850,6 +4851,7 @@ function syncTimeChips() {
 var EVT_FIELD_KEYS = ['email','phone','address','guests','yard_sign','endorse','how_to_help','comment'];
 var EVT_FIELD_DEFAULTS = { email:true, phone:true, address:true, guests:true, yard_sign:true, endorse:true, how_to_help:true, comment:true };
 var EVT_REQ_KEYS = ['email','phone','address']; // fields that can be toggled "required"
+var EVT_REQ_DEFAULTS = { email:false, phone:false, address:true }; // Address is required by default on event forms
 
 function evtSetFieldCheckboxes(fields) {
   var cfg = fields || EVT_FIELD_DEFAULTS;
@@ -4860,7 +4862,7 @@ function evtSetFieldCheckboxes(fields) {
   var req = (fields && fields.required) || {};
   EVT_REQ_KEYS.forEach(function(k) {
     var el = document.getElementById('efr-' + k);
-    if (el) el.checked = !!req[k];
+    if (el) el.checked = (req[k] !== undefined) ? !!req[k] : !!EVT_REQ_DEFAULTS[k];
   });
   evtSyncRequiredToggles();
 }

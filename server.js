@@ -1288,7 +1288,7 @@ const PIPELINE_STAGES = [
   { key: 'contacted',  label: 'Contacted',        color: '#3b82f6' },
   { key: 'engaged',    label: 'In Conversation',  color: '#8b5cf6' },
   { key: 'met',        label: 'Meet with Team',   color: '#fb923c' },
-  { key: 'committed',  label: 'Vote Committed',   color: '#10b981' },
+  { key: 'committed',  label: 'Vote Committed',   color: '#10b981', altLabel: 'Support Confirmed' },
 ];
 const PIPELINE_JSON = JSON.stringify(PIPELINE_STAGES);
 
@@ -5262,7 +5262,14 @@ function getStage(r) {
   return (r.pipeline_stage && r.pipeline_stage !== '') ? r.pipeline_stage : 'new';
 }
 
-function buildPipelineSummary(d) {
+// opts: { trackId, totalId, useAlt, unit } — lets the dashboard render a
+// separate tracker for the voter funnel and the supporters funnel.
+function buildPipelineSummary(d, opts) {
+  opts = opts || {};
+  var trackId = opts.trackId || 'pipeline-track';
+  var totalId = opts.totalId || 'pipeline-total';
+  var useAlt  = !!opts.useAlt;
+  var unit    = opts.unit || 'constituent';
   var counts = {};
   PIPELINE_STAGES.forEach(function(s){ counts[s.key] = 0; });
   d.forEach(function(r){
@@ -5272,27 +5279,38 @@ function buildPipelineSummary(d) {
   });
   var total = d.length;
   var maxC = Math.max.apply(null, Object.values(counts)) || 1;
-  var totEl = document.getElementById('pipeline-total');
-  if (totEl) totEl.textContent = total + ' constituent' + (total !== 1 ? 's' : '');
-  var track = document.getElementById('pipeline-track');
+  var totEl = document.getElementById(totalId);
+  if (totEl) totEl.textContent = total + ' ' + unit + (total !== 1 ? 's' : '');
+  var track = document.getElementById(trackId);
   if (!track) return;
   track.innerHTML = PIPELINE_STAGES.map(function(s, i) {
     var c = counts[s.key];
     var w = Math.round((c / maxC) * 100);
+    var label = (useAlt && s.altLabel) ? s.altLabel : s.label;
     var arrow = i < PIPELINE_STAGES.length - 1 ? '<div class="pipe-arrow">&#8250;</div>' : '';
     return '<div class="pipe-stage-wrap">' +
       '<div class="pipe-stage" data-sw="pipeline" title="Click to view pipeline">' +
         '<div class="pipe-stage-dot" style="background:' + s.color + '"></div>' +
         '<div class="pipe-stage-count">' + c + '</div>' +
-        '<div class="pipe-stage-label">' + s.label + '</div>' +
+        '<div class="pipe-stage-label">' + label + '</div>' +
         '<div class="pipe-stage-bar"><div class="pipe-stage-fill" style="width:' + w + '%;background:' + s.color + '"></div></div>' +
       '</div>' + arrow +
     '</div>';
   }).join('');
 }
+// Refresh both dashboard pipeline trackers from the full contact set.
+function refreshPipelineSummaries() {
+  buildPipelineSummary(all.filter(isVoter),
+    { trackId:'pipeline-track-voter', totalId:'pipeline-total-voter', unit:'voter' });
+  buildPipelineSummary(all.filter(function(r){ return !isVoter(r); }),
+    { trackId:'pipeline-track-supporter', totalId:'pipeline-total-supporter', useAlt:true, unit:'supporter' });
+}
 
 // Renders the stage lanes for one subset of people (returns HTML string).
-function pipelineLanesHTML(d) {
+// useAlt → show each stage's altLabel where defined (e.g. supporters see
+// "Support Confirmed" instead of "Vote Committed").
+function pipelineLanesHTML(d, useAlt) {
+  function lbl(s){ return (useAlt && s.altLabel) ? s.altLabel : s.label; }
   var byStage = {};
   PIPELINE_STAGES.forEach(function(s){ byStage[s.key] = []; });
   d.forEach(function(r){
@@ -5315,7 +5333,7 @@ function pipelineLanesHTML(d) {
           if ((r.role||'').indexOf('Committee Member') > -1) tags.push('Committee');
           if ((r.role||'').indexOf('Attorney') > -1) tags.push('Attorney');
           var stageOpts = PIPELINE_STAGES.map(function(ps) {
-            return '<option value="' + ps.key + '"' + (ps.key === s.key ? ' selected' : '') + '>' + ps.label + '</option>';
+            return '<option value="' + ps.key + '"' + (ps.key === s.key ? ' selected' : '') + '>' + lbl(ps) + '</option>';
           }).join('');
           return '<div class="pipe-card" data-href="/admin/constituent/' + r.id + '">' +
             '<div class="pipe-card-info">' +
@@ -5330,7 +5348,7 @@ function pipelineLanesHTML(d) {
     return '<div class="pipe-lane">' +
       '<div class="pipe-lane-hdr">' +
         '<div class="pipe-lane-dot" style="background:' + s.color + '"></div>' +
-        '<div class="pipe-lane-title">' + s.label + '</div>' +
+        '<div class="pipe-lane-title">' + lbl(s) + '</div>' +
         '<div class="pipe-lane-count">' + cards.length + '</div>' +
       '</div>' +
       bodyHTML +
@@ -5346,7 +5364,7 @@ function buildPipelineBoard(d) {
   if (!board) return;
   var voters = d.filter(isVoter);
   var supporters = d.filter(function(r){ return !isVoter(r); });
-  function section(title, sub, people, accent) {
+  function section(title, sub, people, accent, useAlt) {
     return '<div class="pipe-group">' +
       '<div class="pipe-group-hdr">' +
         '<span class="pipe-group-dot" style="background:' + accent + '"></span>' +
@@ -5354,12 +5372,12 @@ function buildPipelineBoard(d) {
         '<span class="pipe-group-count">' + people.length + '</span>' +
         '<span class="pipe-group-sub">' + sub + '</span>' +
       '</div>' +
-      '<div class="pipeline-board">' + pipelineLanesHTML(people) + '</div>' +
+      '<div class="pipeline-board">' + pipelineLanesHTML(people, useAlt) + '</div>' +
     '</div>';
   }
   board.innerHTML =
-    section('Voter Pipeline', 'Division H — can vote for Blaine', voters, '#10b981') +
-    section('Supporters &amp; Network', 'Outside the district or no address — engage for support, not votes', supporters, '#9aaabb');
+    section('Voter Pipeline', 'Division H — can vote for Blaine', voters, '#10b981', false) +
+    section('Supporters &amp; Network', 'Outside the district or no address — engage for support, not votes', supporters, '#9aaabb', true);
 }
 
 function setPipelineStage(id, stage) {
@@ -5370,7 +5388,7 @@ function setPipelineStage(id, stage) {
   }).then(function(r){ return r.json(); }).then(function(){
     var rec = all.find(function(r){ return r.id === id; });
     if (rec) rec.pipeline_stage = stage;
-    buildPipelineSummary(all);
+    refreshPipelineSummaries();
     buildPipelineBoard(all);
   });
 }

@@ -2332,8 +2332,14 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
   }
   .pipe-lane-hdr {
     padding: 12px 20px; background: var(--bg); border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; user-select: none;
   }
+  .pipe-lane-hdr::-webkit-details-marker { display: none; }
+  .pipe-lane-hdr:hover { background: #eef1f5; }
+  .pipe-lane-chev { color: var(--dim); margin-left: auto; flex-shrink: 0; transition: transform .15s; }
+  .pipe-lane[open] .pipe-lane-chev { transform: rotate(180deg); }
+  .pipe-lane:not([open]) .pipe-lane-hdr { border-bottom: none; }
+  .pipe-lane-count { margin-left: 0; }
   .pipe-lane-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
   .pipe-lane-title { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 700; color: var(--navy); flex: 1; }
   .pipe-lane-count { font-size: 11px; font-weight: 700; color: var(--dim); background: var(--border); padding: 2px 9px; border-radius: 100px; }
@@ -4172,8 +4178,12 @@ function buildDonationsView() {
       var dateStr = r.date ? new Date(r.date + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '—';
       var tenderLabel = r.tender_type || '—';
       if (r.tender_type === 'Check' && r.check_number) tenderLabel = 'Check #' + r.check_number;
+      // Donor name links to the contact profile when the gift is linked to one.
+      var donorCell = r.contact_id
+        ? '<a href="/admin/constituent/' + r.contact_id + '" class="c-name" style="color:var(--navy);text-decoration:none;border-bottom:1px solid var(--mint);">' + x(r.donor_name||'—') + '</a>'
+        : '<div class="c-name">' + x(r.donor_name||'—') + '</div>';
       return '<tr>' +
-        '<td><div class="c-name">' + x(r.donor_name||'—') + '</div></td>' +
+        '<td>' + donorCell + '</td>' +
         '<td><span style="font-weight:800;color:var(--mint-d);font-size:13px;">' + amtStr + '</span></td>' +
         '<td class="c-sub">' + dateStr + '</td>' +
         '<td><span class="spill spill-blue">' + x(r.source||'—') + '</span></td>' +
@@ -5354,14 +5364,16 @@ function pipelineLanesHTML(d, useAlt) {
           '</div>';
         }).join('') + '</div>'
       : '<div class="pipe-lane-empty">No one here yet</div>';
-    return '<div class="pipe-lane">' +
-      '<div class="pipe-lane-hdr">' +
+    // <details open> makes each stage collapsible — click the header to toggle.
+    return '<details class="pipe-lane" open>' +
+      '<summary class="pipe-lane-hdr">' +
         '<div class="pipe-lane-dot" style="background:' + s.color + '"></div>' +
         '<div class="pipe-lane-title">' + lbl(s) + '</div>' +
         '<div class="pipe-lane-count">' + cards.length + '</div>' +
-      '</div>' +
+        '<svg class="pipe-lane-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>' +
+      '</summary>' +
       bodyHTML +
-    '</div>';
+    '</details>';
   }).join('');
 }
 

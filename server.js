@@ -3672,8 +3672,8 @@ function refresh() {
   if (q) switchView('constituents');
   stats(all);                    // dashboard stats always use full dataset
   snapshot(d);
-  buildPipelineSummary(all.filter(isVoter));   // pipeline summary = voters only
-  buildPipelineBoard(all.filter(isVoter));     // pipeline board   = voters only
+  buildPipelineSummary(all);   // pipeline summary = every contact
+  buildPipelineBoard(all);     // pipeline board   = every contact
   render(fd);
 }
 

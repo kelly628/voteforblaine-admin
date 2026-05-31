@@ -787,7 +787,12 @@ ${widgetHtml}
 (function(){
   var lastH = 0;
   function postH(){
-    var h = Math.ceil(document.documentElement.scrollHeight || document.body.scrollHeight || 0);
+    // Measure the content block itself, NOT documentElement.scrollHeight:
+    // scrollHeight returns max(content, iframe-viewport), so once the parent
+    // sizes the iframe (with its +8px buffer) the reported height creeps up
+    // 8px every tick — a runaway loop that slowly pushes the page footer down.
+    var c = document.querySelector('.bm-rsvp');
+    var h = c ? Math.ceil(c.getBoundingClientRect().height) : Math.ceil((document.body && document.body.scrollHeight) || 0);
     if (h && h !== lastH){ lastH = h; parent.postMessage({ bmWidget:true, id:'${req.params.id}', height:h }, '*'); }
   }
   window.addEventListener('load', postH);

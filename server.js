@@ -3310,14 +3310,14 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
     <p style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--mint-d);font-weight:700;margin:0 0 6px;">Campaign Finance</p>
     <div class="modal-title" style="margin-bottom:20px;">Record Donation</div>
     <div class="modal-field">
-      <label class="modal-label">Donor Name</label>
-      <input class="modal-input" id="don-donor-name" type="text" placeholder="e.g. Jane Doe or Acme PAC" autocomplete="off" style="margin-bottom:14px;"/>
-      <label class="modal-label">Link to Contact <span style="font-weight:500;color:var(--dim);text-transform:none;letter-spacing:0;">(optional)</span></label>
-      <div class="don-ac-wrap">
+      <label class="modal-label">Link to Contact</label>
+      <div class="don-ac-wrap" style="margin-bottom:14px;">
         <input class="modal-input" id="don-name" type="text" placeholder="Search existing contacts…" autocomplete="off" oninput="donAcSearch(this.value)" onkeydown="donAcKey(event)"/>
         <div class="don-ac-drop" id="don-ac-drop"></div>
       </div>
       <input type="hidden" id="don-contact-id"/>
+      <label class="modal-label">Donor Name</label>
+      <input class="modal-input" id="don-donor-name" type="text" placeholder="e.g. Jane Doe or Acme PAC" autocomplete="off"/>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
       <div class="modal-field" style="margin-bottom:0;">

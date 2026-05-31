@@ -1581,9 +1581,10 @@ function generateWidget(label, displayDate, time, location, fields, endTime, crm
   var showComment  = f.comment     !== false;
   // Per-field "required" flags (only meaningful when the field is shown).
   var req = (f && f.required) || {};
-  var reqEmail = showEmail   && !!req.email;
-  var reqPhone = showPhone   && !!req.phone;
-  // Address is required by default on event forms — only an explicit `false` turns it off.
+  // Email, phone, and address are required by default on event forms — only an
+  // explicit `false` (toggled off per event) turns one off.
+  var reqEmail = showEmail   && (req.email   !== false);
+  var reqPhone = showPhone   && (req.phone   !== false);
   var reqAddr  = showAddress && (req.address !== false);
 
   return [
@@ -1644,11 +1645,11 @@ function generateWidget(label, displayDate, time, location, fields, endTime, crm
 '      </div>',
 // Email + Phone
 (showEmail || showPhone) ? '      <div class="bm-rsvp-row">' : '',
-showEmail ? '        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-email">Email Address' + (reqEmail ? ' <span style="color:#ff8a8a;">*</span>' : '') + '</label><input class="bm-rsvp-input" type="email" id="bm-email" placeholder="your@email.com"' + (reqEmail ? ' required' : '') + '/></div>' : '',
-showPhone ? '        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-phone">Cell Number' + (reqPhone ? ' <span style="color:#ff8a8a;">*</span>' : '') + '</label><input class="bm-rsvp-input" type="tel" id="bm-phone" placeholder="(504) 555-0000"' + (reqPhone ? ' required' : '') + '/></div>' : '',
+showEmail ? '        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-email">Email Address</label><input class="bm-rsvp-input" type="email" id="bm-email" placeholder="your@email.com"' + (reqEmail ? ' required' : '') + '/></div>' : '',
+showPhone ? '        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-phone">Cell Number</label><input class="bm-rsvp-input" type="tel" id="bm-phone" placeholder="(504) 555-0000"' + (reqPhone ? ' required' : '') + '/></div>' : '',
 (showEmail || showPhone) ? '      </div>' : '',
 // Address (street → city/state → zip is natural geographic order)
-showAddress ? '      <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-address">Street Address' + (reqAddr ? ' <span style="color:#ff8a8a;">*</span>' : '') + '</label><input class="bm-rsvp-input" type="text" id="bm-address" placeholder="123 Main St"' + (reqAddr ? ' required' : '') + '/></div>' : '',
+showAddress ? '      <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-address">Street Address</label><input class="bm-rsvp-input" type="text" id="bm-address" placeholder="123 Main St"' + (reqAddr ? ' required' : '') + '/></div>' : '',
 showAddress ? '      <div class="bm-rsvp-row"><div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-city">City</label><input class="bm-rsvp-input" type="text" id="bm-city" placeholder="Metairie"/></div><div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-state">State</label><select class="bm-rsvp-select" id="bm-state"><option value="AL">Alabama</option><option value="AK">Alaska</option><option value="AZ">Arizona</option><option value="AR">Arkansas</option><option value="CA">California</option><option value="CO">Colorado</option><option value="CT">Connecticut</option><option value="DE">Delaware</option><option value="FL">Florida</option><option value="GA">Georgia</option><option value="HI">Hawaii</option><option value="ID">Idaho</option><option value="IL">Illinois</option><option value="IN">Indiana</option><option value="IA">Iowa</option><option value="KS">Kansas</option><option value="KY">Kentucky</option><option value="LA" selected>Louisiana</option><option value="ME">Maine</option><option value="MD">Maryland</option><option value="MA">Massachusetts</option><option value="MI">Michigan</option><option value="MN">Minnesota</option><option value="MS">Mississippi</option><option value="MO">Missouri</option><option value="MT">Montana</option><option value="NE">Nebraska</option><option value="NV">Nevada</option><option value="NH">New Hampshire</option><option value="NJ">New Jersey</option><option value="NM">New Mexico</option><option value="NY">New York</option><option value="NC">North Carolina</option><option value="ND">North Dakota</option><option value="OH">Ohio</option><option value="OK">Oklahoma</option><option value="OR">Oregon</option><option value="PA">Pennsylvania</option><option value="RI">Rhode Island</option><option value="SC">South Carolina</option><option value="SD">South Dakota</option><option value="TN">Tennessee</option><option value="TX">Texas</option><option value="UT">Utah</option><option value="VT">Vermont</option><option value="VA">Virginia</option><option value="WA">Washington</option><option value="WV">West Virginia</option><option value="WI">Wisconsin</option><option value="WY">Wyoming</option></select></div></div>' : '',
 // Zip + Guests
 '      <div class="bm-rsvp-row">',
@@ -2704,7 +2705,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
   <div class="stat stat-clickable" onclick="goToConstituents('all')" title="View all constituents">
     <div class="stat-lbl">Contacts</div><div class="stat-val" id="s-rsvp">—</div>
   </div>
-  <div class="stat stat-clickable" onclick="drilldown('Endorsement')" title="View endorsers">
+  <div class="stat stat-clickable" onclick="switchView('endorsements')" title="Open the Endorsements page">
     <div class="stat-lbl">Endorsements</div><div class="stat-val" id="s-endorse">—</div>
   </div>
   <div class="stat" style="background:#78E0C4;">
@@ -2800,9 +2801,14 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
 
 <div class="feat-page-hdr">
   <div class="feat-page-title">Contacts</div>
-  <div style="display:flex;gap:8px;">
-    <button class="feat-page-btn" style="background:var(--bg);color:var(--navy);border:1px solid var(--border);" onclick="openImportContacts()">&#8679; Import</button>
+  <div style="display:flex;align-items:center;gap:10px;margin-left:auto;">
+    <div class="search">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="con-q" type="text" placeholder="Search&hellip;" style="width:200px;" oninput="filterFeatTable(this.value,'tbody')"/>
+    </div>
     <button class="feat-page-btn" onclick="openAddPerson()">&#xff0b; New Contact</button>
+    <button class="feat-page-btn" style="background:var(--bg);color:var(--navy);border:1px solid var(--border);" onclick="openImportContacts()">&#8679; Import</button>
+    <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);text-decoration:none;" href="/admin/export.csv" download>&#8595; Export</a>
   </div>
 </div>
 
@@ -2853,12 +2859,13 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
   <!-- Header -->
   <div class="feat-page-hdr">
     <div class="feat-page-title">Events</div>
-    <div style="display:flex;align-items:center;gap:12px;margin-left:auto;">
+    <div style="display:flex;align-items:center;gap:10px;margin-left:auto;">
       <div class="search">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input id="evt-q" type="text" placeholder="Search registrations&hellip;" style="width:210px;" oninput="evtSearchQ=this.value.trim().toLowerCase();refreshEvtTable()"/>
+        <input id="evt-q" type="text" placeholder="Search&hellip;" style="width:200px;" oninput="evtSearchQ=this.value.trim().toLowerCase();refreshEvtTable()"/>
       </div>
       <button class="feat-page-btn" style="margin-left:0;" onclick="openNewEventModal()">&#xff0b; New Event</button>
+      <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);text-decoration:none;" href="/admin/export/event-registrations.csv" download>&#8595; Export</a>
     </div>
   </div>
 
@@ -3031,8 +3038,14 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
 <div class="view view-hidden" id="view-donations">
   <div class="feat-page-hdr">
     <div class="feat-page-title">Donations</div>
-    <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);margin-right:8px;text-decoration:none;" href="/admin/export/donors.csv" download>&#8595; Export CSV</a>
-    <button class="feat-page-btn" onclick="openDonationModal()">&#xff0b; Record Donation</button>
+    <div style="display:flex;align-items:center;gap:10px;margin-left:auto;">
+      <div class="search">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="don-q" type="text" placeholder="Search&hellip;" style="width:200px;" oninput="filterFeatTable(this.value,'don-tbody')"/>
+      </div>
+      <button class="feat-page-btn" onclick="openDonationModal()">&#xff0b; New Donation</button>
+      <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);text-decoration:none;" href="/admin/export/donors.csv" download>&#8595; Export</a>
+    </div>
   </div>
   <div class="feat-stat-row">
     <div class="feat-stat"><div class="feat-stat-val accent" id="don-stat-total">—</div><div class="feat-stat-lbl">Total Raised</div></div>
@@ -3108,10 +3121,14 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
 <div class="view view-hidden" id="view-volunteers">
   <div class="feat-page-hdr">
     <div class="feat-page-title">Volunteers</div>
-    <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);margin-right:4px;text-decoration:none;" href="/admin/export/volunteers.csv" download>&#8595; CSV</a>
-    <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);margin-right:4px;text-decoration:none;" href="/admin/export/volunteers.csv" onclick="exportAsExcel(event,'Volunteers')">&#8595; Excel</a>
-    <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);margin-right:8px;text-decoration:none;" href="#" onclick="exportAsPdf(event,'Volunteers','/admin/export/volunteers.csv')">&#8595; PDF</a>
-    <button class="feat-page-btn" onclick="openAddVolunteerModal()">&#xff0b; Add Volunteer</button>
+    <div style="display:flex;align-items:center;gap:10px;margin-left:auto;">
+      <div class="search">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="vol-q" type="text" placeholder="Search&hellip;" style="width:200px;" oninput="filterFeatTable(this.value,'vol-tbody')"/>
+      </div>
+      <button class="feat-page-btn" onclick="openAddVolunteerModal()">&#xff0b; New Volunteer</button>
+      <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);text-decoration:none;" href="/admin/export/volunteers.csv" download>&#8595; Export</a>
+    </div>
   </div>
   <div class="feat-stat-row" id="vol-stats-row">
     <div class="feat-stat"><div class="feat-stat-val" id="vs-total">—</div><div class="feat-stat-lbl">Total Volunteers</div></div>
@@ -3131,7 +3148,14 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
 <div class="view view-hidden" id="view-endorsements">
   <div class="feat-page-hdr">
     <div class="feat-page-title">Endorsements</div>
-    <button class="feat-page-btn" onclick="openAddEndorsementModal()">&#xff0b; Add Endorsement</button>
+    <div style="display:flex;align-items:center;gap:10px;margin-left:auto;">
+      <div class="search">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="end-q" type="text" placeholder="Search&hellip;" style="width:200px;" oninput="filterFeatTable(this.value,'end-tbody')"/>
+      </div>
+      <button class="feat-page-btn" onclick="openAddEndorsementModal()">&#xff0b; New Endorsement</button>
+      <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);text-decoration:none;" href="/admin/export/endorsers.csv" download>&#8595; Export</a>
+    </div>
   </div>
   <div class="feat-stat-row">
     <div class="feat-stat"><div class="feat-stat-val" id="es-total">—</div><div class="feat-stat-lbl">Total</div></div>
@@ -4019,6 +4043,18 @@ function x(s){ return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 function fmtPhone(p){ if(!p) return ''; var d=String(p).replace(/\D/g,''); if(d.length===10) return d.slice(0,3)+'-'+d.slice(3,6)+'-'+d.slice(6); return p; }
 function fmtDate(s){ if(!s) return ''; var p=(s||'').slice(0,10).split('-'); if(p.length!==3) return s; var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return mo[parseInt(p[1],10)-1]+' '+parseInt(p[2],10)+', '+p[0]; }
 
+// Generic client-side search for the consistent "Search" box in each feature
+// page header — hides table rows that don't contain the typed text.
+function filterFeatTable(q, tbodyId) {
+  q = (q || '').trim().toLowerCase();
+  var tb = document.getElementById(tbodyId);
+  if (!tb) return;
+  Array.prototype.forEach.call(tb.children, function(tr) {
+    if (tr.querySelector && tr.querySelector('.empty')) return; // keep empty-state row
+    var hit = !q || (tr.textContent || '').toLowerCase().indexOf(q) > -1;
+    tr.style.display = hit ? '' : 'none';
+  });
+}
 function switchView(name) {
   ['dashboard','pipeline','constituents','events','donations','volunteers','endorsements','canvassing','compliance'].forEach(function(v) {
     var el = document.getElementById('view-' + v);
@@ -4851,7 +4887,7 @@ function syncTimeChips() {
 var EVT_FIELD_KEYS = ['email','phone','address','guests','yard_sign','endorse','how_to_help','comment'];
 var EVT_FIELD_DEFAULTS = { email:true, phone:true, address:true, guests:true, yard_sign:true, endorse:true, how_to_help:true, comment:true };
 var EVT_REQ_KEYS = ['email','phone','address']; // fields that can be toggled "required"
-var EVT_REQ_DEFAULTS = { email:false, phone:false, address:true }; // Address is required by default on event forms
+var EVT_REQ_DEFAULTS = { email:true, phone:true, address:true }; // Email, phone, address required by default on event forms
 
 function evtSetFieldCheckboxes(fields) {
   var cfg = fields || EVT_FIELD_DEFAULTS;
@@ -6186,6 +6222,14 @@ ${isCand ? '<style>#don-hist-card,#p-giving-block{display:none!important;}</styl
     .hdr-divider { display:none; }
     #hdr-save-btn { padding:7px 14px !important; font-size:10px !important; }
     .hdr-right { gap:8px !important; }
+    /* Pipeline stepper → sleek vertical list on phones (no cramped row) */
+    .pipe-progress { flex-direction:column; align-items:stretch; overflow:visible; gap:2px; padding:2px 0; }
+    .pipe-step-wrap { flex:none; width:100%; min-width:0; }
+    .pipe-step { flex-direction:row; align-items:center; gap:12px; text-align:left; padding:10px 12px; border-radius:8px; }
+    .pipe-step-dot { width:14px; height:14px; margin:0; flex-shrink:0; }
+    .pipe-step-label { margin-top:0; font-size:11px; letter-spacing:.4px; line-height:1.2; }
+    .pipe-step.active { background:rgba(120,224,196,.10); }
+    .pipe-connector { display:none; }
   }
 </style>
 </head>

@@ -4731,8 +4731,10 @@ function refreshEvtTable() {
     return s.indexOf(q) > -1;
   }) : base;
   var sorted = d.slice().sort(function(a,b){ return (b.created_at||'') < (a.created_at||'') ? -1 : 1; });
+  var totalGuests = sorted.reduce(function(s,r){ return s + (parseInt(r.guests)||1); }, 0);
   var tally = document.getElementById('evt-reg-tally');
-  if (tally) tally.textContent = sorted.length + ' registration' + (sorted.length === 1 ? '' : 's');
+  if (tally) tally.textContent = sorted.length + ' registration' + (sorted.length === 1 ? '' : 's')
+    + ' · ' + totalGuests + ' guest' + (totalGuests === 1 ? '' : 's') + ' total';
   var tbody = document.getElementById('evt-reg-tbody');
   if (!tbody) return;
   if (!sorted.length) {
@@ -4751,7 +4753,16 @@ function refreshEvtTable() {
       '<td style="text-align:center;">' + (r.yard_sign === 'Yes' ? '<span class="badge badge-yes">Yes</span>' : '<span class="badge badge-no">No</span>') + '</td>' +
       '<td style="font-size:11px;color:var(--muted);max-width:200px;">' + x(r.how_to_help && r.how_to_help !== 'None selected' ? r.how_to_help : '—') + '</td>' +
     '</tr>';
-  }).join('');
+  }).join('') +
+  // Totals row — sums the Guests column for the current filter/search
+  '<tr style="border-top:2px solid var(--border);background:#f8f9fb;font-weight:800;">' +
+    '<td></td>' +
+    '<td style="color:var(--navy);font-size:11px;letter-spacing:.5px;text-transform:uppercase;">Total</td>' +
+    '<td></td>' +
+    '<td style="text-align:right;color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.5px;">Guests &rarr;</td>' +
+    '<td style="text-align:center;font-size:14px;color:var(--mint-d);">' + totalGuests + '</td>' +
+    '<td></td><td></td>' +
+  '</tr>';
 }
 
 function buildEventsView(d) {
@@ -7337,11 +7348,31 @@ fetch('/admin/sign-map-data').then(function(r){return r.json();}).then(function(
 
 // Per-person sign request list — shows EVERY requester (including off-map zips),
 // with a delivered toggle that writes to the same endpoint the profile uses.
+// Split into Pending / Delivered tabs so the list stays short as deliveries pile up.
+var _signTab = 'pending';
+function setSignTab(t){ _signTab = t; buildSignList(SIGN_DATA); }
 function buildSignList(data){
   var el = document.getElementById('sign-list');
   if(!el) return;
-  if(!data.length){ el.innerHTML='<div style="font-size:12px;color:var(--muted);font-style:italic;">No sign requests yet.</div>'; return; }
-  el.innerHTML = data.map(function(r){
+  var pending   = data.filter(function(r){ return r.yard_sign_delivered !== 'Yes'; });
+  var delivered = data.filter(function(r){ return r.yard_sign_delivered === 'Yes'; });
+  var rows = _signTab === 'delivered' ? delivered : pending;
+
+  function tabBtn(key, label, n){
+    var on = _signTab === key;
+    return '<button onclick="setSignTab(\\''+key+'\\')" style="flex:1;border:none;cursor:pointer;font-family:Montserrat,sans-serif;'+
+      'font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;padding:7px 6px;border-radius:5px;'+
+      (on?'background:var(--navy);color:#fff;':'background:transparent;color:var(--dim);')+'">'+
+      label+' <span style="opacity:.7;">('+n+')</span></button>';
+  }
+  var tabs = '<div style="display:flex;gap:4px;background:#eef1f5;border-radius:7px;padding:3px;margin-bottom:10px;">'+
+    tabBtn('pending','Pending',pending.length)+
+    tabBtn('delivered','Delivered',delivered.length)+
+  '</div>';
+
+  if(!data.length){ el.innerHTML = '<div style="font-size:12px;color:var(--muted);font-style:italic;">No sign requests yet.</div>'; return; }
+
+  var list = rows.length ? rows.map(function(r){
     var del = r.yard_sign_delivered === 'Yes';
     var loc = [r.address, r.city, r.zip].filter(Boolean).map(xe).join(', ');
     if(r.parish && r.parish !== 'Jefferson') loc += (loc?' · ':'') + xe(r.parish) + ' Parish';
@@ -7357,7 +7388,11 @@ function buildSignList(data){
         '<span class="tog-slider"></span>'+
       '</label>'+
     '</div>';
-  }).join('');
+  }).join('')
+  : '<div style="font-size:12px;color:var(--muted);font-style:italic;padding:14px 6px;">'+
+      (_signTab==='delivered'?'No signs marked delivered yet.':'All caught up — no pending signs.')+'</div>';
+
+  el.innerHTML = tabs + list;
 }
 
 function toggleSignDelivered(id, checked){

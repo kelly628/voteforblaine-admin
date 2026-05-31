@@ -2319,6 +2319,13 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
   /* ── Pipeline Horizontal Lane Layout ── */
   .pipeline-board-container { padding: 24px 32px 32px; }
   .pipeline-board { display: flex; flex-direction: column; gap: 10px; }
+  .pipe-group { margin-bottom: 28px; }
+  .pipe-group-hdr { display: flex; align-items: center; gap: 9px; padding: 0 2px 12px; flex-wrap: wrap; }
+  .pipe-group-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+  .pipe-group-title { font-size: 14px; font-weight: 800; letter-spacing: .3px; color: var(--navy); }
+  .pipe-group-count { background: var(--bg); border-radius: 100px; padding: 1px 10px; font-size: 11px; font-weight: 700; color: var(--muted); }
+  .pipe-group-sub { font-size: 11px; color: var(--dim); font-style: italic; }
+  @media(max-width:640px){ .pipe-group-sub{ display:none; } }
   .pipe-lane {
     background: var(--white); border: 1px solid var(--border); border-radius: 6px;
     overflow: hidden;

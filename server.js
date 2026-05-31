@@ -1261,8 +1261,11 @@ app.get('/admin/sign-map-data', async (req, res) => {
 });
 
 app.get('/admin/no-sign-data', async (req, res) => {
+  // Include lat/lng so these pins land on the real geocoded address (same as the
+  // sign-requester layer) instead of being scattered around the zip centroid.
+  // Show anyone with EITHER coordinates or a zip.
   const rows = await dbAll(
-    "SELECT id, first_name, last_name, address, city, zip, parish FROM rsvps WHERE (yard_sign IS NULL OR yard_sign != 'Yes') AND zip IS NOT NULL AND zip != '' ORDER BY created_at DESC"
+    "SELECT id, first_name, last_name, address, city, zip, parish, lat, lng FROM rsvps WHERE (yard_sign IS NULL OR yard_sign != 'Yes') AND ((lat IS NOT NULL AND lng IS NOT NULL) OR (zip IS NOT NULL AND zip != '')) ORDER BY created_at DESC"
   );
   res.json(rows);
 });

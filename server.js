@@ -5284,9 +5284,8 @@ function buildPipelineSummary(d) {
   }).join('');
 }
 
-function buildPipelineBoard(d) {
-  var board = document.getElementById('pipeline-board');
-  if (!board) return;
+// Renders the stage lanes for one subset of people (returns HTML string).
+function pipelineLanesHTML(d) {
   var byStage = {};
   PIPELINE_STAGES.forEach(function(s){ byStage[s.key] = []; });
   d.forEach(function(r){
@@ -5294,7 +5293,7 @@ function buildPipelineBoard(d) {
     if (byStage.hasOwnProperty(k)) byStage[k].push(r);
     else byStage['new'].push(r);
   });
-  board.innerHTML = PIPELINE_STAGES.map(function(s) {
+  return PIPELINE_STAGES.map(function(s) {
     var cards = (byStage[s.key] || []).slice().sort(function(a, b) {
       var la = (a.last_name||'').toLowerCase(), lb = (b.last_name||'').toLowerCase();
       if (la < lb) return -1; if (la > lb) return 1;
@@ -5330,6 +5329,30 @@ function buildPipelineBoard(d) {
       bodyHTML +
     '</div>';
   }).join('');
+}
+
+// Two groups: in-district voters (the real vote funnel) vs. everyone else
+// (out-of-district + no location — supporters you engage but can't get a vote
+// from). Grouping is automatic by district, so it self-corrects as zips fill in.
+function buildPipelineBoard(d) {
+  var board = document.getElementById('pipeline-board');
+  if (!board) return;
+  var voters = d.filter(isVoter);
+  var supporters = d.filter(function(r){ return !isVoter(r); });
+  function section(title, sub, people, accent) {
+    return '<div class="pipe-group">' +
+      '<div class="pipe-group-hdr">' +
+        '<span class="pipe-group-dot" style="background:' + accent + '"></span>' +
+        '<span class="pipe-group-title">' + title + '</span>' +
+        '<span class="pipe-group-count">' + people.length + '</span>' +
+        '<span class="pipe-group-sub">' + sub + '</span>' +
+      '</div>' +
+      '<div class="pipeline-board">' + pipelineLanesHTML(people) + '</div>' +
+    '</div>';
+  }
+  board.innerHTML =
+    section('Voter Pipeline', 'Division H — can vote for Blaine', voters, '#10b981') +
+    section('Supporters &amp; Network', 'Outside the district or no address — engage for support, not votes', supporters, '#9aaabb');
 }
 
 function setPipelineStage(id, stage) {

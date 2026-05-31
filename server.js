@@ -213,6 +213,107 @@ const TS = `to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')`;
 // ── Parish lookup (module-scoped so routes can use it) ─────────────────
 const BP = {"70001":"Jefferson","70002":"Jefferson","70003":"Jefferson","70004":"Jefferson","70005":"Jefferson","70006":"Jefferson","70009":"Jefferson","70010":"Jefferson","70011":"Jefferson","70031":"Jefferson","70033":"Jefferson","70036":"Jefferson","70037":"Jefferson","70047":"Jefferson","70053":"Jefferson","70055":"Jefferson","70056":"Jefferson","70057":"Jefferson","70058":"Jefferson","70059":"Jefferson","70060":"Jefferson","70062":"Jefferson","70063":"Jefferson","70064":"Jefferson","70065":"Jefferson","70067":"Jefferson","70072":"Jefferson","70073":"Jefferson","70094":"Jefferson","70112":"Orleans","70113":"Orleans","70114":"Orleans","70115":"Orleans","70116":"Orleans","70117":"Orleans","70118":"Orleans","70119":"Orleans","70121":"Jefferson","70122":"Orleans","70123":"Jefferson","70124":"Orleans","70125":"Orleans","70126":"Orleans","70127":"Orleans","70128":"Orleans","70129":"Orleans","70130":"Orleans","70131":"Orleans","70163":"Orleans","70032":"St. Bernard","70043":"St. Bernard","70044":"St. Bernard","70085":"St. Bernard","70086":"St. Bernard","70092":"St. Bernard","70040":"Plaquemines","70041":"Plaquemines","70050":"Plaquemines","70068":"Plaquemines","70069":"Plaquemines","70070":"Plaquemines","70071":"Plaquemines","70074":"Plaquemines","70075":"Plaquemines","70076":"Plaquemines","70082":"Plaquemines","70083":"Plaquemines","70084":"Plaquemines","70090":"Plaquemines","70030":"St. Charles","70039":"St. Charles","70052":"St. Charles","70079":"St. Charles","70087":"St. Charles","70433":"St. Tammany","70434":"St. Tammany","70435":"St. Tammany","70437":"St. Tammany","70444":"St. Tammany","70445":"St. Tammany","70446":"St. Tammany","70447":"St. Tammany","70448":"St. Tammany","70450":"St. Tammany","70452":"St. Tammany","70455":"St. Tammany","70456":"St. Tammany","70458":"St. Tammany","70459":"St. Tammany","70460":"St. Tammany","70461":"St. Tammany","70464":"St. Tammany","70466":"St. Tammany","70471":"St. Tammany","70401":"Tangipahoa","70402":"Tangipahoa","70403":"Tangipahoa","70404":"Tangipahoa","70420":"Tangipahoa","70422":"Tangipahoa","70426":"Tangipahoa","70427":"Tangipahoa","70428":"Tangipahoa","70429":"Tangipahoa","70430":"Tangipahoa","70436":"Tangipahoa","70443":"Tangipahoa","70451":"Tangipahoa","70454":"Tangipahoa","70463":"Tangipahoa","70301":"Terrebonne","70302":"Terrebonne","70310":"Terrebonne","70352":"Terrebonne","70355":"Terrebonne","70356":"Terrebonne","70359":"Terrebonne","70360":"Terrebonne","70361":"Terrebonne","70363":"Terrebonne","70364":"Terrebonne","70380":"Terrebonne","70340":"Lafourche","70341":"Lafourche","70343":"Lafourche","70344":"Lafourche","70345":"Lafourche","70346":"Lafourche","70353":"Lafourche","70354":"Lafourche","70357":"Lafourche","70358":"Jefferson","70373":"Lafourche","70374":"Lafourche","70377":"Lafourche","70501":"Lafayette","70503":"Lafayette","70504":"Lafayette","70505":"Lafayette","70506":"Lafayette","70507":"Lafayette","70508":"Lafayette","70509":"Lafayette"};
 
+// ── Contact upsert (dedupe by email) ──────────────────────────────────
+// One person = one contact. If an rsvps row already exists with the same
+// email (case-insensitive), merge into it non-destructively instead of
+// inserting a duplicate — so repeat RSVPs, manual adds, donations, and
+// volunteering all attach to a single record. Email is the match key;
+// rows with no email always insert (there is nothing to match on).
+function _pick(nu, old) {
+  const v = (nu == null ? '' : String(nu)).trim();
+  return v !== '' ? v : (old == null ? '' : old);
+}
+// Union of two comma-separated lists, de-duped case-insensitively, with an
+// optional list of values to drop (e.g. the "None selected" placeholder).
+function _mergeList(oldStr, newStr, drop) {
+  const seen = new Set(), out = [];
+  [oldStr, newStr].forEach(function (s) {
+    String(s == null ? '' : s).split(',').forEach(function (p) {
+      const t = p.trim();
+      if (!t) return;
+      if (drop && drop.indexOf(t) > -1) return;
+      const k = t.toLowerCase();
+      if (!seen.has(k)) { seen.add(k); out.push(t); }
+    });
+  });
+  return out.join(', ');
+}
+// Keep prior comment history: append a new, different comment instead of
+// overwriting what was already there.
+function _mergeComment(oldC, newC) {
+  const o = String(oldC == null ? '' : oldC).trim();
+  const n = String(newC == null ? '' : newC).trim();
+  if (!n) return o;
+  if (!o) return n;
+  if (o.indexOf(n) > -1) return o;
+  return o + '\n- ' + n;
+}
+// Insert or merge a contact. Returns { id, created, addressChanged }.
+async function upsertContact(c) {
+  const email  = (c.email || '').trim();
+  const zip    = (c.zip || '').trim();
+  const parish = _pick(c.parish, BP[zip] || '');
+  const fn     = (c.first_name || '').trim();
+  const ln     = (c.last_name || '').trim();
+  // Match on email AND name. Spouses often share one inbox but are separate
+  // voters, so email alone must never merge two different people. A repeat
+  // submission by the same person (same email + same name) still merges.
+  const existing = (email && (fn || ln))
+    ? await dbGet(
+        "SELECT * FROM rsvps WHERE LOWER(email)=LOWER(?) AND LOWER(COALESCE(first_name,''))=LOWER(?) AND LOWER(COALESCE(last_name,''))=LOWER(?) LIMIT 1",
+        [email, fn, ln])
+    : null;
+
+  if (existing) {
+    // Sticky "Yes" flags — once someone has requested a sign or endorsed,
+    // a later blank form submission must not reset it to "No".
+    const yard = (existing.yard_sign === 'Yes' || c.yard_sign === 'Yes')
+      ? 'Yes' : _pick(c.yard_sign, existing.yard_sign);
+    const endo = (existing.endorse === 'Yes' || c.endorse === 'Yes')
+      ? 'Yes' : _pick(c.endorse, existing.endorse);
+    const address = _pick(c.address, existing.address);
+    await dbRun(
+      `UPDATE rsvps SET first_name=?, last_name=?, email=?, phone=?, address=?, city=?, state=?, zip=?, parish=?, company=?, guests=?, guest_names=?, how_to_help=?, role=?, event=?, comment=?, yard_sign=?, endorse=? WHERE id=?`,
+      [ _pick(c.first_name, existing.first_name),
+        _pick(c.last_name,  existing.last_name),
+        email,
+        _pick(c.phone,      existing.phone),
+        address,
+        _pick(c.city,       existing.city),
+        _pick(c.state,      existing.state),
+        _pick(zip,          existing.zip),
+        _pick(parish,       existing.parish),
+        _pick(c.company,    existing.company),
+        _pick(c.guests,     existing.guests),
+        _pick(c.guest_names,existing.guest_names),
+        _mergeList(existing.how_to_help, c.how_to_help, ['None selected']),
+        _mergeList(existing.role, c.role) || existing.role || 'Voter',
+        _pick(c.event,      existing.event),
+        _mergeComment(existing.comment, c.comment),
+        yard, endo,
+        existing.id ]
+    );
+    return { id: existing.id, created: false,
+             addressChanged: !!address && address !== (existing.address || '') };
+  }
+
+  // New contact. eventOnInsert tags brand-new rows (e.g. "Manual Entry")
+  // without ever overwriting an existing contact's event on a merge.
+  const event = _pick(c.event, '') || _pick(c.eventOnInsert, '');
+  const help  = (c.how_to_help && c.how_to_help !== 'None selected') ? c.how_to_help : '';
+  const ins = await dbRun(
+    `INSERT INTO rsvps (first_name, last_name, email, phone, address, city, state, zip, parish, company, guests, guest_names, how_to_help, role, event, comment, yard_sign, endorse)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [ _pick(c.first_name,''), _pick(c.last_name,''), email, _pick(c.phone,''),
+      _pick(c.address,''), _pick(c.city,''), _pick(c.state,''), zip, parish, _pick(c.company,''),
+      _pick(c.guests,''), _pick(c.guest_names,''), help,
+      _pick(c.role,'Voter'), event, _pick(c.comment,''),
+      _pick(c.yard_sign,'No'), _pick(c.endorse,'No') ]
+  );
+  return { id: ins.lastInsertRowid, created: true,
+           addressChanged: !!_pick(c.address,'') };
+}
+
 // ── Middleware ────────────────────────────────────────────────────────
 app.disable('x-powered-by'); // don't advertise the framework
 // Security headers on every response
@@ -256,15 +357,18 @@ app.post('/rsvp', async (req, res) => {
   const { firstName, lastName, email, phone, address, city, state, zip, parish,
           guests, guestNames, howToHelp, yardSign, endorse, comment, event } = req.body;
   try {
-    const ins = await dbRun(`
-      INSERT INTO rsvps
-        (first_name, last_name, email, phone, address, city, state, zip, parish, guests, guest_names, how_to_help, yard_sign, endorse, comment, event)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [firstName, lastName, email, phone, address, city, state, zip, parish, guests, guestNames, howToHelp, yardSign, endorse, comment, event]);
-    res.json({ result: 'success' });
-    // Geocode the real address so the map pin lands on the right street — fire-and-forget
-    if (ins.lastInsertRowid && address) {
-      geocodeAndStore(ins.lastInsertRowid, address, city, state, zip)
+    // Dedupe by email: a repeat RSVP merges into the existing contact rather
+    // than creating a duplicate, so one person stays one record.
+    const up = await upsertContact({
+      first_name: firstName, last_name: lastName, email, phone,
+      address, city, state, zip, parish,
+      guests, guest_names: guestNames, how_to_help: howToHelp,
+      yard_sign: yardSign, endorse, comment, event
+    });
+    res.json({ result: 'success', id: up.id, merged: !up.created });
+    // Geocode only when the address is new or changed — fire-and-forget
+    if (up.id && address && up.addressChanged) {
+      geocodeAndStore(up.id, address, city, state, zip)
         .catch(err => console.error('[geocode] rsvp failed:', err.message));
     }
     // Send confirmation email — fire-and-forget; never blocks or fails the RSVP
@@ -335,14 +439,20 @@ app.patch('/rsvp/:id/endorse', async (req, res) => {
 // ── Manual constituent add ────────────────────────────────────────────
 app.post('/admin/constituent', async (req, res) => {
   const { first_name, last_name, email, phone, address, city, state, zip, how_to_help, yard_sign, endorse, comment, role, company } = req.body;
-  const parish = BP[zip] || '';
   try {
-    await dbRun(`
-      INSERT INTO rsvps (first_name, last_name, email, phone, address, city, state, zip, parish, how_to_help, yard_sign, endorse, comment, role, event, company)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [first_name||'', last_name||'', email||'', phone||'', address||'', city||'', state||'', zip||'', parish,
-        how_to_help||'', yard_sign||'No', endorse||'No', comment||'', role||'Voter', 'Manual Entry', company||'']);
-    res.json({ result: 'success' });
+    // Dedupe by email so a manual add for someone already in the CRM merges
+    // into their record instead of creating a duplicate. eventOnInsert tags
+    // brand-new manual rows without clobbering an existing contact's event.
+    const up = await upsertContact({
+      first_name, last_name, email, phone, address, city, state, zip,
+      how_to_help, yard_sign, endorse, comment, role, company,
+      eventOnInsert: 'Manual Entry'
+    });
+    if (up.id && address && up.addressChanged) {
+      geocodeAndStore(up.id, address, city, state, zip)
+        .catch(err => console.error('[geocode] constituent failed:', err.message));
+    }
+    res.json({ result: 'success', id: up.id, merged: !up.created });
   } catch(err) {
     console.error('[constituent POST] DB error:', err.message, err.code);
     res.status(500).json({ result: 'error' });
@@ -973,11 +1083,22 @@ app.post('/webhook/anedot', express.raw({ type: '*/*' }), async (req, res) => {
         if (dupe) { console.log(`[Anedot] Duplicate ${anedot_id}, skipping`); return res.json({ result: 'duplicate' }); }
       }
 
-      // Auto-match to existing contact by email
+      // Auto-match to an existing contact by email. Because spouses can share
+      // one email but are separate contacts, when several share the email we
+      // disambiguate by the donor's name before linking (else leave unlinked).
       let contact_id = null;
       if (email) {
-        const contact = await dbGet('SELECT id FROM rsvps WHERE LOWER(email)=?', [email]);
-        if (contact) contact_id = contact.id;
+        const matches = await dbAll('SELECT id, first_name, last_name FROM rsvps WHERE LOWER(email)=?', [email]);
+        if (matches.length === 1) {
+          contact_id = matches[0].id;
+        } else if (matches.length > 1) {
+          const dfn = (data.first_name || '').toLowerCase().trim();
+          const dln = (data.last_name || '').toLowerCase().trim();
+          const named = matches.find(function (m) {
+            return (m.first_name || '').toLowerCase().trim() === dfn && (m.last_name || '').toLowerCase().trim() === dln;
+          });
+          if (named) contact_id = named.id;
+        }
       }
 
       await dbRun(`INSERT INTO donations (donor_name, amount, date, source, contact_id, email, anedot_id)
@@ -1458,6 +1579,11 @@ function generateWidget(label, displayDate, time, location, fields, endTime, crm
   var showEndorse  = f.endorse     !== false;
   var showHelp     = f.how_to_help !== false;
   var showComment  = f.comment     !== false;
+  // Per-field "required" flags (only meaningful when the field is shown).
+  var req = (f && f.required) || {};
+  var reqEmail = showEmail   && !!req.email;
+  var reqPhone = showPhone   && !!req.phone;
+  var reqAddr  = showAddress && !!req.address;
 
   return [
 '<!-- RSVP Widget — ' + safeLabel + ' -->',
@@ -1517,11 +1643,11 @@ function generateWidget(label, displayDate, time, location, fields, endTime, crm
 '      </div>',
 // Email + Phone
 (showEmail || showPhone) ? '      <div class="bm-rsvp-row">' : '',
-showEmail ? '        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-email">Email Address</label><input class="bm-rsvp-input" type="email" id="bm-email" placeholder="your@email.com"/></div>' : '',
-showPhone ? '        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-phone">Cell Number</label><input class="bm-rsvp-input" type="tel" id="bm-phone" placeholder="(504) 555-0000"/></div>' : '',
+showEmail ? '        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-email">Email Address' + (reqEmail ? ' <span style="color:#ff8a8a;">*</span>' : '') + '</label><input class="bm-rsvp-input" type="email" id="bm-email" placeholder="your@email.com"' + (reqEmail ? ' required' : '') + '/></div>' : '',
+showPhone ? '        <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-phone">Cell Number' + (reqPhone ? ' <span style="color:#ff8a8a;">*</span>' : '') + '</label><input class="bm-rsvp-input" type="tel" id="bm-phone" placeholder="(504) 555-0000"' + (reqPhone ? ' required' : '') + '/></div>' : '',
 (showEmail || showPhone) ? '      </div>' : '',
 // Address (street → city/state → zip is natural geographic order)
-showAddress ? '      <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-address">Street Address</label><input class="bm-rsvp-input" type="text" id="bm-address" placeholder="123 Main St"/></div>' : '',
+showAddress ? '      <div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-address">Street Address' + (reqAddr ? ' <span style="color:#ff8a8a;">*</span>' : '') + '</label><input class="bm-rsvp-input" type="text" id="bm-address" placeholder="123 Main St"' + (reqAddr ? ' required' : '') + '/></div>' : '',
 showAddress ? '      <div class="bm-rsvp-row"><div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-city">City</label><input class="bm-rsvp-input" type="text" id="bm-city" placeholder="Metairie"/></div><div class="bm-rsvp-field"><label class="bm-rsvp-label" for="bm-state">State</label><select class="bm-rsvp-select" id="bm-state"><option value="AL">Alabama</option><option value="AK">Alaska</option><option value="AZ">Arizona</option><option value="AR">Arkansas</option><option value="CA">California</option><option value="CO">Colorado</option><option value="CT">Connecticut</option><option value="DE">Delaware</option><option value="FL">Florida</option><option value="GA">Georgia</option><option value="HI">Hawaii</option><option value="ID">Idaho</option><option value="IL">Illinois</option><option value="IN">Indiana</option><option value="IA">Iowa</option><option value="KS">Kansas</option><option value="KY">Kentucky</option><option value="LA" selected>Louisiana</option><option value="ME">Maine</option><option value="MD">Maryland</option><option value="MA">Massachusetts</option><option value="MI">Michigan</option><option value="MN">Minnesota</option><option value="MS">Mississippi</option><option value="MO">Missouri</option><option value="MT">Montana</option><option value="NE">Nebraska</option><option value="NV">Nevada</option><option value="NH">New Hampshire</option><option value="NJ">New Jersey</option><option value="NM">New Mexico</option><option value="NY">New York</option><option value="NC">North Carolina</option><option value="ND">North Dakota</option><option value="OH">Ohio</option><option value="OK">Oklahoma</option><option value="OR">Oregon</option><option value="PA">Pennsylvania</option><option value="RI">Rhode Island</option><option value="SC">South Carolina</option><option value="SD">South Dakota</option><option value="TN">Tennessee</option><option value="TX">Texas</option><option value="UT">Utah</option><option value="VT">Vermont</option><option value="VA">Virginia</option><option value="WA">Washington</option><option value="WV">West Virginia</option><option value="WI">Wisconsin</option><option value="WY">Wyoming</option></select></div></div>' : '',
 // Zip + Guests
 '      <div class="bm-rsvp-row">',
@@ -1604,6 +1730,9 @@ showComment ? '      <div class="bm-rsvp-field"><label class="bm-rsvp-label" for
 '      .join(\', \');',
 '    if (!howToHelp) howToHelp = \'None selected\';',
 '    if (!first || !last) { alert(\'Please fill in your first and last name.\'); return; }',
+(reqEmail ? '    if (!email) { alert(\'Please enter your email address.\'); return; }' : ''),
+(reqPhone ? '    if (!phone) { alert(\'Please enter your phone number.\'); return; }' : ''),
+(reqAddr  ? '    if (!address) { alert(\'Please enter your street address.\'); return; }' : ''),
 '    btn = btn || bmEl(\'bmRsvpSubmit\');',
 '    btn.disabled = true; btn.textContent = \'Submitting…\';',
 '    var payload = { firstName: first, lastName: last, email: email, phone: phone, address: address, city: city, state: state, zip: zip, parish: parish, guests: guests, howToHelp: howToHelp, yardSign: yardsign, endorse: endorse, comment: comment, event: \'' + safeLabel.replace(/'/g, "\\'") + '\' };',
@@ -2820,20 +2949,38 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
     <!-- Registration Form Fields -->
     <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
       <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:12px;">Registration Form Fields</div>
-      <div style="font-size:11px;color:var(--dim);margin-bottom:12px;">Name is always collected. Select additional fields to show on the registration form.</div>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:12px;">Name is always collected. Check a field to show it on the form; toggle <strong>Required</strong> to make it mandatory.</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
-          <input type="checkbox" id="ef-email" checked style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
-          Email Address
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
-          <input type="checkbox" id="ef-phone" checked style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
-          Phone Number
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
-          <input type="checkbox" id="ef-address" checked style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
-          Home Address
-        </label>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;min-width:0;">
+            <input type="checkbox" id="ef-email" checked onchange="evtSyncRequiredToggles()" style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;flex-shrink:0;"/>
+            Email Address
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim);font-weight:700;cursor:pointer;flex-shrink:0;">
+            <input type="checkbox" id="efr-email" style="width:13px;height:13px;accent-color:#d4a843;cursor:pointer;"/>
+            Required
+          </label>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;min-width:0;">
+            <input type="checkbox" id="ef-phone" checked onchange="evtSyncRequiredToggles()" style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;flex-shrink:0;"/>
+            Phone Number
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim);font-weight:700;cursor:pointer;flex-shrink:0;">
+            <input type="checkbox" id="efr-phone" style="width:13px;height:13px;accent-color:#d4a843;cursor:pointer;"/>
+            Required
+          </label>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;min-width:0;">
+            <input type="checkbox" id="ef-address" checked onchange="evtSyncRequiredToggles()" style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;flex-shrink:0;"/>
+            Home Address
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim);font-weight:700;cursor:pointer;flex-shrink:0;">
+            <input type="checkbox" id="efr-address" style="width:13px;height:13px;accent-color:#d4a843;cursor:pointer;"/>
+            Required
+          </label>
+        </div>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
           <input type="checkbox" id="ef-guests" checked style="width:15px;height:15px;accent-color:var(--mint-d);cursor:pointer;"/>
           Number of Guests
@@ -3003,39 +3150,15 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
 <div class="view view-hidden" id="view-canvassing">
   <div class="feat-page-hdr">
     <div class="feat-page-title">Walk Lists &amp; Canvassing</div>
-    <button class="feat-page-btn" onclick="openAddListModal()">&#xff0b; New Walk List</button>
   </div>
-  <div class="feat-stat-row">
-    <div class="feat-stat"><div class="feat-stat-val" id="cs-lists">—</div><div class="feat-stat-lbl">Active Lists</div></div>
-    <div class="feat-stat"><div class="feat-stat-val" id="cs-doors">—</div><div class="feat-stat-lbl">Total Doors</div></div>
-    <div class="feat-stat"><div class="feat-stat-val accent" id="cs-knocked">—</div><div class="feat-stat-lbl">Knocked</div></div>
-    <div class="feat-stat"><div class="feat-stat-val" id="cs-favorable">—</div><div class="feat-stat-lbl">Favorable <span style="font-size:13px;font-weight:600;color:var(--dim);" id="cs-rate"></span></div></div>
-  </div>
-  <!-- Walk lists table -->
-  <div style="padding:0 32px 16px;">
-    <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:10px;">Walk Lists</div>
-    <div id="canvas-lists-wrap" class="feat-table-wrap" style="margin-bottom:28px;">
-      <table>
-        <thead><tr><th>List Name</th><th>Area</th><th>Assigned To</th><th>Doors</th><th>Progress</th><th>Favorable</th><th></th></tr></thead>
-        <tbody id="canvas-lists-tbody"><tr><td colspan="7" class="empty">No walk lists yet.</td></tr></tbody>
-      </table>
-    </div>
-    <!-- Door log for selected list -->
-    <div id="canvas-doors-section" style="display:none;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
-        <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;" id="canvas-door-list-name">Doors</div>
-        <button onclick="openAddDoorModal()" style="font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;background:var(--mint);color:var(--navy);border:none;border-radius:2px;padding:5px 12px;cursor:pointer;">&#xff0b; Add Door</button>
-        <button onclick="openImportModal()" style="font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;background:var(--navy);color:#fff;border:none;border-radius:2px;padding:5px 12px;cursor:pointer;">&#8679; Import CSV</button>
-        <button onclick="closeDoorSection()" style="font-size:9px;font-weight:700;color:var(--dim);background:none;border:none;cursor:pointer;margin-left:auto;">&#x2715; Close</button>
+  <div style="padding:48px 32px 60px;">
+    <div style="max-width:560px;margin:0 auto;text-align:center;background:var(--white);border:1px solid var(--border);border-radius:8px;padding:56px 40px;">
+      <div style="width:58px;height:58px;margin:0 auto 22px;border-radius:50%;background:rgba(120,224,196,.14);display:flex;align-items:center;justify-content:center;">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2e9e7e" stroke-width="2.2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
       </div>
-      <!-- Door grid visualization -->
-      <div id="canvas-door-grid" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:14px;"></div>
-      <div class="feat-table-wrap">
-        <table>
-          <thead><tr><th>Address</th><th>Voter Name</th><th>Result</th><th>Volunteer</th><th>Notes</th><th></th></tr></thead>
-          <tbody id="canvas-doors-tbody"></tbody>
-        </table>
-      </div>
+      <div style="font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:var(--mint-d);font-weight:800;margin-bottom:10px;">Coming Soon</div>
+      <div style="font-family:'Playfair Display',Georgia,serif;font-size:26px;color:var(--navy);margin-bottom:12px;">Canvassing &amp; Walk Lists</div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.7;max-width:430px;margin:0 auto;">Door-to-door walk lists, turf, and live canvass results are on the way &mdash; with every door-knock tied back to a contact record. Check back soon.</p>
     </div>
   </div>
 </div>
@@ -3131,6 +3254,8 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
     <div class="modal-title" style="margin-bottom:20px;">Record Donation</div>
     <div class="modal-field">
       <label class="modal-label">Donor Name</label>
+      <input class="modal-input" id="don-donor-name" type="text" placeholder="e.g. Jane Doe or Acme PAC" autocomplete="off" style="margin-bottom:14px;"/>
+      <label class="modal-label">Link to Contact <span style="font-weight:500;color:var(--dim);text-transform:none;letter-spacing:0;">(optional)</span></label>
       <div class="don-ac-wrap">
         <input class="modal-input" id="don-name" type="text" placeholder="Search existing contacts…" autocomplete="off" oninput="donAcSearch(this.value)" onkeydown="donAcKey(event)"/>
         <div class="don-ac-drop" id="don-ac-drop"></div>
@@ -4255,6 +4380,8 @@ function deleteEndorsement(id) {
 var _listData = [];
 var _activeDoorListId = null;
 function buildCanvassingView() {
+  // Canvassing is "Coming Soon" — its table elements no longer exist, so bail.
+  if (!document.getElementById('canvas-lists-tbody')) return;
   fetch('/admin/walk-lists').then(function(r){ return r.json(); }).then(function(lists) {
     _listData = lists;
     var totalDoors    = lists.reduce(function(s,l){ return s + (l._total||0); }, 0);
@@ -4722,6 +4849,7 @@ function syncTimeChips() {
 // ── Event Management Functions ─────────────────────────────────────────
 var EVT_FIELD_KEYS = ['email','phone','address','guests','yard_sign','endorse','how_to_help','comment'];
 var EVT_FIELD_DEFAULTS = { email:true, phone:true, address:true, guests:true, yard_sign:true, endorse:true, how_to_help:true, comment:true };
+var EVT_REQ_KEYS = ['email','phone','address']; // fields that can be toggled "required"
 
 function evtSetFieldCheckboxes(fields) {
   var cfg = fields || EVT_FIELD_DEFAULTS;
@@ -4729,6 +4857,12 @@ function evtSetFieldCheckboxes(fields) {
     var el = document.getElementById('ef-' + k);
     if (el) el.checked = cfg[k] !== undefined ? !!cfg[k] : !!EVT_FIELD_DEFAULTS[k];
   });
+  var req = (fields && fields.required) || {};
+  EVT_REQ_KEYS.forEach(function(k) {
+    var el = document.getElementById('efr-' + k);
+    if (el) el.checked = !!req[k];
+  });
+  evtSyncRequiredToggles();
 }
 function evtReadFieldCheckboxes() {
   var cfg = {};
@@ -4736,7 +4870,25 @@ function evtReadFieldCheckboxes() {
     var el = document.getElementById('ef-' + k);
     cfg[k] = el ? el.checked : !!EVT_FIELD_DEFAULTS[k];
   });
+  cfg.required = {};
+  EVT_REQ_KEYS.forEach(function(k) {
+    var el = document.getElementById('efr-' + k);
+    cfg.required[k] = !!(el && el.checked && cfg[k]); // required only if also shown
+  });
   return cfg;
+}
+// Grey out and clear a "Required" toggle when its field isn't shown — you
+// cannot require a field that isn't on the form.
+function evtSyncRequiredToggles() {
+  EVT_REQ_KEYS.forEach(function(k) {
+    var show = document.getElementById('ef-' + k);
+    var req  = document.getElementById('efr-' + k);
+    if (!show || !req) return;
+    req.disabled = !show.checked;
+    if (!show.checked) req.checked = false;
+    var wrap = req.closest('label');
+    if (wrap) wrap.style.opacity = show.checked ? '1' : '0.4';
+  });
 }
 
 function openNewEventModal() {
@@ -4891,6 +5043,7 @@ function donAcSearch(q) {
 }
 function donAcPick(id, name) {
   document.getElementById('don-name').value = name;
+  document.getElementById('don-donor-name').value = name;
   document.getElementById('don-contact-id').value = id;
   document.getElementById('don-ac-drop').classList.remove('open');
 }
@@ -4967,6 +5120,7 @@ function openDonationModal() {
   overlay.style.display = 'flex';
   var today = new Date().toISOString().slice(0,10);
   document.getElementById('don-date').value = today;
+  document.getElementById('don-donor-name').value = '';
   document.getElementById('don-name').value = '';
   document.getElementById('don-contact-id').value = '';
   document.getElementById('don-amount').value = '';
@@ -4990,7 +5144,7 @@ function donTenderChange(val) {
   }
 }
 function saveDonation() {
-  var name       = document.getElementById('don-name').value.trim();
+  var name       = document.getElementById('don-donor-name').value.trim();
   var contactId  = document.getElementById('don-contact-id').value;
   var amount     = document.getElementById('don-amount').value.trim();
   var date       = document.getElementById('don-date').value;
@@ -6454,6 +6608,7 @@ function paint(d) {
             return "<div class='don-row'>" +
               "<span class='don-row-date'>" + dateStr + "</span>" +
               "<span class='don-row-amt'>" + amt + "</span>" +
+              "<span class='don-row-donor' style='font-size:12px;color:var(--navy);font-weight:600;'>" + xe(g.donor_name || "—") + "</span>" +
               "<span class='don-row-badge'>" + (g.source || "—") + "</span>" +
               "<span class='don-row-method' style='color:var(--dim);font-size:11px;'>" + tender + "</span>" +
               "</div>";

@@ -4178,10 +4178,22 @@ function buildDonationsView() {
       var dateStr = r.date ? new Date(r.date + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '—';
       var tenderLabel = r.tender_type || '—';
       if (r.tender_type === 'Check' && r.check_number) tenderLabel = 'Check #' + r.check_number;
-      // Donor name links to the contact profile when the gift is linked to one.
-      var donorCell = r.contact_id
-        ? '<a href="/admin/constituent/' + r.contact_id + '" class="c-name" style="color:var(--navy);text-decoration:none;border-bottom:1px solid var(--mint);">' + x(r.donor_name||'—') + '</a>'
-        : '<div class="c-name">' + x(r.donor_name||'—') + '</div>';
+      // Donor cell: when linked to a contact, lead with the contact's name
+      // (clickable → their account) and show a separately-typed Donor Name
+      // beside it. Unlinked gifts just show the typed donor name.
+      var typed = (r.donor_name||'').trim();
+      var linked = r.contact_id ? all.find(function(c){ return Number(c.id) === Number(r.contact_id); }) : null;
+      var donorCell;
+      if (r.contact_id) {
+        var cn = linked ? ((linked.first_name||'') + ' ' + (linked.last_name||'')).trim() : '';
+        var primary = cn || typed || '—';
+        var extra = (cn && typed && typed.toLowerCase() !== cn.toLowerCase())
+          ? '<span style="color:var(--dim);font-weight:400;font-size:11px;margin-left:7px;">&middot; ' + x(typed) + '</span>'
+          : '';
+        donorCell = '<a href="/admin/constituent/' + r.contact_id + '" class="c-name" style="color:var(--navy);text-decoration:none;border-bottom:1px solid var(--mint);">' + x(primary) + '</a>' + extra;
+      } else {
+        donorCell = '<div class="c-name">' + x(typed||'—') + '</div>';
+      }
       return '<tr>' +
         '<td>' + donorCell + '</td>' +
         '<td><span style="font-weight:800;color:var(--mint-d);font-size:13px;">' + amtStr + '</span></td>' +
@@ -5128,7 +5140,10 @@ function donAcSearch(q) {
 }
 function donAcPick(id, name) {
   document.getElementById('don-name').value = name;
-  document.getElementById('don-donor-name').value = name;
+  // Only auto-fill Donor Name if it's still blank — preserve a separately typed
+  // donor (e.g. "Claverie Creative LLC") so it can show beside the contact.
+  var dn = document.getElementById('don-donor-name');
+  if (dn && !dn.value.trim()) dn.value = name;
   document.getElementById('don-contact-id').value = id;
   document.getElementById('don-ac-drop').classList.remove('open');
 }

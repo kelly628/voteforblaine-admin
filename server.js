@@ -195,6 +195,18 @@ const TS = `to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')`;
     anedot_id TEXT, tender_type TEXT, check_number TEXT,
     created_at TEXT DEFAULT ${TS}
   )`);
+  // Undo safety net for contact merges: a before-state snapshot per merge.
+  await pool.query(`CREATE TABLE IF NOT EXISTS merge_log (
+    id SERIAL PRIMARY KEY, survivor_id INTEGER,
+    summary TEXT, snapshot TEXT,
+    created_at TEXT DEFAULT ${TS}
+  )`);
+  // Running admin notes log — staff notes, separate from the registrant's own comment.
+  await pool.query(`CREATE TABLE IF NOT EXISTS contact_notes (
+    id SERIAL PRIMARY KEY, contact_id INTEGER NOT NULL,
+    body TEXT NOT NULL, author TEXT,
+    created_at TEXT DEFAULT ${TS}
+  )`);
   await pool.query(`UPDATE rsvps SET role='Voter' WHERE role IS NULL OR role=''`);
   const upRows = await dbAll("SELECT id, zip FROM rsvps WHERE zip IS NOT NULL AND zip != '' AND (parish IS NULL OR parish='')");
   for (const r of upRows) { if (BP[r.zip]) await dbRun('UPDATE rsvps SET parish=? WHERE id=?', [BP[r.zip], r.id]); }
@@ -693,7 +705,7 @@ app.get('/admin/contacts/search', async (req, res) => {
   const like = '%' + q + '%';
   const rows = await dbAll(
     `SELECT id, first_name, last_name, email FROM rsvps
-     WHERE first_name LIKE ? OR last_name LIKE ? OR email LIKE ?
+     WHERE first_name ILIKE ? OR last_name ILIKE ? OR email ILIKE ?
      LIMIT 8`,
     [like, like, like]
   );
@@ -965,6 +977,203 @@ app.delete('/admin/constituents/bulk', async (req, res) => {
   } catch(err) {
     console.error('[bulk-delete]', err.message);
     res.status(500).json({ result: 'error' });
+  }
+});
+
+// ── Duplicate contacts: find + merge ──────────────────────────────────
+// A "duplicate" = two+ rsvps rows that upsertContact would treat as the
+// same person: same email (case-insensitive, non-blank) AND same first +
+// last name. Spouses share an inbox but have different names, so they are
+// never flagged. Each group returns its rows plus how many donations /
+// endorsements are attached to each, to help pick which one to keep.
+app.get('/admin/duplicates', adminOnly, async (req, res) => {
+  try {
+    const rows = await dbAll('SELECT * FROM rsvps ORDER BY created_at ASC');
+    const dons = await dbAll('SELECT contact_id, amount FROM donations WHERE contact_id IS NOT NULL');
+    const ends = await dbAll('SELECT contact_id FROM endorsements WHERE contact_id IS NOT NULL');
+    const donBy = {}, endBy = {};
+    dons.forEach(function(d){ const k = Number(d.contact_id); if (!donBy[k]) donBy[k] = { n:0, sum:0 }; donBy[k].n++; donBy[k].sum += parseFloat(d.amount) || 0; });
+    ends.forEach(function(e){ const k = Number(e.contact_id); endBy[k] = (endBy[k] || 0) + 1; });
+    const groups = {};
+    for (const r of rows) {
+      const email = (r.email || '').trim().toLowerCase();
+      const fn = (r.first_name || '').trim().toLowerCase();
+      const ln = (r.last_name || '').trim().toLowerCase();
+      if (!email || (!fn && !ln)) continue;   // need an email + a name to match safely
+      const key = email + '|' + fn + '|' + ln;
+      (groups[key] = groups[key] || []).push(r);
+    }
+    const out = Object.keys(groups).filter(function(k){ return groups[k].length > 1; }).map(function(k){
+      return { key: k, rows: groups[k].map(function(r){
+        return Object.assign({}, r, {
+          _donCount: (donBy[Number(r.id)] || {}).n || 0,
+          _donTotal: (donBy[Number(r.id)] || {}).sum || 0,
+          _endCount: endBy[Number(r.id)] || 0
+        });
+      }) };
+    });
+    res.json({ result: 'ok', groups: out });
+  } catch (e) {
+    console.error('[duplicates]', e.message);
+    res.status(500).json({ result: 'error', msg: e.message });
+  }
+});
+
+// Merge loserIds into survivorId: survivor's own non-blank values win,
+// blanks fill from the losers; role + how-to-help union; any "Yes" flag
+// sticks; comments append. Then move every donation + endorsement to the
+// survivor and delete the loser rows. All-or-nothing in a transaction.
+app.post('/admin/contacts/merge', adminOnly, async (req, res) => {
+  const survivorId = Number(req.body.survivorId);
+  const loserIds = Array.isArray(req.body.loserIds)
+    ? req.body.loserIds.map(Number).filter(function(n){ return n && n !== survivorId; })
+    : [];
+  if (!survivorId || !loserIds.length) return res.status(400).json({ result: 'error', msg: 'Need a survivor and at least one other record.' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const sRes = await client.query('SELECT * FROM rsvps WHERE id=$1', [survivorId]);
+    const m = sRes.rows[0];
+    if (!m) throw new Error('Kept contact not found');
+    const lRes = await client.query('SELECT * FROM rsvps WHERE id = ANY($1::int[])', [loserIds]);
+    const losers = lRes.rows;
+    if (!losers.length) throw new Error('No matching records to merge');
+    // Snapshot the BEFORE state for undo: the keeper as it stands now, the full
+    // loser rows, and which donations/endorsements are about to be reassigned.
+    const survivorBefore = Object.assign({}, m);
+    const movedDons = (await client.query('SELECT id, contact_id FROM donations WHERE contact_id = ANY($1::int[])', [loserIds])).rows;
+    const movedEnds = (await client.query('SELECT id, contact_id FROM endorsements WHERE contact_id = ANY($1::int[])', [loserIds])).rows;
+    const movedNotes = (await client.query('SELECT id, contact_id FROM contact_notes WHERE contact_id = ANY($1::int[])', [loserIds])).rows;
+    for (const L of losers) {
+      m.first_name = _pick(m.first_name, L.first_name);
+      m.last_name  = _pick(m.last_name,  L.last_name);
+      m.email      = _pick(m.email,      L.email);
+      m.phone      = _pick(m.phone,      L.phone);
+      m.address    = _pick(m.address,    L.address);
+      m.city       = _pick(m.city,       L.city);
+      m.state      = _pick(m.state,      L.state);
+      m.zip        = _pick(m.zip,        L.zip);
+      m.parish     = _pick(m.parish,     L.parish);
+      m.company    = _pick(m.company,    L.company);
+      m.guests     = _pick(m.guests,     L.guests);
+      m.guest_names = _pick(m.guest_names, L.guest_names);
+      // event is reconciled after the loop (preserves multi-event history)
+      m.pipeline_stage   = _pick(m.pipeline_stage, L.pipeline_stage);
+      m.volunteer_role   = _pick(m.volunteer_role, L.volunteer_role);
+      m.volunteer_status = _pick(m.volunteer_status, L.volunteer_status);
+      m.volunteer_hours  = Math.max(parseInt(m.volunteer_hours) || 0, parseInt(L.volunteer_hours) || 0);
+      m.how_to_help = _mergeList(m.how_to_help, L.how_to_help, ['None selected']);
+      m.role        = _mergeList(m.role, L.role) || m.role || 'Voter';
+      m.comment     = _mergeComment(m.comment, L.comment);
+      m.yard_sign   = (m.yard_sign === 'Yes' || L.yard_sign === 'Yes') ? 'Yes' : _pick(m.yard_sign, L.yard_sign);
+      m.endorse     = (m.endorse === 'Yes' || L.endorse === 'Yes') ? 'Yes' : _pick(m.endorse, L.endorse);
+      m.yard_sign_delivered = (m.yard_sign_delivered === 'Yes' || L.yard_sign_delivered === 'Yes') ? 'Yes' : _pick(m.yard_sign_delivered, L.yard_sign_delivered);
+      m.lat = (m.lat != null) ? m.lat : L.lat;
+      m.lng = (m.lng != null) ? m.lng : L.lng;
+    }
+    // Preserve event history: keep the survivor's primary event, but if the
+    // merged rows attended different events, record the extras in the comment
+    // (rsvps holds one event per row; "Events Attended" is stitched by email).
+    const _allEvents = [];
+    [m].concat(losers).forEach(function(rec){
+      const ev = (rec.event || '').trim();
+      if (ev && _allEvents.map(function(s){ return s.toLowerCase(); }).indexOf(ev.toLowerCase()) === -1) _allEvents.push(ev);
+    });
+    m.event = _allEvents[0] || '';
+    if (_allEvents.length > 1) m.comment = _mergeComment(m.comment, 'Also attended: ' + _allEvents.slice(1).join(', '));
+    // Save the undo snapshot inside the same transaction (all-or-nothing).
+    const _mergeSummary = 'Merged ' + losers.length + ' duplicate' + (losers.length > 1 ? 's' : '') + ' — ' + losers.map(function(l){ return ((l.first_name||'') + ' ' + (l.last_name||'')).trim() + ' #' + l.id; }).join(', ');
+    await client.query('INSERT INTO merge_log (survivor_id, summary, snapshot) VALUES ($1,$2,$3)',
+      [survivorId, _mergeSummary, JSON.stringify({ survivor: survivorBefore, losers: losers, donations: movedDons, endorsements: movedEnds, notes: movedNotes })]);
+    await client.query(
+      'UPDATE rsvps SET first_name=$1,last_name=$2,email=$3,phone=$4,address=$5,city=$6,state=$7,zip=$8,parish=$9,company=$10,guests=$11,guest_names=$12,how_to_help=$13,role=$14,event=$15,comment=$16,yard_sign=$17,yard_sign_delivered=$18,endorse=$19,pipeline_stage=$20,volunteer_role=$21,volunteer_hours=$22,volunteer_status=$23,lat=$24,lng=$25 WHERE id=$26',
+      [m.first_name,m.last_name,m.email,m.phone,m.address,m.city,m.state,m.zip,m.parish,m.company,m.guests,m.guest_names,m.how_to_help,m.role,m.event,m.comment,m.yard_sign,m.yard_sign_delivered,m.endorse,m.pipeline_stage,m.volunteer_role,m.volunteer_hours,m.volunteer_status,m.lat,m.lng,survivorId]
+    );
+    const dRes = await client.query('UPDATE donations SET contact_id=$1 WHERE contact_id = ANY($2::int[])', [survivorId, loserIds]);
+    const eRes = await client.query('UPDATE endorsements SET contact_id=$1 WHERE contact_id = ANY($2::int[])', [survivorId, loserIds]);
+    await client.query('UPDATE contact_notes SET contact_id=$1 WHERE contact_id = ANY($2::int[])', [survivorId, loserIds]);
+    await client.query('DELETE FROM rsvps WHERE id = ANY($1::int[])', [loserIds]);
+    await client.query('COMMIT');
+    res.json({ result: 'success', survivorId: survivorId, merged: losers.length, donationsMoved: dRes.rowCount, endorsementsMoved: eRes.rowCount });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('[merge]', e.message);
+    res.status(500).json({ result: 'error', msg: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// Merge history for one contact (the survivor side) — powers the profile card.
+app.get('/admin/constituent/:id/merges', adminOnly, async (req, res) => {
+  try {
+    const rows = await dbAll('SELECT id, summary, created_at FROM merge_log WHERE survivor_id=? ORDER BY id DESC', [req.params.id]);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ result: 'error', msg: e.message }); }
+});
+
+// ── Admin notes log for a contact (separate from the registrant's comment) ──
+app.get('/admin/constituent/:id/notes', adminOnly, async (req, res) => {
+  try {
+    const rows = await dbAll('SELECT id, body, author, created_at FROM contact_notes WHERE contact_id=? ORDER BY id DESC', [req.params.id]);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ result: 'error', msg: e.message }); }
+});
+app.post('/admin/constituent/:id/notes', adminOnly, async (req, res) => {
+  const body = (req.body.body || '').trim();
+  const author = (req.body.author || '').trim().slice(0, 60);
+  if (!body) return res.status(400).json({ result: 'error', msg: 'Note is empty.' });
+  try {
+    const r = await dbRun('INSERT INTO contact_notes (contact_id, body, author) VALUES (?,?,?)', [req.params.id, body, author]);
+    const note = await dbGet('SELECT id, body, author, created_at FROM contact_notes WHERE id=?', [r.lastInsertRowid]);
+    res.json({ result: 'success', note: note });
+  } catch (e) { res.status(500).json({ result: 'error', msg: e.message }); }
+});
+app.delete('/admin/notes/:noteId', adminOnly, async (req, res) => {
+  try {
+    await dbRun('DELETE FROM contact_notes WHERE id=?', [req.params.noteId]);
+    res.json({ result: 'success' });
+  } catch (e) { res.status(500).json({ result: 'error', msg: e.message }); }
+});
+
+// Undo a merge: from the snapshot, recreate the deleted records, revert the
+// keeper's prior values, move donations/endorsements back, drop the log row —
+// all in one transaction so it's all-or-nothing.
+app.post('/admin/merges/:id/undo', adminOnly, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const logRow = (await client.query('SELECT * FROM merge_log WHERE id=$1', [req.params.id])).rows[0];
+    if (!logRow) throw new Error('Merge record not found');
+    const snap = JSON.parse(logRow.snapshot || '{}');
+    // 1. Recreate each deleted loser row with its original id + columns.
+    for (const L of (snap.losers || [])) {
+      const cols = Object.keys(L);
+      if (!cols.length) continue;
+      const ph = cols.map(function(_, i){ return '$' + (i + 1); });
+      await client.query('INSERT INTO rsvps (' + cols.join(',') + ') VALUES (' + ph.join(',') + ') ON CONFLICT (id) DO NOTHING', cols.map(function(c){ return L[c]; }));
+    }
+    // 2. Revert the keeper to its pre-merge values.
+    if (snap.survivor && snap.survivor.id) {
+      const s = snap.survivor;
+      const cols = Object.keys(s).filter(function(c){ return c !== 'id'; });
+      const set = cols.map(function(c, i){ return c + '=$' + (i + 1); }).join(',');
+      await client.query('UPDATE rsvps SET ' + set + ' WHERE id=$' + (cols.length + 1), cols.map(function(c){ return s[c]; }).concat([s.id]));
+    }
+    // 3. Move donations + endorsements back to their original records.
+    for (const d of (snap.donations || [])) await client.query('UPDATE donations SET contact_id=$1 WHERE id=$2', [d.contact_id, d.id]);
+    for (const en of (snap.endorsements || [])) await client.query('UPDATE endorsements SET contact_id=$1 WHERE id=$2', [en.contact_id, en.id]);
+    for (const nt of (snap.notes || [])) await client.query('UPDATE contact_notes SET contact_id=$1 WHERE id=$2', [nt.contact_id, nt.id]);
+    // 4. Drop the log entry — the merge is undone.
+    await client.query('DELETE FROM merge_log WHERE id=$1', [req.params.id]);
+    await client.query('COMMIT');
+    res.json({ result: 'success', restored: (snap.losers || []).length });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('[merge-undo]', e.message);
+    res.status(500).json({ result: 'error', msg: e.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -1786,7 +1995,7 @@ function adminHTML(baseUrl, opts) {
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>${isCand ? 'Candidate View' : 'Campaign Admin'} — Blaine Moncrief</title>
-${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donations,#act-new-donation,#mob-new-donation,#exp-row-donors{display:none!important;}</style>' : ''}
+${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donations,#act-new-donation,#mob-new-donation,#exp-row-donors,#act-find-dupes{display:none!important;}</style>' : ''}
 <style>${BASE_CSS}
   .stats { grid-template-columns: repeat(4,1fr); }
   .badge-ood {
@@ -2106,6 +2315,20 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
   .exp-overlay { display:none;position:fixed;inset:0;z-index:200;background:rgba(9,37,79,.6);align-items:center;justify-content:center;padding:20px; }
   .exp-overlay.open { display:flex; }
   .exp-modal { background:#fff;border-radius:6px;width:100%;max-width:400px;padding:32px 36px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.25); }
+  /* Find Duplicates modal */
+  .dup-group { border:1px solid var(--border); border-radius:8px; padding:16px 18px; margin-bottom:16px; background:var(--bg); }
+  .dup-group-lbl { font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); font-weight:700; margin-bottom:10px; }
+  .dup-rec { display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1px solid var(--border); border-radius:6px; margin-bottom:8px; cursor:pointer; background:#fff; transition:border-color .12s; }
+  .dup-rec:hover { border-color:var(--mint-d); }
+  .dup-rec > input { margin-top:3px; accent-color:#78E0C4; flex-shrink:0; }
+  .dup-rec-main { flex:1; min-width:0; }
+  .dup-rec-name { font-size:13px; font-weight:700; color:var(--navy); display:block; }
+  .dup-rec-id { font-size:10px; color:var(--dim); font-weight:600; }
+  .dup-rec-sub { font-size:11px; color:var(--muted); margin-top:2px; display:block; word-break:break-word; }
+  .dup-rec-meta { font-size:10px; color:var(--dim); margin-top:3px; display:block; }
+  .dup-merge-btn { margin-top:6px; background:var(--mint); color:var(--navy); border:none; padding:9px 20px; border-radius:4px; font-size:11px; font-weight:800; letter-spacing:1px; text-transform:uppercase; font-family:'Montserrat',sans-serif; cursor:pointer; transition:background .15s; }
+  .dup-merge-btn:hover { background:#5fd4b0; }
+  .dup-merge-btn:disabled { opacity:.6; cursor:not-allowed; }
   .exp-row { display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border); }
   .exp-row:last-child { border-bottom:none; }
   .exp-lbl { font-size:12px;font-weight:700;color:var(--navy); }
@@ -2373,6 +2596,9 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
     position: fixed; top: 0; left: 0; bottom: 0; z-index: 50;
     overflow-y: auto;
   }
+  .left-nav-foot { margin-top:auto; display:flex; align-items:center; gap:8px; padding:13px 18px 16px; cursor:pointer; color:rgba(255,255,255,.42); font-size:10.5px; font-weight:600; letter-spacing:.4px; border-top:1px solid rgba(255,255,255,.07); transition:color .15s; }
+  .left-nav-foot:hover { color: var(--mint); }
+  .left-nav-foot svg { width:13px; height:13px; opacity:.75; flex-shrink:0; }
   .left-nav-top {
     padding: 20px 20px 18px;
     border-bottom: 1px solid rgba(255,255,255,.10);
@@ -2641,6 +2867,10 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
       Exports
     </button>
   </div>
+  <div class="left-nav-foot" onclick="wnReview()" title="See what's new">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+    <span>Updated Jun 3, 2026</span>
+  </div>
 </nav>
 
 <!-- ══════════════════════════════════════════════
@@ -2705,6 +2935,82 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
 <!-- ══════════════════════════════════════════════
      MAIN CONTENT AREA
 ═══════════════════════════════════════════════ -->
+<!-- ══════════ WHAT'S NEW (login changelog, staff only) ══════════ -->
+<style>
+  .wn-overlay{display:none; position:fixed; inset:0; z-index:300; background:rgba(7,20,40,.62); align-items:center; justify-content:center; padding:20px;}
+  .wn-overlay.open{display:flex;}
+  .wn-card{background:#fff; border-radius:14px; width:100%; max-width:440px; box-shadow:0 30px 80px rgba(0,0,0,.45); max-height:92vh; overflow-y:auto; position:relative;}
+  .wn-close{position:absolute; top:12px; right:14px; width:28px; height:28px; border:none; background:rgba(255,255,255,.16); color:#fff; border-radius:50%; font-size:17px; line-height:1; cursor:pointer; align-items:center; justify-content:center; z-index:2;}
+  .wn-close:hover{background:rgba(255,255,255,.3);}
+  .wn-head{background:var(--navy); padding:24px 28px 20px;}
+  .wn-eyebrow{font-size:10px; letter-spacing:2.5px; text-transform:uppercase; font-weight:700; color:var(--mint);}
+  .wn-title{font-family:'Playfair Display',Georgia,serif; font-weight:700; color:#fff; font-size:23px; margin:8px 0 4px; line-height:1.15;}
+  .wn-sub{color:rgba(255,255,255,.6); font-size:11.5px;}
+  .wn-list{padding:8px 28px 4px;}
+  .wn-it{display:flex; gap:13px; align-items:flex-start; padding:12px 0; border-bottom:1px solid var(--border);}
+  .wn-it:last-child{border-bottom:none;}
+  .wn-tx{flex:1; min-width:0;}
+  .wn-ic{flex-shrink:0; width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center; background:rgba(120,224,196,.16); color:var(--mint-d); border:1px solid rgba(120,224,196,.32);}
+  .wn-ic svg{width:17px; height:17px;}
+  .wn-it h4{margin:0; font-size:13.5px; color:var(--navy); font-weight:700;}
+  .wn-it p{margin:3px 0 0; font-size:11.5px; color:var(--muted); line-height:1.5;}
+  .wn-foot{padding:16px 28px 22px; background:#f7f9fc; display:flex; flex-direction:column; gap:13px;}
+  .wn-ack{display:flex; align-items:center; gap:10px; cursor:pointer; user-select:none;}
+  .wn-ack input{position:absolute; opacity:0; width:0; height:0;}
+  .wn-box{width:20px; height:20px; border-radius:6px; border:2px solid #cfd6e3; background:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all .15s;}
+  .wn-box svg{width:12px; height:12px; color:#fff; opacity:0;}
+  .wn-ack input:checked + .wn-box{background:var(--mint-d); border-color:var(--mint-d);}
+  .wn-ack input:checked + .wn-box svg{opacity:1;}
+  .wn-ack .wn-lbl{font-size:12.5px; color:var(--navy); font-weight:600;}
+  .wn-btn{width:100%; border:none; border-radius:9px; padding:13px; font-family:'Montserrat',sans-serif; font-size:12px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase; cursor:pointer; transition:all .18s; background:#e7ebf2; color:#9aa7bd;}
+  .wn-btn.ready{background:var(--mint); color:var(--navy);}
+  .wn-btn:disabled{cursor:not-allowed;}
+</style>
+<div class="wn-overlay" id="wn-overlay">
+  <div class="wn-card">
+    <button class="wn-close" id="wn-close" aria-label="Close" onclick="wnClose()" style="display:none;">&#215;</button>
+    <div class="wn-head">
+      <div class="wn-eyebrow">What's New</div>
+      <div class="wn-title">A few upgrades to your CRM</div>
+      <div class="wn-sub">June 2026 &middot; 5 updates</div>
+    </div>
+    <div class="wn-list">
+      <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/></svg></div><div class="wn-tx"><h4>Search ignores capitals</h4><p>Type smith or Smith and you reach the same person every time.</p></div></div>
+      <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg></div><div class="wn-tx"><h4>Contacts sort A to Z</h4><p>Your list is alphabetical by default. Click Date or Name to re-sort.</p></div></div>
+      <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></svg></div><div class="wn-tx"><h4>Filter by role</h4><p>Show just attorneys, committee, volunteers, endorsers, or sign requests.</p></div></div>
+      <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg></div><div class="wn-tx"><h4>Notes on any contact</h4><p>Open a profile and jot what you need, saved right on their record.</p></div></div>
+      <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg></div><div class="wn-tx"><h4>Find and merge duplicates</h4><p>Combine the same person in one click, with an undo if you change your mind.</p></div></div>
+    </div>
+    <div class="wn-foot" id="wn-foot">
+      <label class="wn-ack"><input type="checkbox" id="wn-ack-box"><span class="wn-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><span class="wn-lbl">I've reviewed these updates</span></label>
+      <button class="wn-btn" id="wn-btn" disabled onclick="wnConfirm()">Got it, enter the CRM</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var VERSION = 'jun-2026-a';   // bump this AND the sidebar "Updated" date for the next changelog
+  var ov = document.getElementById('wn-overlay');
+  var box = document.getElementById('wn-ack-box');
+  var btn = document.getElementById('wn-btn');
+  var foot = document.getElementById('wn-foot');
+  var closeX = document.getElementById('wn-close');
+  if (!ov) return;
+  if (box && btn) box.addEventListener('change', function(){ btn.disabled = !box.checked; btn.classList.toggle('ready', box.checked); });
+  window.wnConfirm = function(){ try { localStorage.setItem('vfb_whatsnew', VERSION); } catch(e){} ov.classList.remove('open'); };
+  window.wnClose = function(){ ov.classList.remove('open'); };
+  // Re-open from the sidebar "Updated" link: dismissible, no acknowledgment needed.
+  window.wnReview = function(){ if (foot) foot.style.display = 'none'; if (closeX) closeX.style.display = 'flex'; ov.classList.add('open'); };
+  ov.addEventListener('click', function(e){ if (e.target === ov && closeX && closeX.style.display !== 'none') wnClose(); });
+  // Auto-show on login: gated (must acknowledge), staff only, until they've seen this version.
+  var seen = false; try { seen = (localStorage.getItem('vfb_whatsnew') === VERSION); } catch(e){}
+  if (!(${isCand ? 'true' : 'false'}) && !seen) {
+    function gate(){ if (foot) foot.style.display = ''; if (closeX) closeX.style.display = 'none'; ov.classList.add('open'); }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', gate); else gate();
+  }
+})();
+</script>
+
 <div class="admin-main">
 
 <header class="hdr" style="position:sticky;top:0;z-index:40;">
@@ -2840,6 +3146,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
     </div>
     <button class="feat-page-btn" onclick="openAddPerson()">&#xff0b; New Contact</button>
     <button class="feat-page-btn" style="background:var(--bg);color:var(--navy);border:1px solid var(--border);" onclick="openImportContacts()">&#8679; Import</button>
+    <button class="feat-page-btn" id="act-find-dupes" style="background:var(--bg);color:var(--navy);border:1px solid var(--border);" onclick="openDuplicatesModal()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Find Duplicates</button>
     <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);text-decoration:none;" href="/admin/export.csv" download>&#8595; Export</a>
   </div>
 </div>
@@ -2859,6 +3166,14 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
     Out of District
     <span class="dist-chip-count" id="dist-count-ood">—</span>
   </button>
+  <select id="role-filter" onchange="setRoleFilter(this.value)" title="Filter by role or tag" style="margin-left:auto; font-size:11px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:var(--navy); border:1px solid var(--border); border-radius:100px; padding:6px 14px; font-family:'Montserrat',sans-serif; background:var(--bg); cursor:pointer;">
+    <option value="all">All Roles</option>
+    <option value="attorney">Attorneys Only</option>
+    <option value="committee">Committee Members</option>
+    <option value="volunteer">Volunteers</option>
+    <option value="endorser">Endorsers</option>
+    <option value="yardsign">Yard Sign Requests</option>
+  </select>
 </div>
 
 <div class="toolbar">
@@ -2875,8 +3190,8 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
 <table>
   <thead><tr>
     <th class="cb-th"><input type="checkbox" id="sel-all" onchange="onSelectAll(this.checked)" title="Select all"></th>
-    <th>#</th><th>Date</th><th class="th-sortable" id="th-name" onclick="toggleNameSort()" title="Sort by name">Name <span class="sort-arrow" id="sort-arrow-name">↕</span></th><th>Phone</th><th>Address</th>
-    <th>Events</th><th>How to Help</th><th>Yard Sign</th><th>Endorsement</th><th>Comment</th>
+    <th>#</th><th class="th-sortable" id="th-date" onclick="toggleSort('date')" title="Sort by date">Date <span class="sort-arrow" id="sort-arrow-date">↕</span></th><th class="th-sortable sort-asc" id="th-name" onclick="toggleSort('name')" title="Sort by name">Name <span class="sort-arrow" id="sort-arrow-name">↑</span></th><th>Phone</th><th>Address</th>
+    <th>Events</th><th>How to Help</th><th>Yard Sign</th><th>Endorsement</th><th>Notes</th>
   </tr></thead>
   <tbody id="tbody"></tbody>
 </table>
@@ -2884,6 +3199,16 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
 <div style="min-height:200px;"></div>
 </div>
 </div><!-- /view-constituents -->
+
+<!-- ── Find Duplicates Modal ── -->
+<div class="exp-overlay" id="dup-overlay" onclick="if(event.target===this)closeDuplicatesModal()">
+  <div class="exp-modal" style="max-width:720px;max-height:86vh;overflow-y:auto;text-align:left;padding:28px 30px;">
+    <button onclick="closeDuplicatesModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;font-size:22px;line-height:1;color:var(--dim);cursor:pointer;">&#215;</button>
+    <div style="font-family:'Playfair Display',Georgia,serif;font-size:22px;color:var(--navy);margin-bottom:6px;">Find Duplicates</div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:20px;">Contacts that share the same email and name. Pick the record to keep &mdash; its details win, and any blanks are filled in from the others. Donations, endorsements, sign requests, roles, and notes all move to the kept record. This can&rsquo;t be undone.</div>
+    <div id="dup-body"><div style="padding:30px;text-align:center;color:var(--dim);font-size:13px;">Scanning&hellip;</div></div>
+  </div>
+</div>
 
 <!-- ══════════════ EVENT REGISTRATIONS VIEW ══════════════ -->
 <div class="view view-hidden" id="view-events">
@@ -3600,7 +3925,9 @@ var BM_CRM_BASE_URL = '${baseUrl || process.env.PUBLIC_URL || "http://localhost:
 var IS_CANDIDATE = ${isCand};   // candidate view = no financial data
 var all = [];
 var selectedIds = new Set();
-var nameSortDir  = null;    // null | 'asc' | 'desc'
+var sortCol      = 'name';  // 'name' | 'date' — contacts list sort column
+var sortDir      = 'asc';   // 'asc' | 'desc' — default: alphabetical by name
+var activeRole   = 'all';   // role/tag filter: all|attorney|committee|volunteer|endorser|yardsign
 var activeEvent    = null;
 var activeDistrict = 'all'; // 'voters' | 'ood' | 'all'
 var activeEvtFilter = 'all';   // 'all' | event title string
@@ -3674,10 +4001,24 @@ var HELP_ALIASES = {
 
 function filtered() {
   var base = activeEvent ? all.filter(function(r){ return r.event === activeEvent; }) : all;
-  if (activeDistrict === 'voters') return base.filter(isVoter);
-  if (activeDistrict === 'ood')    return base.filter(isOOD);
+  if (activeDistrict === 'voters') base = base.filter(isVoter);
+  else if (activeDistrict === 'ood') base = base.filter(isOOD);
+  if (activeRole && activeRole !== 'all') base = base.filter(roleMatchFn);
   return base;
 }
+
+// Role/tag filter for the contacts list (Attorneys, Committee, Volunteers, etc.)
+function roleMatchFn(r) {
+  switch (activeRole) {
+    case 'attorney':  return (r.role || '').indexOf('Attorney') > -1;
+    case 'committee': return (r.role || '').indexOf('Committee Member') > -1;
+    case 'volunteer': return !!(r.volunteer_role && String(r.volunteer_role).trim());
+    case 'endorser':  return r.endorse === 'Yes';
+    case 'yardsign':  return r.yard_sign === 'Yes';
+    default:          return true;
+  }
+}
+function setRoleFilter(v) { activeRole = v; refresh(); }
 
 function refresh() {
   // Update district chip counts (always off the full set, ignoring event filter)
@@ -3802,14 +4143,18 @@ function render(d) {
   clearSelection();
   if (!d.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
-  // Apply name sort if set
-  if (nameSortDir) {
-    d = d.slice().sort(function(a, b) {
-      var na = ((a.last_name||'') + ' ' + (a.first_name||'')).toLowerCase();
-      var nb = ((b.last_name||'') + ' ' + (b.first_name||'')).toLowerCase();
-      return nameSortDir === 'asc' ? (na < nb ? -1 : na > nb ? 1 : 0) : (na > nb ? -1 : na < nb ? 1 : 0);
-    });
-  }
+  // Apply sort — default is alphabetical by name (sortCol='name', sortDir='asc')
+  d = d.slice().sort(function(a, b) {
+    var av, bv;
+    if (sortCol === 'date') {
+      av = a.created_at || ''; bv = b.created_at || '';
+    } else {
+      av = ((a.last_name||'') + ' ' + (a.first_name||'')).toLowerCase();
+      bv = ((b.last_name||'') + ' ' + (b.first_name||'')).toLowerCase();
+    }
+    var cmp = av < bv ? -1 : av > bv ? 1 : 0;
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
   tbody.innerHTML = d.map(function(r){
     var helps = (r.how_to_help && r.how_to_help!=='None selected')
       ? r.how_to_help.split(',').map(function(h){ return '<span class="tag">'+x(h.trim())+'</span>'; }).join('')
@@ -3887,16 +4232,27 @@ function clearSelection() {
   updateBulkBar();
 }
 
-function toggleNameSort() {
-  nameSortDir = nameSortDir === 'asc' ? 'desc' : 'asc';
-  var th = document.getElementById('th-name');
-  var arrow = document.getElementById('sort-arrow-name');
-  if (th) {
-    th.classList.toggle('sort-asc', nameSortDir === 'asc');
-    th.classList.toggle('sort-desc', nameSortDir === 'desc');
+function toggleSort(col) {
+  if (sortCol === col) {
+    sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortCol = col;
+    sortDir = (col === 'date') ? 'desc' : 'asc';  // dates default newest-first
   }
-  if (arrow) arrow.textContent = nameSortDir === 'asc' ? '↑' : '↓';
+  updateSortArrows();
   refresh();
+}
+function updateSortArrows() {
+  [['name','th-name','sort-arrow-name'], ['date','th-date','sort-arrow-date']].forEach(function(s) {
+    var th = document.getElementById(s[1]);
+    var arrow = document.getElementById(s[2]);
+    var active = (sortCol === s[0]);
+    if (th) {
+      th.classList.toggle('sort-asc',  active && sortDir === 'asc');
+      th.classList.toggle('sort-desc', active && sortDir === 'desc');
+    }
+    if (arrow) arrow.textContent = active ? (sortDir === 'asc' ? '↑' : '↓') : '↕';
+  });
 }
 
 function bulkDelete() {
@@ -4126,6 +4482,98 @@ function openMobSheet() {
 function closeMobSheet() {
   document.getElementById('mob-sheet').classList.remove('open');
   document.getElementById('mob-sheet-overlay').classList.remove('open');
+}
+
+// ── Find Duplicates ───────────────────────────────────────────────────
+var _dupGroups = [];
+function openDuplicatesModal() {
+  document.getElementById('dup-overlay').classList.add('open');
+  loadDuplicates();
+}
+function closeDuplicatesModal() {
+  document.getElementById('dup-overlay').classList.remove('open');
+}
+function loadDuplicates() {
+  var body = document.getElementById('dup-body');
+  body.innerHTML = '<div style="padding:30px;text-align:center;color:var(--dim);font-size:13px;">Scanning&hellip;</div>';
+  fetch('/admin/duplicates').then(function(r){ return r.json(); }).then(function(res){
+    _dupGroups = (res && res.groups) || [];
+    renderDupGroups();
+  }).catch(function(){
+    body.innerHTML = '<div style="padding:24px;text-align:center;color:#b45309;font-size:13px;">Could not load duplicates. Please try again.</div>';
+  });
+}
+function _dupScore(r) {
+  var s = 0;
+  ['phone','address','city','zip','company','comment'].forEach(function(f){ if (r[f] && String(r[f]).trim()) s++; });
+  s += (r._donCount || 0) * 2 + (r._endCount || 0) * 2;
+  if (r.role && r.role.indexOf('Committee') > -1) s++;
+  return s;
+}
+function renderDupGroups() {
+  var body = document.getElementById('dup-body');
+  if (!_dupGroups.length) {
+    body.innerHTML = '<div style="padding:34px;text-align:center;color:var(--dim);font-size:14px;">&#10003; No duplicates found &mdash; every contact is unique.</div>';
+    return;
+  }
+  body.innerHTML = _dupGroups.map(function(g, gi){
+    var bestIdx = 0, bestScore = -1;
+    g.rows.forEach(function(r, i){ var sc = _dupScore(r); if (sc > bestScore) { bestScore = sc; bestIdx = i; } });
+    var cards = g.rows.map(function(r, i){
+      var sub = [];
+      if (r.email) sub.push(x(r.email));
+      if (r.phone) sub.push(x(fmtPhone(r.phone)));
+      var loc = [r.city, r.zip].filter(Boolean).join(' ');
+      if (loc) sub.push(x(loc));
+      var meta = [];
+      if (r._donCount) meta.push(r._donCount + (r._donCount > 1 ? ' donations' : ' donation') + (r._donTotal ? (' ($' + Math.round(r._donTotal).toLocaleString() + ')') : ''));
+      if (r._endCount) meta.push('endorsement');
+      if (r.role && r.role !== 'Voter') meta.push(x(r.role));
+      meta.push('added ' + fmtDate(r.created_at));
+      return '<label class="dup-rec">' +
+        '<input type="radio" name="dup-keep-' + gi + '" value="' + r.id + '"' + (i === bestIdx ? ' checked' : '') + '>' +
+        '<span class="dup-rec-main">' +
+          '<span class="dup-rec-name">' + x(r.first_name) + ' ' + x(r.last_name) + ' <span class="dup-rec-id">#' + r.id + '</span></span>' +
+          '<span class="dup-rec-sub">' + (sub.join(' &middot; ') || '&mdash;') + '</span>' +
+          '<span class="dup-rec-meta">' + meta.join(' &middot; ') + '</span>' +
+        '</span>' +
+      '</label>';
+    }).join('');
+    return '<div class="dup-group" data-group="' + gi + '">' +
+      '<div class="dup-group-lbl">' + g.rows.length + ' matching records &mdash; keep one, merge the rest</div>' +
+      cards +
+      '<button class="dup-merge-btn" onclick="mergeDupGroup(' + gi + ')">Merge into selected</button>' +
+    '</div>';
+  }).join('');
+}
+function mergeDupGroup(gi) {
+  var g = _dupGroups[gi];
+  if (!g) return;
+  var sel = document.querySelector('input[name="dup-keep-' + gi + '"]:checked');
+  if (!sel) { alert('Pick which record to keep.'); return; }
+  var survivorId = Number(sel.value);
+  var loserIds = g.rows.map(function(r){ return Number(r.id); }).filter(function(id){ return id !== survivorId; });
+  if (!loserIds.length) return;
+  if (!confirm('Merge ' + loserIds.length + ' record' + (loserIds.length > 1 ? 's' : '') + ' into the kept contact? This cannot be undone.')) return;
+  var btn = document.querySelector('[data-group="' + gi + '"] .dup-merge-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Merging...'; }
+  fetch('/admin/contacts/merge', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ survivorId: survivorId, loserIds: loserIds })
+  }).then(function(r){ return r.json(); }).then(function(res){
+    if (res && res.result === 'success') {
+      _dupGroups.splice(gi, 1);
+      renderDupGroups();
+      loadData();   // refresh the contacts list behind the modal
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = 'Merge into selected'; }
+      alert((res && res.msg) || 'Merge failed.');
+    }
+  }).catch(function(){
+    if (btn) { btn.disabled = false; btn.textContent = 'Merge into selected'; }
+    alert('Merge failed.');
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -6262,7 +6710,7 @@ ${isCand ? '<style>#don-hist-card,#p-giving-block{display:none!important;}</styl
   .edit-check-item { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
   .edit-check-item input[type="checkbox"] { width: 15px; height: 15px; accent-color: #78E0C4; cursor: pointer; flex-shrink: 0; margin-top: 2px; }
   .edit-check-label { font-size: 13px; color: var(--muted); line-height: 1.4; }
-  .edit-textarea { font-size: 14px; color: var(--text); border: 1px solid var(--border); border-radius: 3px; padding: 10px 12px; font-family: 'Montserrat', sans-serif; width: 100%; background: #fff; outline: none; resize: vertical; min-height: 90px; line-height: 1.5; display: none; margin-top: 4px; }
+  .edit-textarea { font-size: 14px; color: var(--text); border: 1px solid var(--border); border-radius: 3px; padding: 10px 12px; font-family: 'Montserrat', sans-serif; width: 100%; background: #fff; outline: none; resize: vertical; min-height: 90px; line-height: 1.5; display: block; margin-top: 4px; }
   .edit-textarea:focus { border-color: var(--mint-d); }
   .edit-select { width: 100%; font-size: 14px; color: var(--navy); border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px; font-family: 'Montserrat', sans-serif; background: #fff; outline: none; margin-bottom: 8px; }
   .edit-select:focus { border-color: var(--mint-d); }
@@ -6496,10 +6944,44 @@ ${isCand ? '<style>#don-hist-card,#p-giving-block{display:none!important;}</styl
   </div>
 </div>
 
+<style>
+  .reg-lbl{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:7px;}
+  .notes-empty{font-size:12px;color:var(--dim);font-style:italic;padding:4px 0 12px;}
+  .anote{background:#f8f9fb;border:1px solid var(--border);border-left:3px solid var(--mint);border-radius:0 6px 6px 0;padding:11px 14px;margin-bottom:10px;}
+  .anote-body{font-size:13px;color:var(--navy);line-height:1.55;white-space:pre-wrap;word-break:break-word;}
+  .anote-meta{display:flex;align-items:center;justify-content:space-between;margin-top:7px;font-size:10.5px;color:var(--dim);font-weight:600;letter-spacing:.3px;}
+  .anote-del{background:none;border:none;color:var(--dim);font-size:16px;line-height:1;cursor:pointer;padding:0 2px;opacity:.5;transition:opacity .12s;}
+  .anote-del:hover{opacity:1;color:#c0392b;}
+  .note-add{margin-top:14px;border-top:1px solid var(--border);padding-top:16px;}
+  .note-input{width:100%;font-size:13px;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-family:'Montserrat',sans-serif;outline:none;resize:vertical;min-height:64px;line-height:1.5;display:block;background:#fff;}
+  .note-input:focus{border-color:var(--mint);box-shadow:0 0 0 2px rgba(120,224,196,.18);}
+  .note-add-row{display:flex;gap:10px;align-items:center;margin-top:9px;}
+  .note-author{flex:1;font-size:12px;color:var(--navy);border:1px solid var(--border);border-radius:6px;padding:9px 11px;font-family:'Montserrat',sans-serif;outline:none;background:#fff;}
+  .note-author:focus{border-color:var(--mint);}
+  .note-add-btn{flex-shrink:0;background:var(--mint);color:var(--navy);border:none;padding:10px 20px;border-radius:6px;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;cursor:pointer;font-family:'Montserrat',sans-serif;transition:opacity .15s;}
+  .note-add-btn:disabled{opacity:.45;cursor:not-allowed;}
+</style>
 <div class="s-card">
-  <div class="s-label">Comments</div>
-  <div id="p-comment"></div>
-  <textarea class="edit-textarea" id="i-comment" placeholder="Comments or questions…"></textarea>
+  <div class="s-label">Notes</div>
+  <div id="reg-comment-wrap" style="display:none; margin-bottom:18px;">
+    <div class="reg-lbl">From their sign-up</div>
+    <div id="p-comment"></div>
+  </div>
+  <textarea id="i-comment" style="display:none;"></textarea>
+  <div id="admin-notes-list"><div class="notes-empty">Loading notes…</div></div>
+  <div class="note-add">
+    <textarea id="new-note" class="note-input" placeholder="Add an internal note. You can add as many as you like…" oninput="syncAddNote()"></textarea>
+    <div class="note-add-row">
+      <input id="note-author" class="note-author" type="text" placeholder="Your name (optional)" autocomplete="off"/>
+      <button class="note-add-btn" id="add-note-btn" onclick="addNote()" disabled>Add note</button>
+    </div>
+  </div>
+</div>
+
+<div class="s-card" id="merge-hist-card" style="display:none;">
+  <div class="s-label">Merge History</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.5;">Records that were merged into this contact. Undo to restore them as separate records.</div>
+  <div id="merge-hist-rows"></div>
 </div>
 
 <div class="s-card" id="don-hist-card">
@@ -6608,7 +7090,7 @@ var PROFILE_PIPELINE = ${PIPELINE_JSON};
 try {
   var d = ${_data};
   if (!d) { document.getElementById("p-name").textContent = "Constituent not found."; }
-  else { rec = d; paint(d); }
+  else { rec = d; paint(d); loadMergeHistory(); loadNotes(); }
 } catch(e) {
   document.getElementById("p-name").textContent = "Error: " + e.message;
   console.error("Paint error:", e);
@@ -6734,10 +7216,12 @@ function paint(d) {
   }
 
   var cEl = document.getElementById("p-comment");
+  var regWrap = document.getElementById("reg-comment-wrap");
   if (d.comment && d.comment.trim()) {
     cEl.innerHTML = "<div class='comment-block'>" + xe(d.comment) + "</div>";
-  } else {
-    cEl.innerHTML = "<span class='comment-none'>No comments provided.</span>";
+    if (regWrap) regWrap.style.display = "block";
+  } else if (regWrap) {
+    regWrap.style.display = "none";
   }
 
   // Load real donation history for this contact (admin only — hidden for the candidate)
@@ -6985,6 +7469,86 @@ function deleteConstituent() {
     .catch(function(){ alert('Network error — please try again.'); });
 }
 
+function fmtNoteDate(s){
+  if (!s) return "";
+  var d = new Date(String(s).replace(" ", "T"));
+  if (isNaN(d.getTime())) return fmtDate(s);
+  var mo = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  var h = d.getHours(), mi = d.getMinutes(), ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12;
+  return mo[d.getMonth()] + " " + d.getDate() + ", " + d.getFullYear() + " &middot; " + h + ":" + (mi < 10 ? "0" : "") + mi + " " + ap;
+}
+function renderNotes(notes){
+  var box = document.getElementById("admin-notes-list");
+  if (!box) return;
+  if (!notes || !notes.length){ box.innerHTML = "<div class='notes-empty'>No staff notes yet. Add the first one below.</div>"; return; }
+  box.innerHTML = notes.map(function(n){
+    var who = (n.author && n.author.trim()) ? xe(n.author.trim()) : "Staff";
+    return "<div class='anote'><div class='anote-body'>" + xe(n.body || "") + "</div>" +
+      "<div class='anote-meta'><span>" + who + " &middot; " + fmtNoteDate(n.created_at) + "</span>" +
+      "<button class='anote-del' title='Delete note' onclick='deleteNote(" + n.id + ")'>&#215;</button></div></div>";
+  }).join("");
+}
+function loadNotes(){
+  if (IS_CANDIDATE) return;
+  var ai = document.getElementById("note-author");
+  try { var saved = localStorage.getItem("vfb_note_author"); if (saved && ai && !ai.value) ai.value = saved; } catch(e){}
+  fetch("/admin/constituent/" + CID + "/notes").then(function(r){ return r.json(); })
+    .then(function(rows){ renderNotes(rows); }).catch(function(){});
+}
+function syncAddNote(){
+  var t = document.getElementById("new-note"), b = document.getElementById("add-note-btn");
+  if (t && b) b.disabled = !t.value.trim();
+}
+function addNote(){
+  var t = document.getElementById("new-note"), ai = document.getElementById("note-author"), b = document.getElementById("add-note-btn");
+  var body = (t.value || "").trim();
+  if (!body) return;
+  var author = (ai && ai.value || "").trim();
+  try { if (author) localStorage.setItem("vfb_note_author", author); } catch(e){}
+  if (b){ b.disabled = true; b.textContent = "Adding..."; }
+  fetch("/admin/constituent/" + CID + "/notes", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ body: body, author: author }) })
+    .then(function(r){ return r.json(); }).then(function(res){
+      if (b){ b.textContent = "Add note"; }
+      if (res && res.result === "success"){ t.value = ""; syncAddNote(); loadNotes(); }
+      else { if (b) b.disabled = false; alert((res && res.msg) || "Could not add the note."); }
+    }).catch(function(){ if (b){ b.disabled = false; b.textContent = "Add note"; } alert("Could not add the note."); });
+}
+function deleteNote(id){
+  if (!confirm("Delete this note?")) return;
+  fetch("/admin/notes/" + id, { method: "DELETE" }).then(function(r){ return r.json(); })
+    .then(function(res){ if (res && res.result === "success") loadNotes(); }).catch(function(){});
+}
+function loadMergeHistory() {
+  if (IS_CANDIDATE) return;
+  fetch('/admin/constituent/' + CID + '/merges')
+    .then(function(r){ return r.json(); })
+    .then(function(rows){
+      if (!rows || !rows.length) return;
+      var box = document.getElementById('merge-hist-rows');
+      box.innerHTML = rows.map(function(m){
+        return '<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #f0f2f5;">' +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="font-size:13px;color:var(--navy);font-weight:600;">' + xe(m.summary || 'Records merged') + '</div>' +
+            '<div style="font-size:11px;color:var(--dim);margin-top:2px;">' + fmtDate(m.created_at) + '</div>' +
+          '</div>' +
+          '<button onclick="undoMerge(' + m.id + ',this)" style="flex-shrink:0;background:#fff;color:var(--navy);border:1px solid var(--border);padding:6px 16px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;">Undo</button>' +
+        '</div>';
+      }).join('');
+      document.getElementById('merge-hist-card').style.display = 'block';
+    })
+    .catch(function(){});
+}
+function undoMerge(logId, btn) {
+  if (!confirm('Undo this merge? The separate records will be restored and this contact returns to how it was before.')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Undoing...'; }
+  fetch('/admin/merges/' + logId + '/undo', { method: 'POST' })
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if (res && res.result === 'success') { location.reload(); }
+      else { if (btn) { btn.disabled = false; btn.textContent = 'Undo'; } alert((res && res.msg) || 'Undo failed.'); }
+    })
+    .catch(function(){ if (btn) { btn.disabled = false; btn.textContent = 'Undo'; } alert('Undo failed.'); });
+}
 function saveEdit() {
   var helpKeys = [
     {id:"eh-calls",   label:"Make phone calls"},

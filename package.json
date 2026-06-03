@@ -1,6 +1,6 @@
 {
   "name": "voteforblaine-admin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "RSVP admin server for Blaine Moncrief campaign",
   "main": "server.js",
   "scripts": {

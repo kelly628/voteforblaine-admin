@@ -353,8 +353,13 @@ app.use((req, res, next) => {
   next();
 });
 app.use(cors());
-app.use(express.json({ limit: '1mb' }));            // cap body size (DoS guard)
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+// The Anedot webhook needs its RAW body for HMAC signature verification, so it
+// must NOT be pre-parsed here. Skip these global parsers for that one path; the
+// route's own express.raw() then receives the raw Buffer.
+const rawBodyPaths = ['/webhook/anedot'];
+const skipFor = (mw) => (req, res, next) => rawBodyPaths.includes(req.path) ? next() : mw(req, res, next);
+app.use(skipFor(express.json({ limit: '1mb' })));            // cap body size (DoS guard)
+app.use(skipFor(express.urlencoded({ extended: true, limit: '1mb' })));
 
 // ── Mockups preview pages (internal — require login) ──────────────────
 app.get('/mockups', auth('admin'), (req, res) => {
@@ -1281,7 +1286,7 @@ app.delete('/admin/volunteer/:id', async (req, res) => {
 // Events to enable: donation_completed, donation_refunded
 app.post('/webhook/anedot', express.raw({ type: '*/*' }), async (req, res) => {
   try {
-    const secret = process.env.ANEDOT_WEBHOOK_SECRET || '';
+    const secret = (process.env.ANEDOT_WEBHOOK_SECRET || '').trim();
 
     // Signature verification
     if (secret) {

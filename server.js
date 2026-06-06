@@ -27,6 +27,19 @@ const pool = new Pool({
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
+// A dropped idle Postgres connection emits 'error' on the pool; without a
+// handler Node treats it as fatal. Log it and let the pool reconnect.
+pool.on('error', (err) => console.error('[pg] idle client error (handled):', err.message));
+
+// Safety net: a single bad request must never take down the whole CRM again.
+// (An un-try/caught async route rejecting — exactly what crashed us — lands here.)
+process.on('unhandledRejection', (reason) =>
+  console.error('[guard] unhandledRejection:', (reason && reason.stack) || reason));
+process.on('uncaughtException', (err) => {
+  console.error('[guard] uncaughtException:', (err && err.stack) || err);
+  process.exit(1);
+});
+
 // Convert SQLite ? placeholders → $1,$2,… and auto-add RETURNING id on INSERTs
 function toPostgres(sql) {
   let i = 0;
@@ -956,7 +969,16 @@ app.patch('/admin/constituent/:id', async (req, res) => {
   }
 });
 
-app.get('/admin/constituent/:id', auth('admin'), async (req, res) => res.send(await constituentHTML(req.params.id, { candidate: req.userRole === 'candidate' })));
+app.get('/admin/constituent/:id', auth('admin'), async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id <= 0) return res.status(404).send('Contact not found');
+  try {
+    res.send(await constituentHTML(id, { candidate: req.userRole === 'candidate' }));
+  } catch (err) {
+    console.error('[constituent]', JSON.stringify(req.params.id), err.message);
+    res.status(500).send('Error loading contact');
+  }
+});
 
 app.delete('/admin/constituent/:id', async (req, res) => {
   try {

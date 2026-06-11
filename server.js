@@ -3071,7 +3071,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
   </div>
   <div class="left-nav-foot" onclick="wnReview()" title="See what's new">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-    <span>Updated Jun 3, 2026</span>
+    <span>Updated Jun 11, 2026</span>
   </div>
 </nav>
 
@@ -3173,15 +3173,15 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
     <button class="wn-close" id="wn-close" aria-label="Close" onclick="wnClose()" style="display:none;">&#215;</button>
     <div class="wn-head">
       <div class="wn-eyebrow">What's New</div>
-      <div class="wn-title">A few upgrades to your CRM</div>
-      <div class="wn-sub">June 2026 &middot; 5 updates</div>
+      <div class="wn-title">Your CRM just got smarter</div>
+      <div class="wn-sub">June 11, 2026 &middot; 5 updates</div>
     </div>
     <div class="wn-list">
-      <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/></svg></div><div class="wn-tx"><h4>Search ignores capitals</h4><p>Type smith or Smith and you reach the same person every time.</p></div></div>
-      <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg></div><div class="wn-tx"><h4>Contacts sort A to Z</h4><p>Your list is alphabetical by default. Click Date or Name to re-sort.</p></div></div>
-      <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></svg></div><div class="wn-tx"><h4>Filter by role</h4><p>Show just attorneys, committee, volunteers, endorsers, or sign requests.</p></div></div>
-      <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg></div><div class="wn-tx"><h4>Notes on any contact</h4><p>Open a profile and jot what you need, saved right on their record.</p></div></div>
-      <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg></div><div class="wn-tx"><h4>Find and merge duplicates</h4><p>Combine the same person in one click, with an undo if you change your mind.</p></div></div>
+      <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg></div><div class="wn-tx"><h4>Donors become contacts automatically</h4><p>Every Anedot gift now finds its donor in Contacts &mdash; or creates them &mdash; so no donor slips through.</p></div></div>
+      <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg></div><div class="wn-tx"><h4>Organizations, not just people</h4><p>Add Contact now has a Person / Organization toggle. Orgs get their own badge and filter.</p></div></div>
+      <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div><div class="wn-tx"><h4>Import donations from a spreadsheet</h4><p>Upload the treasurer&rsquo;s CSV or Excel on the Donations page; gifts link to contacts on their own.</p></div></div>
+      <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div><div class="wn-tx"><h4>The website feeds your contacts</h4><p>Supporters who fill out the Stand With Blaine form land here instantly &mdash; address, company, and how they want to help.</p></div></div>
+      <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg></div><div class="wn-tx"><h4>Supporters get a thank-you email</h4><p>Website sign-ups receive a campaign welcome automatically; event RSVPs keep their confirmation.</p></div></div>
     </div>
     <div class="wn-foot" id="wn-foot">
       <label class="wn-ack"><input type="checkbox" id="wn-ack-box"><span class="wn-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><span class="wn-lbl">I've reviewed these updates</span></label>
@@ -3191,7 +3191,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
 </div>
 <script>
 (function(){
-  var VERSION = 'jun-2026-a';   // bump this AND the sidebar "Updated" date for the next changelog
+  var VERSION = 'jun-2026-b';   // bump this AND the sidebar "Updated" date for the next changelog
   var ov = document.getElementById('wn-overlay');
   var box = document.getElementById('wn-ack-box');
   var btn = document.getElementById('wn-btn');

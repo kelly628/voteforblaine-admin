@@ -133,19 +133,28 @@ async function sendRsvpConfirmation(opts) {
   const detailLine = bits.join('  ·  ');
   const eventName  = (ev && ev.title) || eventTitle || '';
   const greeting   = firstName ? ('Hi ' + firstName + ',') : 'Hi there,';
-  const subject    = eventName ? ('You\'re confirmed for ' + eventName) : 'Thanks for your RSVP';
+  // No event = a general supporter signup (the website Support form), not an
+  // RSVP — thank them for standing with Blaine instead of confirming a seat.
+  const isEvent    = !!eventName;
+  const subject    = isEvent ? ('You\'re confirmed for ' + eventName) : 'Thank you for standing with Blaine';
+  const eyebrow    = isEvent ? 'You&rsquo;re Confirmed' : 'Welcome to the Team';
+  const headTitle  = isEvent ? eventName : 'Blaine Benge Moncrief for Judge';
+  const headDetail = isEvent ? detailLine : 'Division H  ·  24th Judicial District Court';
+  const bodyCopy   = isEvent
+    ? ('Thank you for your RSVP to <strong>' + escHtml(eventName) + '</strong>. We look forward to seeing you' + (detailLine ? ' on <strong>' + escHtml(detailLine) + '</strong>' : '') + '.')
+    : 'Thank you for standing with Blaine Benge Moncrief for Judge, Division H, 24th Judicial District Court. We received your information, and a member of the campaign will be in touch soon.';
 
   const html =
     '<div style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,Helvetica,sans-serif;">' +
       '<div style="max-width:520px;margin:0 auto;padding:32px 16px;">' +
         '<div style="background:#09254f;border-radius:12px 12px 0 0;padding:36px 32px 28px;text-align:center;">' +
-          '<div style="font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#78E0C4;font-weight:bold;margin-bottom:12px;">You&rsquo;re Confirmed</div>' +
-          (eventName ? '<div style="font-size:26px;font-weight:bold;color:#ffffff;line-height:1.25;' + (detailLine ? 'margin-bottom:10px;' : '') + '">' + escHtml(eventName) + '</div>' : '') +
-          (detailLine ? '<div style="font-size:14px;color:#78E0C4;font-weight:bold;">' + escHtml(detailLine) + '</div>' : '') +
+          '<div style="font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#78E0C4;font-weight:bold;margin-bottom:12px;">' + eyebrow + '</div>' +
+          (headTitle ? '<div style="font-size:26px;font-weight:bold;color:#ffffff;line-height:1.25;' + (headDetail ? 'margin-bottom:10px;' : '') + '">' + escHtml(headTitle) + '</div>' : '') +
+          (headDetail ? '<div style="font-size:14px;color:#78E0C4;font-weight:bold;">' + escHtml(headDetail) + '</div>' : '') +
         '</div>' +
         '<div style="background:#ffffff;border-radius:0 0 12px 12px;padding:32px;">' +
           '<p style="font-size:16px;color:#09254f;margin:0 0 16px;">' + escHtml(greeting) + '</p>' +
-          '<p style="font-size:15px;color:#3a4a63;line-height:1.6;margin:0 0 16px;">Thank you for your RSVP' + (eventName ? ' to <strong>' + escHtml(eventName) + '</strong>' : '') + '. We look forward to seeing you' + (detailLine ? ' on <strong>' + escHtml(detailLine) + '</strong>' : '') + '.</p>' +
+          '<p style="font-size:15px;color:#3a4a63;line-height:1.6;margin:0 0 16px;">' + bodyCopy + '</p>' +
           '<p style="font-size:15px;color:#3a4a63;line-height:1.6;margin:0;">We&rsquo;re grateful for your support.</p>' +
         '</div>' +
         '<p style="font-size:12px;color:#9aa7b8;text-align:center;margin:20px 0 0;line-height:1.5;">Your information is kept private and used only for campaign communications.</p>' +
@@ -231,8 +240,14 @@ const TS = `to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')`;
   await pool.query(`ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS company TEXT`);
   await pool.query(`ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION`);
   await pool.query(`ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION`);
+  // Bundle C: organizations as first-class contacts. 'person' (default) or 'org'.
+  // An org's name is stored in last_name (first_name blank) so every existing
+  // name / sort / search / CSV path renders it unchanged — this flag only lets
+  // the UI badge it and the Add flow collect a single organization name.
+  await pool.query(`ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS contact_type TEXT DEFAULT 'person'`);
   console.log('[DB] PostgreSQL ready');
   geocodeBackfill(); // fire-and-forget: geocode any addresses missing coordinates
+  anedotContactBackfill(); // fire-and-forget: convert unlinked Anedot donors into contacts
 })().catch(e => console.error('[DB] Setup error:', e.message));
 
 // ── Parish lookup (module-scoped so routes can use it) ─────────────────
@@ -298,7 +313,7 @@ async function upsertContact(c) {
       ? 'Yes' : _pick(c.endorse, existing.endorse);
     const address = _pick(c.address, existing.address);
     await dbRun(
-      `UPDATE rsvps SET first_name=?, last_name=?, email=?, phone=?, address=?, city=?, state=?, zip=?, parish=?, company=?, guests=?, guest_names=?, how_to_help=?, role=?, event=?, comment=?, yard_sign=?, endorse=? WHERE id=?`,
+      `UPDATE rsvps SET first_name=?, last_name=?, email=?, phone=?, address=?, city=?, state=?, zip=?, parish=?, company=?, contact_type=?, guests=?, guest_names=?, how_to_help=?, role=?, event=?, comment=?, yard_sign=?, endorse=? WHERE id=?`,
       [ _pick(c.first_name, existing.first_name),
         _pick(c.last_name,  existing.last_name),
         email,
@@ -309,6 +324,7 @@ async function upsertContact(c) {
         _pick(zip,          existing.zip),
         _pick(parish,       existing.parish),
         _pick(c.company,    existing.company),
+        _pick(c.contact_type, existing.contact_type),
         _pick(c.guests,     existing.guests),
         _pick(c.guest_names,existing.guest_names),
         _mergeList(existing.how_to_help, c.how_to_help, ['None selected']),
@@ -327,10 +343,10 @@ async function upsertContact(c) {
   const event = _pick(c.event, '') || _pick(c.eventOnInsert, '');
   const help  = (c.how_to_help && c.how_to_help !== 'None selected') ? c.how_to_help : '';
   const ins = await dbRun(
-    `INSERT INTO rsvps (first_name, last_name, email, phone, address, city, state, zip, parish, company, guests, guest_names, how_to_help, role, event, comment, yard_sign, endorse)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO rsvps (first_name, last_name, email, phone, address, city, state, zip, parish, company, contact_type, guests, guest_names, how_to_help, role, event, comment, yard_sign, endorse)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [ _pick(c.first_name,''), _pick(c.last_name,''), email, _pick(c.phone,''),
-      _pick(c.address,''), _pick(c.city,''), _pick(c.state,''), zip, parish, _pick(c.company,''),
+      _pick(c.address,''), _pick(c.city,''), _pick(c.state,''), zip, parish, _pick(c.company,''), _pick(c.contact_type,'person'),
       _pick(c.guests,''), _pick(c.guest_names,''), help,
       _pick(c.role,'Voter'), event, _pick(c.comment,''),
       _pick(c.yard_sign,'No'), _pick(c.endorse,'No') ]
@@ -384,13 +400,13 @@ app.use('/admin', (req, res, next) => {
 
 // ── RSVP submission ───────────────────────────────────────────────────
 app.post('/rsvp', async (req, res) => {
-  const { firstName, lastName, email, phone, address, city, state, zip, parish,
+  const { firstName, lastName, email, phone, company, address, city, state, zip, parish,
           guests, guestNames, howToHelp, yardSign, endorse, comment, event } = req.body;
   try {
     // Dedupe by email: a repeat RSVP merges into the existing contact rather
     // than creating a duplicate, so one person stays one record.
     const up = await upsertContact({
-      first_name: firstName, last_name: lastName, email, phone,
+      first_name: firstName, last_name: lastName, email, phone, company,
       address, city, state, zip, parish,
       guests, guest_names: guestNames, how_to_help: howToHelp,
       yard_sign: yardSign, endorse, comment, event
@@ -468,14 +484,14 @@ app.patch('/rsvp/:id/endorse', async (req, res) => {
 
 // ── Manual constituent add ────────────────────────────────────────────
 app.post('/admin/constituent', async (req, res) => {
-  const { first_name, last_name, email, phone, address, city, state, zip, how_to_help, yard_sign, endorse, comment, role, company } = req.body;
+  const { first_name, last_name, email, phone, address, city, state, zip, how_to_help, yard_sign, endorse, comment, role, company, contact_type } = req.body;
   try {
     // Dedupe by email so a manual add for someone already in the CRM merges
     // into their record instead of creating a duplicate. eventOnInsert tags
     // brand-new manual rows without clobbering an existing contact's event.
     const up = await upsertContact({
       first_name, last_name, email, phone, address, city, state, zip,
-      how_to_help, yard_sign, endorse, comment, role, company,
+      how_to_help, yard_sign, endorse, comment, role, company, contact_type,
       eventOnInsert: 'Manual Entry'
     });
     if (up.id && address && up.addressChanged) {
@@ -722,7 +738,7 @@ app.get('/admin/contacts/search', async (req, res) => {
   if (!q || q.length < 2) return res.json([]);
   const like = '%' + q + '%';
   const rows = await dbAll(
-    `SELECT id, first_name, last_name, email FROM rsvps
+    `SELECT id, first_name, last_name, email, contact_type FROM rsvps
      WHERE first_name ILIKE ? OR last_name ILIKE ? OR email ILIKE ?
      LIMIT 8`,
     [like, like, like]
@@ -1205,7 +1221,7 @@ app.post('/admin/merges/:id/undo', adminOnly, async (req, res) => {
 });
 
 // ── Contacts bulk import ──────────────────────────────────────────────
-app.post('/admin/contacts/import', async (req, res) => {
+app.post('/admin/contacts/import', adminOnly, async (req, res) => {
   const { rows } = req.body;
   if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ result: 'error', msg: 'No rows' });
   const client = await pool.connect();
@@ -1256,6 +1272,86 @@ app.post('/admin/donation', adminOnly, async (req, res) => {
   } catch(err) {
     console.error('[donation] DB error:', err.message);
     res.status(500).json({ result: 'error' });
+  }
+});
+
+// ── Donations bulk import ─────────────────────────────────────────────
+// Mirrors /admin/contacts/import but admin-only (financial data). Each row may
+// carry: donor_name, amount, date, source, email, tender_type, check_number,
+// external_id. Auto-links to a contact by email (then by full donor name when
+// an email is shared); it never creates contacts. De-dupes on external_id when
+// present, else skips a donor+amount+date+source already on file (so importing
+// the same file twice can't double-count). Transactional.
+app.post('/admin/donations/import', adminOnly, async (req, res) => {
+  const { rows } = req.body;
+  if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ result: 'error', msg: 'No rows' });
+  const normDate = (v) => {
+    const s = String(v == null ? '' : v).trim();
+    if (!s) return '';
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);                 // ISO / already normal
+    const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);          // M/D/Y or M-D-Y
+    if (m) {
+      let mo = m[1], da = m[2], yr = m[3];
+      if (yr.length === 2) yr = '20' + yr;
+      return yr + '-' + ('0' + mo).slice(-2) + '-' + ('0' + da).slice(-2);
+    }
+    return s;
+  };
+  const client = await pool.connect();
+  let imported = 0, skipped = 0, linked = 0;
+  try {
+    await client.query('BEGIN');
+    for (const r of rows) {
+      const donor_name   = (r.donor_name || '').trim();
+      const amount       = parseFloat(String(r.amount == null ? '' : r.amount).replace(/[^0-9.\-]/g, '')) || 0;
+      const date         = normDate(r.date);
+      const source       = (r.source || '').trim() || 'Imported';
+      const email        = (r.email || '').toLowerCase().trim();
+      const tender_type  = (r.tender_type || '').trim() || null;
+      const check_number = (r.check_number || '').trim() || null;
+      const external_id  = (r.external_id || '').trim() || null;
+      if (!donor_name && !amount && !email) continue; // skip a blank row
+
+      // De-dupe.
+      if (external_id) {
+        const dupe = (await client.query('SELECT id FROM donations WHERE anedot_id=$1', [external_id])).rows[0];
+        if (dupe) { skipped++; continue; }
+      } else {
+        const dupe = (await client.query(
+          "SELECT id FROM donations WHERE donor_name=$1 AND amount=$2 AND COALESCE(date,'')=$3 AND COALESCE(source,'')=$4 LIMIT 1",
+          [donor_name, amount, date, source])).rows[0];
+        if (dupe) { skipped++; continue; }
+      }
+
+      // Auto-match a contact by email; if the email is shared, disambiguate by
+      // the full donor name (works for people and organizations alike).
+      let contact_id = null;
+      if (email) {
+        const matches = (await client.query(
+          "SELECT id, first_name, last_name FROM rsvps WHERE LOWER(email)=$1", [email])).rows;
+        if (matches.length === 1) contact_id = matches[0].id;
+        else if (matches.length > 1) {
+          const dn = donor_name.toLowerCase();
+          const named = matches.find(m => ((m.first_name || '') + ' ' + (m.last_name || '')).trim().toLowerCase() === dn);
+          if (named) contact_id = named.id;
+        }
+      }
+      if (contact_id) linked++;
+
+      await client.query(
+        `INSERT INTO donations (donor_name, amount, date, source, contact_id, email, anedot_id, tender_type, check_number)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [donor_name, amount, date, source, contact_id, email || null, external_id, tender_type, check_number]);
+      imported++;
+    }
+    await client.query('COMMIT');
+    res.json({ result: 'ok', imported, skipped, linked });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('[donations import]', e.message);
+    res.status(500).json({ result: 'error', msg: e.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -1326,7 +1422,8 @@ app.post('/webhook/anedot', express.raw({ type: '*/*' }), async (req, res) => {
 
       // Auto-match to an existing contact by email. Because spouses can share
       // one email but are separate contacts, when several share the email we
-      // disambiguate by the donor's name before linking (else leave unlinked).
+      // disambiguate by the donor's name before linking (else fall through to
+      // contact creation below).
       let contact_id = null;
       if (email) {
         const matches = await dbAll('SELECT id, first_name, last_name FROM rsvps WHERE LOWER(email)=?', [email]);
@@ -1339,6 +1436,34 @@ app.post('/webhook/anedot', express.raw({ type: '*/*' }), async (req, res) => {
             return (m.first_name || '').toLowerCase().trim() === dfn && (m.last_name || '').toLowerCase().trim() === dln;
           });
           if (named) contact_id = named.id;
+        }
+      }
+
+      // No existing contact → create one, so every Anedot donor becomes a
+      // contact. upsertContact dedupes on email + name, so webhook retries or
+      // a same-named resubmission merge instead of duplicating. Skipped when
+      // there's no email: repeat gifts couldn't be deduped and every donation
+      // would mint another contact.
+      if (!contact_id && email) {
+        try {
+          const addr = [data.address_line_1, data.address_line_2].filter(Boolean).join(', ')
+                    || data.address || '';
+          const dCity  = data.city || '';
+          const dState = data.region || data.state || '';
+          const dZip   = data.postal_code || data.zip || '';
+          const up = await upsertContact({
+            first_name: data.first_name, last_name: data.last_name,
+            email, phone: data.phone,
+            address: addr, city: dCity, state: dState, zip: dZip
+          });
+          contact_id = up.id;
+          if (up.created) console.log(`[Anedot] Created contact #${contact_id} for ${donor_name}`);
+          if (up.id && addr && up.addressChanged) {
+            geocodeAndStore(up.id, addr, dCity, dState, dZip)
+              .catch(err => console.error('[geocode] anedot failed:', err.message));
+          }
+        } catch (e) {
+          console.error('[Anedot] Contact create failed:', e.message);
         }
       }
 
@@ -1367,6 +1492,49 @@ app.post('/webhook/anedot', express.raw({ type: '*/*' }), async (req, res) => {
     res.status(500).json({ error: 'Internal error' });
   }
 });
+
+// Convert Anedot donors that arrived before contact creation shipped: link or
+// create a contact for every Anedot donation that has an email but no
+// contact_id. Runs at startup; idempotent — once each row is linked there is
+// nothing left to do. Same spouse-safe matching as the live webhook.
+async function anedotContactBackfill() {
+  try {
+    const rows = await dbAll(
+      "SELECT id, donor_name, email FROM donations WHERE contact_id IS NULL AND email IS NOT NULL AND email != '' AND source LIKE 'Anedot%'");
+    if (!rows.length) return;
+    let linked = 0, created = 0;
+    for (const d of rows) {
+      const email = String(d.email).toLowerCase().trim();
+      // donations stores one name string — split on the first space
+      const name = String(d.donor_name || '').trim();
+      const sp = name.indexOf(' ');
+      const fn = sp > 0 ? name.slice(0, sp) : name;
+      const ln = sp > 0 ? name.slice(sp + 1) : '';
+      let contact_id = null;
+      const matches = await dbAll('SELECT id, first_name, last_name FROM rsvps WHERE LOWER(email)=?', [email]);
+      if (matches.length === 1) {
+        contact_id = matches[0].id;
+      } else if (matches.length > 1) {
+        const named = matches.find(m =>
+          (m.first_name || '').toLowerCase().trim() === fn.toLowerCase() &&
+          (m.last_name || '').toLowerCase().trim() === ln.toLowerCase());
+        if (named) contact_id = named.id;
+      }
+      if (!contact_id && name && name !== 'Anonymous') {
+        const up = await upsertContact({ first_name: fn, last_name: ln, email });
+        contact_id = up.id;
+        if (up.created) created++;
+      }
+      if (contact_id) {
+        await dbRun('UPDATE donations SET contact_id=? WHERE id=?', [contact_id, d.id]);
+        linked++;
+      }
+    }
+    if (linked) console.log(`[Anedot] Backfill: linked ${linked} donation(s), created ${created} contact(s)`);
+  } catch (e) {
+    console.error('[Anedot] Backfill error:', e.message);
+  }
+}
 
 // ── Endorsements ──────────────────────────────────────────────────────
 app.get('/admin/endorsements', async (req, res) => {
@@ -1674,6 +1842,7 @@ const BASE_CSS = `
   .c-id    { font-size: 11px; color: var(--dim); }
   .c-date  { font-size: 11px; color: var(--dim); white-space: nowrap; }
   .c-name  { font-weight: 700; color: var(--navy); white-space: nowrap; }
+  .org-tag { display:inline-flex; align-items:center; gap:3px; font-size:9px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:var(--navy); background:var(--bg); border:1px solid var(--border); border-radius:100px; padding:2px 8px; vertical-align:middle; margin-left:7px; white-space:nowrap; }
   .c-sub   { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .c-phone { font-size: 12px; color: var(--muted); white-space: nowrap; }
   .c-zip   { font-size: 12px; color: var(--muted); }
@@ -2538,6 +2707,12 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
   .ap-suggest-item:last-child { border-bottom:none; }
   .ap-suggest-item:hover, .ap-suggest-item.ap-focused { background:#eaf9f5; color:var(--navy); }
   .ap-suggest-searching { padding:10px 13px; font-size:12px; color:var(--dim); font-style:italic; }
+  /* Person / Organization segmented toggle (Bundle C) */
+  .ap-typetoggle { display:flex; gap:4px; background:var(--bg); border:1px solid var(--border); border-radius:7px; padding:4px; margin-bottom:22px; }
+  .ap-typebtn { flex:1; background:none; border:none; padding:10px 12px; font-family:'Montserrat',sans-serif; font-size:10px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); cursor:pointer; border-radius:4px; display:flex; align-items:center; justify-content:center; gap:8px; transition:background .15s,color .15s,box-shadow .15s; }
+  .ap-typebtn:hover { color:var(--navy); }
+  .ap-typebtn.active { background:var(--white); color:var(--navy); box-shadow:0 1px 4px rgba(6,15,30,.12); }
+  .ap-typebtn svg { width:15px; height:15px; flex-shrink:0; }
 
   /* ── Pipeline Summary Strip ── */
   .pipeline-section {
@@ -3200,6 +3375,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
     <option value="volunteer">Volunteers</option>
     <option value="endorser">Endorsers</option>
     <option value="yardsign">Yard Sign Requests</option>
+    <option value="org">Organizations</option>
   </select>
 </div>
 
@@ -3428,6 +3604,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
         <input id="don-q" type="text" placeholder="Search&hellip;" style="width:200px;" oninput="filterFeatTable(this.value,'don-tbody')"/>
       </div>
       <button class="feat-page-btn" onclick="openDonationModal()">&#xff0b; New Donation</button>
+      <button class="feat-page-btn" style="background:var(--bg);color:var(--navy);border:1px solid var(--border);" onclick="openImportDonations()">&#8679; Import</button>
       <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);text-decoration:none;" href="/admin/export/donors.csv" download>&#8595; Export</a>
     </div>
   </div>
@@ -3752,7 +3929,21 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
     <button class="ap-drawer-close" onclick="closeAddPerson()">&#215;</button>
   </div>
   <div class="ap-drawer-body">
-    <div class="ap-row ap-row-2">
+    <div class="ap-typetoggle" role="tablist">
+      <button type="button" class="ap-typebtn active" id="ap-type-person" onclick="setApType('person')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0 1 14 0v1"/></svg>
+        Person
+      </button>
+      <button type="button" class="ap-typebtn" id="ap-type-org" onclick="setApType('org')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M6 21V4a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v17"/><path d="M16 9h2a1 1 0 0 1 1 1v11"/><path d="M9.5 7h2M9.5 11h2M9.5 15h2"/></svg>
+        Organization
+      </button>
+    </div>
+    <div class="ap-field" id="ap-org-field" style="display:none;">
+      <label class="ap-label" for="ap-org-name">Organization Name *</label>
+      <input class="ap-input" id="ap-org-name" type="text" placeholder="e.g. Jefferson Bar Association, Acme PAC" autocomplete="off"/>
+    </div>
+    <div class="ap-row ap-row-2" id="ap-person-name-row">
       <div class="ap-field">
         <label class="ap-label" for="ap-first">First Name *</label>
         <input class="ap-input" id="ap-first" type="text" placeholder="First name"/>
@@ -3772,7 +3963,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
         <input class="ap-input" id="ap-phone" type="tel" placeholder="(504) 555-0000"/>
       </div>
     </div>
-    <div class="ap-field">
+    <div class="ap-field" id="ap-company-field">
       <label class="ap-label" for="ap-company">Company / Organization</label>
       <input class="ap-input" id="ap-company" type="text" placeholder="Law firm, employer, organization…"/>
     </div>
@@ -3798,7 +3989,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
         <input class="ap-input" id="ap-zip" type="text" placeholder="70001"/>
       </div>
     </div>
-    <div class="ap-field">
+    <div class="ap-field" id="ap-role-field">
       <label class="ap-label">Role</label>
       <div class="ap-check-group">
         <label class="ap-check-label"><input type="checkbox" id="ap-role-voter" style="accent-color:#78E0C4;"/> Voter</label>
@@ -3913,6 +4104,51 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
       <div style="margin-top:16px;display:flex;align-items:center;gap:12px;">
         <button class="modal-btn" id="import-run-btn" onclick="runContactImport()">Import Contacts</button>
         <span id="import-status" style="font-size:12px;color:var(--muted);"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Import Donations Modal (Bundle C) ── -->
+<div class="modal-overlay" id="import-donations-overlay" onclick="if(event.target===this)closeImportDonations()">
+  <div class="modal" style="max-width:700px;">
+    <button class="modal-close" onclick="closeImportDonations()">&#215;</button>
+    <div class="modal-title">Import Donations</div>
+    <div style="font-size:12px;color:var(--muted);margin:-6px 0 16px;line-height:1.5;">Upload a CSV or Excel file from the treasurer, or an Anedot export. Columns are auto-matched (Donor, Amount, Date, Source, Email&hellip;) &mdash; adjust any below. Each gift links to a contact automatically when an email matches.</div>
+
+    <div style="display:flex;gap:6px;margin-bottom:20px;" id="dimport-tab-bar">
+      <button class="dist-chip active" id="ditab-file" onclick="switchDImportTab('file')" style="text-transform:none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></svg>Upload File (.xlsx / .csv)</button>
+      <button class="dist-chip" id="ditab-paste" onclick="switchDImportTab('paste')" style="text-transform:none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>Paste from a Spreadsheet</button>
+    </div>
+
+    <div id="dimport-panel-file">
+      <div id="dimport-drop-zone" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="event.preventDefault();this.classList.remove('dragover');handleDImportFile(event.dataTransfer.files[0])"
+           style="border:2px dashed var(--border);border-radius:6px;padding:36px;text-align:center;cursor:pointer;transition:border-color .15s;background:var(--bg);"
+           onclick="document.getElementById('dimport-file-input').click()">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:8px;"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></svg>
+        <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px;">Drop file here or click to browse</div>
+        <div style="font-size:11px;color:var(--dim);">Supports .xlsx (Excel) and .csv</div>
+      </div>
+      <input type="file" id="dimport-file-input" accept=".xlsx,.xls,.csv,.tsv" style="display:none;" onchange="handleDImportFile(this.files[0])"/>
+    </div>
+
+    <div id="dimport-panel-paste" style="display:none;">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">In your spreadsheet, select the cells (include the header row), copy, then paste below.</div>
+      <textarea id="dimport-paste-area" placeholder="Paste spreadsheet data here&hellip;"
+        style="width:100%;height:160px;border:1.5px solid var(--border);border-radius:4px;padding:10px;font-size:12px;font-family:monospace;resize:vertical;outline:none;"
+        oninput="dImportPastePreview()"></textarea>
+    </div>
+
+    <div id="dimport-preview" style="display:none;margin-top:20px;">
+      <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:10px;">Column Mapping</div>
+      <div id="dimport-col-map" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;"></div>
+      <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:8px;">Preview <span id="dimport-preview-count"></span></div>
+      <div style="overflow-x:auto;max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;">
+        <table id="dimport-preview-table" style="width:100%;border-collapse:collapse;font-size:12px;"></table>
+      </div>
+      <div style="margin-top:16px;display:flex;align-items:center;gap:12px;">
+        <button class="modal-btn" id="dimport-run-btn" onclick="runDonationImport()">Import Donations</button>
+        <span id="dimport-status" style="font-size:12px;color:var(--muted);"></span>
       </div>
     </div>
   </div>
@@ -4042,10 +4278,17 @@ function roleMatchFn(r) {
     case 'volunteer': return !!(r.volunteer_role && String(r.volunteer_role).trim());
     case 'endorser':  return r.endorse === 'Yes';
     case 'yardsign':  return r.yard_sign === 'Yes';
+    case 'org':       return (r.contact_type === 'org');
     default:          return true;
   }
 }
 function setRoleFilter(v) { activeRole = v; refresh(); }
+// Small monochrome "Organization" pill for org-type contacts (Bundle C).
+function orgTag(r) {
+  return (r && r.contact_type === 'org')
+    ? ' <span class="org-tag"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:1px;"><path d="M3 21h18"/><path d="M6 21V4h9v17"/><path d="M15 9h3v12"/></svg>Organization</span>'
+    : '';
+}
 
 function refresh() {
   // Update district chip counts (always off the full set, ignoring event filter)
@@ -4194,8 +4437,8 @@ function render(d) {
       '<td class="cb-td"><input type="checkbox" class="row-cb" data-id="'+r.id+'" onchange="onBulkCheck('+r.id+',this.checked,this)"></td>'+
       '<td class="c-id">'+r.id+'</td>'+
       '<td class="c-date">'+date+'</td>'+
-      '<td><a href="/admin/constituent/'+r.id+'" class="c-name" style="text-decoration:none;">'+x(r.first_name)+' '+x(r.last_name)+'</a>'+
-          (!inDivH(r) && (r.parish || r.zip) ? '<span class="badge-ood" title="'+(r.parish === 'Jefferson' ? 'Jefferson Parish, but outside Division H (East Bank) — not eligible to vote in this race' : 'Lives in '+x(r.parish||'another')+' Parish — outside Division H')+'">Out of District</span>' : '')+
+      '<td><a href="/admin/constituent/'+r.id+'" class="c-name" style="text-decoration:none;">'+x(((r.first_name||'')+' '+(r.last_name||'')).trim())+'</a>'+orgTag(r)+
+          (r.contact_type!=='org' && !inDivH(r) && (r.parish || r.zip) ? '<span class="badge-ood" title="'+(r.parish === 'Jefferson' ? 'Jefferson Parish, but outside Division H (East Bank) — not eligible to vote in this race' : 'Lives in '+x(r.parish||'another')+' Parish — outside Division H')+'">Out of District</span>' : '')+
           '<div class="c-sub">'+x(r.email)+'</div></td>'+
       '<td class="c-phone">'+fmtPhone(r.phone)+'</td>'+
       '<td style="font-size:12px;color:var(--muted);line-height:1.6;">'+x(r.address)+(r.city?'<br>'+x(r.city)+(r.state?', '+x(r.state):'')+(r.zip?' '+x(r.zip):''):'')+'</td>'+
@@ -4860,9 +5103,10 @@ function endAcSearch(q) {
           return;
         }
         drop.innerHTML = results.map(function(c) {
-          var full = _esc((c.first_name||'') + ' ' + (c.last_name||''));
+          var full = _esc(((c.first_name||'') + ' ' + (c.last_name||'')).trim());
+          var oTag = (c.contact_type === 'org') ? ' <span class="org-tag">Org</span>' : '';
           return '<div class="don-ac-item" data-cid="' + c.id + '" data-name="' + full + '" onclick="selectEndContact(+this.dataset.cid, this.dataset.name)">' +
-            full + (c.email ? '<span style="color:var(--dim);font-size:10px;margin-left:6px;">' + _esc(c.email) + '</span>' : '') + '</div>';
+            full + oTag + (c.email ? '<span style="color:var(--dim);font-size:10px;margin-left:6px;">' + _esc(c.email) + '</span>' : '') + '</div>';
         }).join('');
         drop.classList.add('open');
       });
@@ -5603,7 +5847,7 @@ function donAcSearch(q) {
           var safeId = Number(p.id);
           var safeName = name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
           return '<div class="don-ac-item" onmousedown="donAcPick(' + safeId + ',\\'' + safeName + '\\')">' +
-            '<div class="don-ac-name">' + _esc(name) + '</div>' +
+            '<div class="don-ac-name">' + _esc(name) + (p.contact_type === 'org' ? ' <span class="org-tag">Org</span>' : '') + '</div>' +
             (meta ? '<div class="don-ac-meta">' + _esc(meta) + '</div>' : '') +
             '</div>';
         }).join('');
@@ -6275,9 +6519,172 @@ function runContactImport() {
   });
 }
 
+// ── Import Donations (Bundle C) — mirrors the contacts importer, own state ──
+var _dImportRows = [], _dImportHeaders = [];
+var DIMPORT_FIELDS = [
+  {val:'donor_name',   label:'Donor Name'},
+  {val:'amount',       label:'Amount'},
+  {val:'date',         label:'Date'},
+  {val:'source',       label:'Source'},
+  {val:'email',        label:'Email'},
+  {val:'tender_type',  label:'Tender Type'},
+  {val:'check_number', label:'Check #'},
+  {val:'external_id',  label:'Transaction ID'},
+  {val:'',             label:'— skip —'},
+];
+var DIMPORT_AUTO = {
+  donor_name:   ['donor_name','donor name','donor','name','contributor','contributor name','full name','payer','payer name'],
+  amount:       ['amount','amount in dollars','gift amount','donation amount','total','contribution','contribution amount','amt'],
+  date:         ['date','donation date','gift date','transaction date','created at','created','date received','received'],
+  source:       ['source','action page','action page name','campaign','fund','channel','method','event'],
+  email:        ['email','email address','e-mail','mail','donor email'],
+  tender_type:  ['tender','tender type','payment method','payment type','pay type','type'],
+  check_number: ['check','check #','check number','check no','cheque','check num'],
+  external_id:  ['transaction id','transaction','txn id','txn','donation id','reference','reference id','confirmation','confirmation number','anedot id','external id'],
+};
+function dAutoMapCol(header) {
+  var h = (header||'').toLowerCase().trim();
+  for (var f in DIMPORT_AUTO) { if (DIMPORT_AUTO[f].indexOf(h) > -1) return f; }
+  return '';
+}
+function openImportDonations() {
+  _dImportRows = []; _dImportHeaders = [];
+  document.getElementById('dimport-preview').style.display = 'none';
+  document.getElementById('dimport-file-input').value = '';
+  document.getElementById('dimport-paste-area').value = '';
+  document.getElementById('dimport-status').textContent = '';
+  switchDImportTab('file');
+  document.getElementById('import-donations-overlay').classList.add('open');
+}
+function closeImportDonations() {
+  document.getElementById('import-donations-overlay').classList.remove('open');
+}
+function switchDImportTab(t) {
+  document.getElementById('dimport-panel-file').style.display  = t === 'file'  ? '' : 'none';
+  document.getElementById('dimport-panel-paste').style.display = t === 'paste' ? '' : 'none';
+  document.getElementById('ditab-file').classList.toggle('active',  t === 'file');
+  document.getElementById('ditab-paste').classList.toggle('active', t === 'paste');
+}
+function handleDImportFile(file) {
+  if (!file) return;
+  var ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'csv' || ext === 'tsv') {
+    var reader = new FileReader();
+    reader.onload = function(e) { parseDImportCSV(e.target.result, ext === 'tsv' ? '\\t' : null); };
+    reader.readAsText(file);
+  } else if (ext === 'xlsx' || ext === 'xls') {
+    loadSheetJS(function() {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          var wb = XLSX.read(e.target.result, { type: 'array' });
+          var ws = wb.Sheets[wb.SheetNames[0]];
+          var data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+          parseDImportArray(data);
+        } catch(err) { alert('Could not read Excel file: ' + err.message); }
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  } else {
+    alert('Please upload a .xlsx, .csv, or .tsv file.');
+  }
+}
+function dImportPastePreview() {
+  var raw = document.getElementById('dimport-paste-area').value.trim();
+  if (!raw) { document.getElementById('dimport-preview').style.display = 'none'; return; }
+  parseDImportCSV(raw, '\\t');
+}
+function parseDImportCSV(text, delim) {
+  if (!delim) {
+    var tabCount = (text.match(/\\t/g) || []).length, commaCount = (text.match(/,/g) || []).length;
+    delim = tabCount > commaCount ? '\\t' : ',';
+  }
+  var lines = text.replace(/\\r\\n/g,'\\n').replace(/\\r/g,'\\n').split('\\n').filter(function(l){ return l.trim(); });
+  if (lines.length < 2) { alert('Need at least a header row and one data row.'); return; }
+  var rows = lines.map(function(l) { return delim === ',' ? parseCSVLine(l) : l.split(delim).map(function(c){ return c.trim(); }); });
+  parseDImportArray(rows);
+}
+function parseDImportArray(rows) {
+  if (!rows || rows.length < 2) { alert('No data found.'); return; }
+  _dImportHeaders = rows[0].map(function(h){ return String(h).trim(); });
+  _dImportRows = rows.slice(1).filter(function(r){ return r.some(function(c){ return (c+'').trim(); }); });
+  renderDImportPreview();
+}
+function renderDImportPreview() {
+  var mapHTML = _dImportHeaders.map(function(h, i) {
+    var auto = dAutoMapCol(h);
+    var selOpts = DIMPORT_FIELDS.map(function(f){ return '<option value="'+f.val+'"'+(f.val===auto?' selected':'')+'>'+f.label+'</option>'; }).join('');
+    return '<div style="display:flex;flex-direction:column;gap:3px;min-width:100px;">' +
+      '<div style="font-size:10px;color:var(--dim);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;" title="'+h+'">'+h+'</div>' +
+      '<select id="dicol-'+i+'" style="font-size:11px;border:1px solid var(--border);border-radius:3px;padding:3px 6px;background:var(--bg);">'+selOpts+'</select>' +
+    '</div>';
+  }).join('');
+  document.getElementById('dimport-col-map').innerHTML = mapHTML;
+  var preview = _dImportRows.slice(0, 5);
+  var tHead = '<thead><tr style="background:var(--bg);">' + _dImportHeaders.map(function(h){ return '<th style="padding:6px 10px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);font-weight:700;white-space:nowrap;border-bottom:1px solid var(--border);">'+h+'</th>'; }).join('') + '</tr></thead>';
+  var tBody = '<tbody>' + preview.map(function(r){
+    return '<tr>' + _dImportHeaders.map(function(h, i){ return '<td style="padding:5px 10px;border-bottom:1px solid var(--border);font-size:12px;white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis;">'+(r[i]||'')+'</td>'; }).join('') + '</tr>';
+  }).join('') + '</tbody>';
+  document.getElementById('dimport-preview-table').innerHTML = tHead + tBody;
+  document.getElementById('dimport-preview-count').textContent = '(first ' + Math.min(5, _dImportRows.length) + ' of ' + _dImportRows.length + ' rows)';
+  document.getElementById('dimport-run-btn').textContent = 'Import ' + _dImportRows.length + ' Donation' + (_dImportRows.length !== 1 ? 's' : '');
+  document.getElementById('dimport-preview').style.display = '';
+  document.getElementById('dimport-status').textContent = '';
+}
+function runDonationImport() {
+  if (!_dImportRows.length) return;
+  var mapping = _dImportHeaders.map(function(h, i){ return document.getElementById('dicol-'+i).value; });
+  var rows = _dImportRows.map(function(r){
+    var obj = {};
+    mapping.forEach(function(field, i){ if (field) obj[field] = (r[i]||'').toString().trim(); });
+    return obj;
+  }).filter(function(o){ return o.donor_name || o.amount || o.email; });
+  if (!rows.length) { document.getElementById('dimport-status').textContent = 'No valid rows (map at least Donor Name or Amount).'; return; }
+  var btn = document.getElementById('dimport-run-btn');
+  btn.disabled = true;
+  document.getElementById('dimport-status').textContent = 'Importing…';
+  fetch('/admin/donations/import', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ rows: rows })
+  }).then(function(r){ return r.json(); }).then(function(res){
+    if (res.result === 'ok') {
+      var msg = '✓ ' + res.imported + ' donation' + (res.imported !== 1 ? 's' : '') + ' imported';
+      if (res.linked)  msg += ' · ' + res.linked + ' linked to contacts';
+      if (res.skipped) msg += ' · ' + res.skipped + ' skipped (already on file)';
+      document.getElementById('dimport-status').textContent = msg;
+      btn.disabled = false;
+      setTimeout(function(){ closeImportDonations(); if (typeof buildDonationsView === 'function') buildDonationsView(); }, 1700);
+    } else {
+      document.getElementById('dimport-status').textContent = 'Error: ' + (res.msg || 'Unknown error');
+      btn.disabled = false;
+    }
+  }).catch(function(){
+    document.getElementById('dimport-status').textContent = 'Network error.';
+    btn.disabled = false;
+  });
+}
+
+// ── Person / Organization toggle in the Add Contact drawer (Bundle C) ──
+var _apType = 'person';
+function setApType(t) {
+  _apType = t;
+  var isOrg = (t === 'org');
+  document.getElementById('ap-type-person').classList.toggle('active', !isOrg);
+  document.getElementById('ap-type-org').classList.toggle('active', isOrg);
+  document.getElementById('ap-person-name-row').style.display = isOrg ? 'none' : '';
+  document.getElementById('ap-org-field').style.display       = isOrg ? '' : 'none';
+  document.getElementById('ap-role-field').style.display      = isOrg ? 'none' : '';
+  document.getElementById('ap-company-field').style.display   = isOrg ? 'none' : '';
+  document.querySelector('.ap-drawer-title').textContent = isOrg ? 'Add Organization' : 'Add New Constituent';
+  var err = document.getElementById('ap-error');
+  err.style.display = 'none';
+  err.textContent = isOrg ? 'Please enter an organization name.' : 'Please enter first and last name.';
+  setTimeout(function(){ var el = document.getElementById(isOrg ? 'ap-org-name' : 'ap-first'); if (el) el.focus(); }, 50);
+}
+
 // ── Modal ──
 function openAddPerson() {
-  ['ap-first','ap-last','ap-email','ap-phone','ap-address','ap-city','ap-zip','ap-comment'].forEach(function(id){ document.getElementById(id).value = ''; });
+  ['ap-first','ap-last','ap-org-name','ap-email','ap-phone','ap-address','ap-city','ap-zip','ap-comment'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('ap-state').value = 'LA';
   document.getElementById('ap-role-voter').checked     = false;
   document.getElementById('ap-role-committee').checked = false;
@@ -6287,6 +6694,7 @@ function openAddPerson() {
   document.getElementById('ap-submit').textContent = 'Add to Database';
   document.getElementById('ap-overlay').classList.add('open');
   document.getElementById('ap-drawer').classList.add('open');
+  setApType('person');
   setTimeout(function(){ document.getElementById('ap-first').focus(); }, 260);
 }
 function closeAddPerson() {
@@ -6294,9 +6702,16 @@ function closeAddPerson() {
   document.getElementById('ap-drawer').classList.remove('open');
 }
 function submitAddPerson() {
-  var first = document.getElementById('ap-first').value.trim();
-  var last  = document.getElementById('ap-last').value.trim();
-  if (!first || !last) { document.getElementById('ap-error').style.display = 'block'; return; }
+  var isOrg = (_apType === 'org');
+  var first = '', last = '';
+  if (isOrg) {
+    last = document.getElementById('ap-org-name').value.trim();
+    if (!last) { document.getElementById('ap-error').style.display = 'block'; return; }
+  } else {
+    first = document.getElementById('ap-first').value.trim();
+    last  = document.getElementById('ap-last').value.trim();
+    if (!first || !last) { document.getElementById('ap-error').style.display = 'block'; return; }
+  }
   document.getElementById('ap-error').style.display = 'none';
   var btn = document.getElementById('ap-submit');
   btn.disabled = true; btn.textContent = 'Saving…';
@@ -6304,6 +6719,7 @@ function submitAddPerson() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      contact_type: isOrg ? 'org' : 'person',
       first_name: first,
       last_name:  last,
       email:      document.getElementById('ap-email').value.trim(),
@@ -6312,12 +6728,13 @@ function submitAddPerson() {
       city:       document.getElementById('ap-city').value.trim(),
       state:      document.getElementById('ap-state').value,
       zip:        document.getElementById('ap-zip').value.trim(),
-      role:       [document.getElementById('ap-role-voter').checked ? 'Voter' : '',
-                   document.getElementById('ap-role-committee').checked ? 'Committee Member' : '',
-                   document.getElementById('ap-role-attorney').checked ? 'Attorney' : '']
-                  .filter(Boolean).join(', ') || 'Voter',
+      role:       isOrg ? 'Organization'
+                        : ([document.getElementById('ap-role-voter').checked ? 'Voter' : '',
+                            document.getElementById('ap-role-committee').checked ? 'Committee Member' : '',
+                            document.getElementById('ap-role-attorney').checked ? 'Attorney' : '']
+                           .filter(Boolean).join(', ') || 'Voter'),
       comment:    document.getElementById('ap-comment').value.trim(),
-      company:    document.getElementById('ap-company').value.trim()
+      company:    isOrg ? '' : document.getElementById('ap-company').value.trim()
     })
   }).then(function(r){ return r.json(); }).then(function(d){
     if (d.result === 'success') {
@@ -7125,8 +7542,9 @@ try {
 
 function paint(d) {
   if (!d || d.error) { document.getElementById("p-name").textContent = "Constituent not found."; return; }
-  document.title = (d.first_name||"") + " " + (d.last_name||"") + " — Blaine Moncrief";
-  document.getElementById("p-name").textContent = (d.first_name||"") + " " + (d.last_name||"");
+  var _dispName = ((d.first_name||"") + " " + (d.last_name||"")).trim();
+  document.title = _dispName + " — Blaine Moncrief";
+  document.getElementById("p-name").textContent = _dispName;
   var compEl = document.getElementById("p-company");
   if (compEl) { if (d.company) { compEl.textContent = d.company; compEl.style.display = "block"; } else { compEl.style.display = "none"; } }
   document.getElementById("p-date").textContent  = fmtDate(d.created_at);
@@ -7143,12 +7561,19 @@ function paint(d) {
   var isVoter     = _roles.indexOf("Voter") > -1;
   var isCommittee = _roles.indexOf("Committee Member") > -1;
   var isAttorney  = _roles.indexOf("Attorney") > -1;
-  document.getElementById("p-role").innerHTML =
-    "<div class='role-pills'>" +
-    "<button class='role-pill voter" + (isVoter ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Voter'>Voter</button>" +
-    "<button class='role-pill committee" + (isCommittee ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Committee Member'>Committee Member</button>" +
-    "<button class='role-pill attorney" + (isAttorney ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Attorney'>Attorney</button>" +
-    "</div>";
+  if (d.contact_type === "org") {
+    // Organizations don't carry voter/committee/attorney roles — show a single tag.
+    document.getElementById("p-role").innerHTML =
+      "<span style='display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#fff;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.32);border-radius:100px;padding:5px 13px;'>" +
+      "<svg viewBox='0 0 24 24' width='12' height='12' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 21h18'/><path d='M6 21V4h9v17'/><path d='M15 9h3v12'/></svg>Organization</span>";
+  } else {
+    document.getElementById("p-role").innerHTML =
+      "<div class='role-pills'>" +
+      "<button class='role-pill voter" + (isVoter ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Voter'>Voter</button>" +
+      "<button class='role-pill committee" + (isCommittee ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Committee Member'>Committee Member</button>" +
+      "<button class='role-pill attorney" + (isAttorney ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Attorney'>Attorney</button>" +
+      "</div>";
+  }
   // Mini address map — single static OSM tile, no map library needed
   var mapDiv    = document.getElementById("p-hero-map");
   var addrParts = [d.address, d.city, d.state, d.zip].filter(function(x){ return x && x.trim(); });

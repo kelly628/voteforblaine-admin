@@ -417,8 +417,11 @@ app.post('/rsvp', async (req, res) => {
       geocodeAndStore(up.id, address, city, state, zip)
         .catch(err => console.error('[geocode] rsvp failed:', err.message));
     }
-    // Send confirmation email — fire-and-forget; never blocks or fails the RSVP
-    if (emailEnabled && email) {
+    // Send confirmation email — fire-and-forget; never blocks or fails the RSVP.
+    // Supporter welcome emails (website sign-ups with no event) are PAUSED for now;
+    // only event RSVPs still get a confirmation. To re-enable supporter welcomes,
+    // drop the `&& event` guard below.
+    if (emailEnabled && email && event) {
       sendRsvpConfirmation({ firstName, email, eventTitle: event })
         .catch(err => console.error('[email] confirmation failed:', err.message));
     }
@@ -3174,14 +3177,13 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
     <div class="wn-head">
       <div class="wn-eyebrow">What's New</div>
       <div class="wn-title">Your CRM just got smarter</div>
-      <div class="wn-sub">June 11, 2026 &middot; 5 updates</div>
+      <div class="wn-sub">June 11, 2026 &middot; 4 updates</div>
     </div>
     <div class="wn-list">
       <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg></div><div class="wn-tx"><h4>Donors become contacts automatically</h4><p>Every Anedot gift now finds its donor in Contacts &mdash; or creates them &mdash; so no donor slips through.</p></div></div>
       <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg></div><div class="wn-tx"><h4>Organizations, not just people</h4><p>Add Contact now has a Person / Organization toggle. Orgs get their own badge and filter.</p></div></div>
       <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div><div class="wn-tx"><h4>Import donations from a spreadsheet</h4><p>Upload the treasurer&rsquo;s CSV or Excel on the Donations page; gifts link to contacts on their own.</p></div></div>
       <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div><div class="wn-tx"><h4>The website feeds your contacts</h4><p>Supporters who fill out the Stand With Blaine form land here instantly &mdash; address, company, and how they want to help.</p></div></div>
-      <div class="wn-it"><div class="wn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg></div><div class="wn-tx"><h4>Supporters get a thank-you email</h4><p>Website sign-ups receive a campaign welcome automatically; event RSVPs keep their confirmation.</p></div></div>
     </div>
     <div class="wn-foot" id="wn-foot">
       <label class="wn-ack"><input type="checkbox" id="wn-ack-box"><span class="wn-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><span class="wn-lbl">I've reviewed these updates</span></label>

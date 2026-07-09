@@ -248,6 +248,7 @@ const TS = `to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')`;
   console.log('[DB] PostgreSQL ready');
   geocodeBackfill(); // fire-and-forget: geocode any addresses missing coordinates
   anedotContactBackfill(); // fire-and-forget: convert unlinked Anedot donors into contacts
+  eventsBackfill(); // fire-and-forget: surface existing RSVP event tags as draft events
 })().catch(e => console.error('[DB] Setup error:', e.message));
 
 // ── Parish lookup (module-scoped so routes can use it) ─────────────────
@@ -399,6 +400,36 @@ app.use('/admin', (req, res, next) => {
 });
 
 // ── RSVP submission ───────────────────────────────────────────────────
+// When an RSVP names an event that isn't in the Events table yet, create it so
+// it appears in the admin Events list and its registrations link by title.
+// Created as 'draft' so admins see it immediately but it stays OFF the public
+// /api/events (status='active') until someone reviews/publishes it. Idempotent
+// + best-effort — never affects the RSVP itself.
+async function ensureEventFromRsvp(title) {
+  const t = (title || '').trim();
+  if (!t) return;
+  const existing = await dbGet('SELECT id FROM events WHERE LOWER(title)=LOWER(?)', [t]);
+  if (existing) return;
+  await dbRun('INSERT INTO events (title, status) VALUES (?, ?)', [t, 'draft']);
+}
+
+// Startup: surface any event tags already sitting on RSVPs (from past form
+// submissions) as draft events, so they appear in the admin Events list without
+// waiting for a new RSVP. Idempotent + best-effort.
+async function eventsBackfill() {
+  try {
+    const rows = await dbAll(
+      "SELECT DISTINCT event FROM rsvps WHERE event IS NOT NULL AND TRIM(event) <> '' " +
+      "AND LOWER(TRIM(event)) NOT IN (SELECT LOWER(title) FROM events)"
+    );
+    let created = 0;
+    for (const r of rows) { await ensureEventFromRsvp(r.event); created++; }
+    if (created) console.log(`[events] Backfill: created ${created} draft event(s) from RSVP tags`);
+  } catch (e) {
+    console.error('[events] Backfill error:', e.message);
+  }
+}
+
 app.post('/rsvp', async (req, res) => {
   const { firstName, lastName, email, phone, company, address, city, state, zip, parish,
           guests, guestNames, howToHelp, yardSign, endorse, comment, event } = req.body;
@@ -424,6 +455,11 @@ app.post('/rsvp', async (req, res) => {
     if (emailEnabled && email && event) {
       sendRsvpConfirmation({ firstName, email, eventTitle: event })
         .catch(err => console.error('[email] confirmation failed:', err.message));
+    }
+    // Surface the event in the admin Events list if it's new — fire-and-forget.
+    if (event) {
+      ensureEventFromRsvp(event)
+        .catch(err => console.error('[event] auto-create failed:', err.message));
     }
   } catch (err) {
     console.error('DB error:', err.message);

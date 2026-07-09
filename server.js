@@ -1070,6 +1070,22 @@ app.delete('/admin/constituents/bulk', async (req, res) => {
   }
 });
 
+// Remove one or more contacts from their event (clear the event tag) WITHOUT
+// deleting the contact — the person stays in the CRM, just off that event's
+// registration list. Handles a single row (per-row Remove) or many (bulk).
+app.post('/admin/rsvps/unregister', async (req, res) => {
+  const { ids } = req.body;
+  const cleanIds = Array.isArray(ids) ? ids.map(Number).filter(Number.isInteger) : [];
+  if (!cleanIds.length) return res.json({ result: 'ok', count: 0 });
+  try {
+    const result = await pool.query("UPDATE rsvps SET event='' WHERE id = ANY($1)", [cleanIds]);
+    res.json({ result: 'ok', count: result.rowCount });
+  } catch(err) {
+    console.error('[unregister]', err.message);
+    res.status(500).json({ result: 'error' });
+  }
+});
+
 // ── Duplicate contacts: find + merge ──────────────────────────────────
 // A "duplicate" = two+ rsvps rows that upsertContact would treat as the
 // same person: same email (case-insensitive, non-blank) AND same first +
@@ -3492,10 +3508,17 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
       <span id="evt-reg-tally" style="font-size:11px;color:var(--muted);font-weight:600;"></span>
       <button class="feat-page-btn" style="margin-left:auto;background:#e9edf3;color:var(--navy);" onclick="exportEventRegs()">&#8595; Export CSV</button>
     </div>
+    <!-- Bulk bar: appears only when registrations are selected -->
+    <div class="bulk-bar" id="evt-bulk-bar" style="margin-bottom:12px;">
+      <span class="bulk-bar-lbl" id="evt-bulk-bar-lbl">0 selected</span>
+      <button class="bulk-del-btn" onclick="unregisterEvt(Array.from(evtSelectedIds))">Remove from Event</button>
+      <button class="bulk-clr-btn" onclick="clearEvtSelection()">Clear</button>
+    </div>
     <div id="evt-reg-table-wrap" class="don-table-wrap" style="margin-bottom:40px;">
       <table>
         <thead><tr>
-          <th>Date</th><th>Name</th><th>Event</th><th>Parish</th><th>Guests</th><th>Yard Sign</th><th>How to Help</th>
+          <th class="cb-th"><input type="checkbox" id="evt-sel-all" onchange="onEvtSelectAll(this.checked)" title="Select all"></th>
+          <th>Date</th><th>Name</th><th>Event</th><th>Parish</th><th>Guests</th><th>Yard Sign</th><th>How to Help</th><th></th>
         </tr></thead>
         <tbody id="evt-reg-tbody"></tbody>
       </table>
@@ -4235,6 +4258,7 @@ var BM_CRM_BASE_URL = '${baseUrl || process.env.PUBLIC_URL || "http://localhost:
 var IS_CANDIDATE = ${isCand};   // candidate view = no financial data
 var all = [];
 var selectedIds = new Set();
+var evtSelectedIds = new Set();  // selection for the event-registrations table
 var sortCol      = 'name';  // 'name' | 'date' — contacts list sort column
 var sortDir      = 'asc';   // 'asc' | 'desc' — default: alphabetical by name
 var activeRole   = 'all';   // role/tag filter: all|attorney|committee|volunteer|endorser|yardsign
@@ -5546,13 +5570,14 @@ function refreshEvtTable() {
   var tbody = document.getElementById('evt-reg-tbody');
   if (!tbody) return;
   if (!sorted.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--dim);font-style:italic;padding:24px 0;">No registrations match this filter.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--dim);font-style:italic;padding:24px 0;">No registrations match this filter.</td></tr>';
     return;
   }
   tbody.innerHTML = sorted.map(function(r) {
     var date = fmtDate(r.created_at);
     var isVoterRow = isVoter(r);
     return '<tr>' +
+      '<td class="cb-td"><input type="checkbox" class="evt-cb" data-id="' + r.id + '"' + (evtSelectedIds.has(r.id) ? ' checked' : '') + ' onchange="onEvtCheck(' + r.id + ', this.checked, this)"></td>' +
       '<td style="color:var(--dim);font-size:12px;">' + date + '</td>' +
       '<td><a href="/admin/constituent/' + r.id + '" style="color:var(--navy);font-weight:600;text-decoration:none;">' + x(r.first_name) + ' ' + x(r.last_name) + '</a></td>' +
       '<td style="font-size:12px;font-weight:700;color:var(--navy);">' + x(r.event||'—') + '</td>' +
@@ -5560,17 +5585,83 @@ function refreshEvtTable() {
       '<td style="text-align:center;font-size:13px;">' + (r.guests||1) + '</td>' +
       '<td style="text-align:center;">' + (r.yard_sign === 'Yes' ? '<span class="badge badge-yes">Yes</span>' : '<span class="badge badge-no">No</span>') + '</td>' +
       '<td style="font-size:11px;color:var(--muted);max-width:200px;">' + x(r.how_to_help && r.how_to_help !== 'None selected' ? r.how_to_help : '—') + '</td>' +
+      '<td style="text-align:center;white-space:nowrap;"><button type="button" onclick="unregisterEvt([' + r.id + '])" title="Remove from this event (keeps the contact)" style="font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:#b45309;background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.3);border-radius:4px;padding:4px 10px;cursor:pointer;">Remove</button></td>' +
     '</tr>';
   }).join('') +
   // Totals row — sums the Guests column for the current filter/search
   '<tr style="border-top:2px solid var(--border);background:#f8f9fb;font-weight:800;">' +
     '<td></td>' +
+    '<td></td>' +
     '<td style="color:var(--navy);font-size:11px;letter-spacing:.5px;text-transform:uppercase;">Total</td>' +
     '<td></td>' +
     '<td style="text-align:right;color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.5px;">Guests &rarr;</td>' +
     '<td style="text-align:center;font-size:14px;color:var(--mint-d);">' + totalGuests + '</td>' +
-    '<td></td><td></td>' +
+    '<td></td><td></td><td></td>' +
   '</tr>';
+}
+
+// ── Event registration selection + "Remove from event" (bulk-actions pattern) ──
+function onEvtCheck(id, checked, el) {
+  var tr = el.closest('tr');
+  if (checked) { evtSelectedIds.add(id); if (tr) tr.classList.add('row-selected'); }
+  else          { evtSelectedIds.delete(id); if (tr) tr.classList.remove('row-selected'); }
+  updateEvtBulkBar();
+  var allCbs = document.querySelectorAll('.evt-cb');
+  var checkedCount = document.querySelectorAll('.evt-cb:checked').length;
+  var sa = document.getElementById('evt-sel-all');
+  if (sa) {
+    sa.indeterminate = checkedCount > 0 && checkedCount < allCbs.length;
+    sa.checked = allCbs.length > 0 && checkedCount === allCbs.length;
+  }
+}
+function onEvtSelectAll(checked) {
+  document.querySelectorAll('.evt-cb').forEach(function(cb) {
+    var id = parseInt(cb.dataset.id, 10);
+    cb.checked = checked;
+    var tr = cb.closest('tr');
+    if (checked) { evtSelectedIds.add(id); if (tr) tr.classList.add('row-selected'); }
+    else          { evtSelectedIds.delete(id); if (tr) tr.classList.remove('row-selected'); }
+  });
+  updateEvtBulkBar();
+}
+function updateEvtBulkBar() {
+  var bar = document.getElementById('evt-bulk-bar');
+  var lbl = document.getElementById('evt-bulk-bar-lbl');
+  if (!bar) return;
+  var n = evtSelectedIds.size;
+  if (n > 0) { bar.classList.add('on'); if (lbl) lbl.textContent = n + ' selected'; }
+  else bar.classList.remove('on');
+}
+function clearEvtSelection() {
+  evtSelectedIds = new Set();
+  document.querySelectorAll('.evt-cb').forEach(function(cb) {
+    cb.checked = false;
+    var tr = cb.closest('tr');
+    if (tr) tr.classList.remove('row-selected');
+  });
+  var sa = document.getElementById('evt-sel-all');
+  if (sa) { sa.checked = false; sa.indeterminate = false; }
+  updateEvtBulkBar();
+}
+// Clear the event tag on these rsvps rows — removes them from the event but
+// keeps the contacts. Works for one (per-row Remove) or many (bulk).
+function unregisterEvt(ids) {
+  ids = (ids || []).filter(function(v) { return v != null; });
+  if (!ids.length) return;
+  var n = ids.length;
+  if (!confirm('Remove ' + n + ' registration' + (n !== 1 ? 's' : '') + ' from this event?\\n\\nThe contact' + (n !== 1 ? 's' : '') + ' stay in your CRM — only the event registration is removed.')) return;
+  fetch('/admin/rsvps/unregister', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ids })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data && data.result === 'ok') {
+        all.forEach(function(r) { if (ids.indexOf(r.id) > -1) r.event = ''; });
+        clearEvtSelection();
+        buildEventsView(all);   // refetches event cards (updated counts) + rebuilds the table
+      } else { alert('Could not remove. Please try again.'); }
+    })
+    .catch(function() { alert('Network error. Please try again.'); });
 }
 
 function buildEventsView(d) {

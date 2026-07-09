@@ -407,7 +407,9 @@ app.use('/admin', (req, res, next) => {
 // + best-effort — never affects the RSVP itself.
 async function ensureEventFromRsvp(title) {
   const t = (title || '').trim();
-  if (!t) return;
+  // Skip blanks and the "Manual Entry" sentinel that manual contact adds stamp
+  // on the event field (isEvtReg excludes it too — it's not a real event).
+  if (!t || t === 'Manual Entry') return;
   const existing = await dbGet('SELECT id FROM events WHERE LOWER(title)=LOWER(?)', [t]);
   if (existing) return;
   await dbRun('INSERT INTO events (title, status) VALUES (?, ?)', [t, 'draft']);
@@ -418,8 +420,13 @@ async function ensureEventFromRsvp(title) {
 // waiting for a new RSVP. Idempotent + best-effort.
 async function eventsBackfill() {
   try {
+    // Self-heal: an earlier version of this backfill wrongly turned the
+    // "Manual Entry" sentinel into a draft event. Remove it (exact title +
+    // draft-only, so it can never touch a real admin-created event).
+    await dbRun("DELETE FROM events WHERE title='Manual Entry' AND status='draft'");
     const rows = await dbAll(
       "SELECT DISTINCT event FROM rsvps WHERE event IS NOT NULL AND TRIM(event) <> '' " +
+      "AND event <> 'Manual Entry' " +
       "AND LOWER(TRIM(event)) NOT IN (SELECT LOWER(title) FROM events)"
     );
     let created = 0;

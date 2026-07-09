@@ -638,10 +638,11 @@ app.get('/logout', (req, res) => {
 const esc = v => `"${(v || '').toString().replace(/"/g, '""')}"`;
 
 function makeContactsCsv(rows) {
-  const hdrs = ['ID','Date','First Name','Last Name','Email','Phone','Address','City','State','Zip','Parish','How to Help','Yard Sign','Endorse','Comment','Event','Pipeline Stage'];
+  const hdrs = ['ID','Date','First Name','Last Name','Email','Phone','Address','City','State','Zip','Parish','Role','Company','How to Help','Yard Sign','Endorse','Comment','Event','Pipeline Stage'];
   return [hdrs.join(','), ...rows.map(r => [
     r.id, esc(r.created_at), esc(r.first_name), esc(r.last_name),
     esc(r.email), esc(r.phone), esc(r.address), esc(r.city), esc(r.state), esc(r.zip), esc(r.parish),
+    esc(r.role), esc(r.company),
     esc(r.how_to_help), esc(r.yard_sign), esc(r.endorse), esc(r.comment), esc(r.event), esc(r.pipeline_stage)
   ].join(','))].join('\n');
 }
@@ -3351,7 +3352,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
     <button class="feat-page-btn" onclick="openAddPerson()">&#xff0b; New Contact</button>
     <button class="feat-page-btn" style="background:var(--bg);color:var(--navy);border:1px solid var(--border);" onclick="openImportContacts()">&#8679; Import</button>
     <button class="feat-page-btn" id="act-find-dupes" style="background:var(--bg);color:var(--navy);border:1px solid var(--border);" onclick="openDuplicatesModal()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Find Duplicates</button>
-    <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);text-decoration:none;" href="/admin/export.csv" download>&#8595; Export</a>
+    <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);text-decoration:none;cursor:pointer;" href="#" onclick="exportContactsCsv();return false;">&#8595; Export</a>
   </div>
 </div>
 
@@ -3373,6 +3374,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
   <select id="role-filter" onchange="setRoleFilter(this.value)" title="Filter by role or tag" style="margin-left:auto; font-size:11px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:var(--navy); border:1px solid var(--border); border-radius:100px; padding:6px 14px; font-family:'Montserrat',sans-serif; background:var(--bg); cursor:pointer;">
     <option value="all">All Roles</option>
     <option value="attorney">Attorneys Only</option>
+    <option value="non-attorney">Non-Attorneys</option>
     <option value="committee">Committee Members</option>
     <option value="volunteer">Volunteers</option>
     <option value="endorser">Endorsers</option>
@@ -3786,9 +3788,9 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
     <div class="exp-row">
       <span class="exp-lbl">Contacts</span>
       <span class="exp-btns">
-        <a class="exp-btn" href="/admin/export.csv" download>CSV</a>
-        <a class="exp-btn" href="/admin/export.csv" download onclick="exportAsExcel(event,'Contacts')">Excel</a>
-        <a class="exp-btn" href="#" onclick="exportAsPdf(event,'Contacts','/admin/export.csv')">PDF</a>
+        <a class="exp-btn" href="#" onclick="exportContactsCsv();return false;">CSV</a>
+        <a class="exp-btn" href="#" onclick="exportContactsCsv();return false;">Excel</a>
+        <a class="exp-btn" href="#" onclick="exportContactsPdf();return false;">PDF</a>
       </span>
     </div>
     <div class="exp-row">
@@ -4275,8 +4277,9 @@ function filtered() {
 // Role/tag filter for the contacts list (Attorneys, Committee, Volunteers, etc.)
 function roleMatchFn(r) {
   switch (activeRole) {
-    case 'attorney':  return (r.role || '').indexOf('Attorney') > -1;
-    case 'committee': return (r.role || '').indexOf('Committee Member') > -1;
+    case 'attorney':     return (r.role || '').indexOf('Attorney') > -1;
+    case 'non-attorney': return (r.role || '').indexOf('Attorney') === -1;
+    case 'committee':    return (r.role || '').indexOf('Committee Member') > -1;
     case 'volunteer': return !!(r.volunteer_role && String(r.volunteer_role).trim());
     case 'endorser':  return r.endorse === 'Yes';
     case 'yardsign':  return r.yard_sign === 'Yes';
@@ -5915,6 +5918,64 @@ function exportAsPdf(e, label, csvUrl) {
     w.focus();
     setTimeout(function(){ w.print(); }, 400);
   });
+}
+// ── Contacts export ───────────────────────────────────────────────────
+// Always reflects the CURRENT filters (event, district, role, search) so
+// "toggle a role, then export" downloads exactly that list — e.g. Attorneys
+// or Non-Attorneys. Built client-side from the loaded rows, so no server
+// query is involved. (Requested by Chad, 2026-07-08.)
+function contactsExportRows() {
+  var d = filtered();
+  var qEl = document.getElementById('q');
+  var q = (qEl && qEl.value || '').toLowerCase();
+  if (!q) return d;
+  return d.filter(function(r){
+    return ['first_name','last_name','email','phone','zip','comment'].some(function(f){
+      return r[f] && String(r[f]).toLowerCase().indexOf(q) > -1;
+    });
+  });
+}
+function contactsCsvText() {
+  var hdrs = ['ID','Date','First Name','Last Name','Email','Phone','Address','City','State','Zip','Parish','Role','Company','How to Help','Yard Sign','Endorse','Comment','Event','Pipeline Stage'];
+  var cell = function(v){ return '"' + String(v == null ? '' : v).replace(/"/g,'""') + '"'; };
+  var lines = contactsExportRows().map(function(r){
+    return [r.id, cell(r.created_at), cell(r.first_name), cell(r.last_name), cell(r.email),
+      cell(r.phone), cell(r.address), cell(r.city), cell(r.state), cell(r.zip), cell(r.parish),
+      cell(r.role), cell(r.company), cell(r.how_to_help), cell(r.yard_sign), cell(r.endorse),
+      cell(r.comment), cell(r.event), cell(r.pipeline_stage)].join(',');
+  });
+  return [hdrs.join(',')].concat(lines).join('\\n');
+}
+function contactsExportName(ext) {
+  var base = activeRole === 'attorney' ? 'attorneys'
+           : activeRole === 'non-attorney' ? 'non-attorneys'
+           : (activeRole && activeRole !== 'all') ? activeRole
+           : 'contacts';
+  return base + '.' + ext;
+}
+function exportContactsCsv() {
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(contactsCsvText());
+  a.download = contactsExportName('csv');
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function exportContactsPdf() {
+  var esc = function(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+  var hdrs = ['ID','Name','Email','Phone','City','Zip','Role','Endorse','Event'];
+  var rows = contactsExportRows();
+  var html = '<html><head><title>Contacts</title><style>body{font-family:Arial,sans-serif;font-size:11px;padding:20px;}h2{color:#09254f;margin-bottom:12px;}table{border-collapse:collapse;width:100%;}th{background:#09254f;color:#fff;padding:6px 8px;text-align:left;font-size:9px;letter-spacing:1px;text-transform:uppercase;}td{padding:5px 8px;border-bottom:1px solid #eee;}tr:nth-child(even) td{background:#f7f9fc;}</style></head><body>';
+  html += '<h2>Contacts &mdash; Blaine Moncrief Campaign</h2>';
+  html += '<table><thead><tr>' + hdrs.map(function(h){ return '<th>' + h + '</th>'; }).join('') + '</tr></thead><tbody>';
+  html += rows.map(function(r){
+    var name = ((r.first_name || '') + ' ' + (r.last_name || '')).trim();
+    return '<tr>' + [r.id, name, r.email, r.phone, r.city, r.zip, r.role, r.endorse, r.event]
+      .map(function(c){ return '<td>' + esc(c) + '</td>'; }).join('') + '</tr>';
+  }).join('');
+  html += '</tbody></table></body></html>';
+  var w = window.open('', '_blank');
+  if (!w) return;
+  w.document.write(html); w.document.close(); w.focus();
+  setTimeout(function(){ w.print(); }, 400);
 }
 function toggleAnedotPanel() {
   var panel = document.getElementById('anedot-panel');

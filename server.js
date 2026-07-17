@@ -1740,8 +1740,10 @@ app.get('/admin/no-sign-data', async (req, res) => {
 // ── Start ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n  Blaine Moncrief — RSVP Admin`);
-  console.log(`  Campaign staff:  http://localhost:${PORT}/admin      (pw: ${PASSWORDS.admin})`);
-  console.log(`  Candidate view:  http://localhost:${PORT}/candidate  (pw: ${PASSWORDS.candidate})\n`);
+  // NOTE: never log the passwords here — this line prints to the Railway
+  // production logs, where plaintext credentials would be exposed.
+  console.log(`  Campaign staff:  http://localhost:${PORT}/admin`);
+  console.log(`  Candidate view:  http://localhost:${PORT}/candidate\n`);
 });
 
 
@@ -8375,8 +8377,10 @@ function mapHTML() { return `<!DOCTYPE html>
   @media(max-width:900px) {
     html, body { overflow: auto; }
     .map-layout { flex-direction: column; height: auto; }
-    .map-sidebar { width: 100%; }
-    .map-main { height: 480px; }
+    .map-sidebar { width: 100%; padding-bottom: 84px; }
+    /* The map leads on a phone — flex:0 0 auto so the column layout can't
+       collapse it to 0 (flex-basis:0 from the desktop flex:1 beat height). */
+    .map-main { order: -1; flex: 0 0 auto; height: 56vh; min-height: 340px; }
   }
 
   /* ── Leaflet overrides ── */

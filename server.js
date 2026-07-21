@@ -1089,9 +1089,9 @@ app.get('/endorsements-frame', async (req, res) => {
   .bm-endorse-inner { max-width: 1060px; margin: 0 auto; position: relative; }
   .bm-endorse-eyebrow { text-align: center; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: #78E0C4; font-weight: 700; margin: 0 0 12px; }
   .bm-endorse h2 { font-family: 'Playfair Display', Georgia, serif; font-size: 36px; color: #fff; text-align: center; line-height: 1.2; margin: 0; }
-  .bm-endorse-rule { width: 44px; height: 3px; background: #d4a843; margin: 16px auto 18px; }
+  .bm-endorse-rule { width: 44px; height: 3px; background: #78E0C4; margin: 16px auto 18px; }
   .bm-endorse-sub { text-align: center; font-size: 14px; color: rgba(255,255,255,0.65); line-height: 1.6; max-width: 640px; margin: 0 auto 36px; }
-  .bm-endorse-sub strong { color: #d4a843; font-weight: 800; }
+  .bm-endorse-sub strong { color: #78E0C4; font-weight: 800; }
   .bm-endorse-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 32px 40px 36px; }
   .bm-endorse-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
   .bm-endorse-search { flex: 1 1 220px; max-width: 340px; background: #fff; border: 1px solid #cbd5e1; border-radius: 3px; padding: 11px 14px; font-size: 14px; color: #0E356C; font-family: 'Montserrat', sans-serif; outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
@@ -1102,7 +1102,7 @@ app.get('/endorsements-frame', async (req, res) => {
   .bm-endorse-sec-head { display: flex; align-items: center; gap: 14px; }
   .bm-endorse-sec-title { font-size: 12px; letter-spacing: 2.5px; text-transform: uppercase; color: #78E0C4; font-weight: 800; }
   .bm-endorse-sec-line { flex: 1; height: 1px; background: rgba(255,255,255,0.12); }
-  .bm-endorse-sec-count { font-size: 11px; font-weight: 800; letter-spacing: 1px; color: #d4a843; }
+  .bm-endorse-sec-count { font-size: 11px; font-weight: 800; letter-spacing: 1px; color: #78E0C4; }
   .bm-endorse-cols { columns: 4 210px; column-gap: 36px; margin-top: 12px; }
   .bm-endorse-name { break-inside: avoid; font-size: 13.5px; font-weight: 500; color: rgba(255,255,255,0.92); padding: 7px 2px; border-bottom: 1px solid rgba(255,255,255,0.07); }
   .bm-endorse-empty { display: none; text-align: center; font-size: 13px; color: rgba(255,255,255,0.45); padding: 32px 0 8px; }

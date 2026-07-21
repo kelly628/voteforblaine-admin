@@ -195,6 +195,10 @@ const TS = `to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')`;
     notes TEXT, date TEXT, contact_id INTEGER,
     created_at TEXT DEFAULT ${TS}
   )`);
+  // One-time rename: the "Politician" role became "Elected Official"
+  // (2026-07). Idempotent — only touches rows still carrying the old name.
+  await pool.query(
+    "UPDATE rsvps SET role = REPLACE(role, 'Politician', 'Elected Official') WHERE role LIKE '%Politician%'");
   await pool.query(`CREATE TABLE IF NOT EXISTS events (
     id SERIAL PRIMARY KEY, title TEXT NOT NULL,
     date TEXT, time TEXT, end_time TEXT, location TEXT,
@@ -925,7 +929,7 @@ app.get('/embed.js', (req, res) => {
         }
       });
     })(nodes[i]); }
-    // Endorsements wall (Politicians + Attorneys) — no per-event id; one live list
+    // Endorsements wall (Elected Officials + Attorneys) — no per-event id; one live list
     var ends = document.querySelectorAll('.bm-endorse-embed:not([data-bm-loaded])');
     for (var j=0;j<ends.length;j++){ (function(node){
       node.setAttribute('data-bm-loaded','1');
@@ -1010,36 +1014,36 @@ app.get('/api/committee', async (req, res) => {
 // ── Public widget: endorsements ───────────────────────────────────────
 // Same sourcing rule as the role exports: contacts who endorsed
 // (checkbox on the form, or toggled in the admin) AND carry the
-// Politician or Attorney role. Deduped by full name so repeat RSVPs
-// never double-list anyone; a contact tagged BOTH Politician and
-// Attorney lists once, under Politicians (the widget's first section).
+// Elected Official or Attorney role. Deduped by full name so repeat
+// RSVPs never double-list anyone; a contact tagged BOTH Elected Official
+// and Attorney lists once, under Elected Officials (the first section).
 async function endorserSections() {
   // LOWER() so surnames like "deLaup" sort under D regardless of DB collation
   const rows = await dbAll(
-    "SELECT first_name, last_name, role FROM rsvps WHERE endorse='Yes' AND (role LIKE '%Politician%' OR role LIKE '%Attorney%') ORDER BY LOWER(last_name), LOWER(first_name)"
+    "SELECT first_name, last_name, role FROM rsvps WHERE endorse='Yes' AND (role LIKE '%Elected Official%' OR role LIKE '%Attorney%') ORDER BY LOWER(last_name), LOWER(first_name)"
   );
-  const seen = new Set(), politicians = [], attorneys = [];
+  const seen = new Set(), officials = [], attorneys = [];
   for (const r of rows) {
     const full = (((r.first_name || '').trim()) + ' ' + ((r.last_name || '').trim())).trim();
     if (!full) continue;
     const key = full.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    if ((r.role || '').indexOf('Politician') > -1) politicians.push(full);
+    if ((r.role || '').indexOf('Elected Official') > -1) officials.push(full);
     else attorneys.push(full);
   }
-  return { politicians, attorneys };
+  return { elected_officials: officials, attorneys };
 }
 
 app.get('/api/endorsers', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   try { res.json(await endorserSections()); }
-  catch(e) { res.json({ politicians: [], attorneys: [] }); }
+  catch(e) { res.json({ elected_officials: [], attorneys: [] }); }
 });
 
 // Back-compat alias from before the widget had sections: flat array of
-// the Attorneys section (politicians excluded).
+// the Attorneys section (elected officials excluded).
 app.get('/api/attorney-endorsers', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -1051,17 +1055,17 @@ app.get('/api/attorney-endorsers', async (req, res) => {
 // Styled to match the "Stand With Blaine" widget: navy section, mint
 // eyebrow, Playfair Display heading, gold (attorney) accent rule.
 app.get('/endorsements-frame', async (req, res) => {
-  let secs = { politicians: [], attorneys: [] };
+  let secs = { elected_officials: [], attorneys: [] };
   try { secs = await endorserSections(); } catch(e) { /* render empty state */ }
-  const pc = secs.politicians.length, ac = secs.attorneys.length;
+  const pc = secs.elected_officials.length, ac = secs.attorneys.length;
   const count = pc + ac;
-  const who = (pc && ac) ? 'political leaders and members of the legal community'
-            : pc ? 'political leaders'
+  const who = (pc && ac) ? 'elected officials and members of the legal community'
+            : pc ? 'elected officials'
             : 'members of the legal community';
   const sub = count > 0
     ? `<strong>${count}</strong> ${who} have endorsed Blaine Benge Moncrief for Judge, Division H, 24th Judicial District Court.`
     : `Community leaders standing with Blaine Benge Moncrief for Judge, Division H, 24th Judicial District Court.`;
-  // Politicians render first, then Attorneys; a section with no names is omitted.
+  // Elected Officials render first, then Attorneys; a section with no names is omitted.
   const section = (label, names) => !names.length ? '' : `
       <div class="bm-endorse-sec">
         <div class="bm-endorse-sec-head">
@@ -1073,7 +1077,7 @@ app.get('/endorsements-frame', async (req, res) => {
         ${names.map(n => `<div class="bm-endorse-name">${escHtml(n)}</div>`).join('\n        ')}
         </div>
       </div>`;
-  const sectionsHtml = section('Politicians', secs.politicians) + section('Attorneys', secs.attorneys);
+  const sectionsHtml = section('Elected Officials', secs.elected_officials) + section('Attorneys', secs.attorneys);
   res.set('Cache-Control', 'public, max-age=300');
   res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -3618,7 +3622,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
   </button>
   <select id="role-filter" onchange="setRoleFilter(this.value)" title="Filter by role or tag" style="margin-left:auto; font-size:11px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:var(--navy); border:1px solid var(--border); border-radius:100px; padding:6px 14px; font-family:'Montserrat',sans-serif; background:var(--bg); cursor:pointer;">
     <option value="all">All Roles</option>
-    <option value="politician">Politicians Only</option>
+    <option value="politician">Elected Officials Only</option>
     <option value="attorney">Attorneys Only</option>
     <option value="non-attorney">Non-Attorneys</option>
     <option value="committee">Committee Members</option>
@@ -3972,7 +3976,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
         <input id="end-q" type="text" placeholder="Search&hellip;" style="width:200px;" oninput="filterFeatTable(this.value,'end-tbody')"/>
       </div>
       <button class="feat-page-btn" onclick="openAddEndorsementModal()">&#xff0b; New Endorsement</button>
-      <button class="feat-page-btn" style="background:#d4a843;" onclick="showEndorseEmbedCode()" title="Embed the live endorsements list (Politicians + Attorneys) on voteforblaine.com">&lt;/&gt; Website Widget</button>
+      <button class="feat-page-btn" style="background:#d4a843;" onclick="showEndorseEmbedCode()" title="Embed the live endorsements list (Elected Officials + Attorneys) on voteforblaine.com">&lt;/&gt; Website Widget</button>
       <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);text-decoration:none;" href="/admin/export/endorsers.csv" download>&#8595; Export</a>
     </div>
   </div>
@@ -4252,7 +4256,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
       <div class="ap-check-group">
         <label class="ap-check-label"><input type="checkbox" id="ap-role-voter" style="accent-color:#78E0C4;"/> Voter</label>
         <label class="ap-check-label"><input type="checkbox" id="ap-role-committee" style="accent-color:#78E0C4;"/> Committee Member</label>
-        <label class="ap-check-label"><input type="checkbox" id="ap-role-politician" style="accent-color:#2798BD;"/> Politician</label>
+        <label class="ap-check-label"><input type="checkbox" id="ap-role-politician" style="accent-color:#2798BD;"/> Elected Official</label>
         <label class="ap-check-label"><input type="checkbox" id="ap-role-attorney" style="accent-color:#d4a843;"/> Attorney</label>
       </div>
     </div>
@@ -4533,7 +4537,7 @@ function filtered() {
 // Role/tag filter for the contacts list (Attorneys, Committee, Volunteers, etc.)
 function roleMatchFn(r) {
   switch (activeRole) {
-    case 'politician':   return (r.role || '').indexOf('Politician') > -1;
+    case 'politician':   return (r.role || '').indexOf('Elected Official') > -1;
     case 'attorney':     return (r.role || '').indexOf('Attorney') > -1;
     case 'non-attorney': return (r.role || '').indexOf('Attorney') === -1;
     case 'committee':    return (r.role || '').indexOf('Committee Member') > -1;
@@ -6104,8 +6108,8 @@ function showEmbedCode(id, title, date, time, location, fields, endTime) {
 }
 
 // Endorsements wall — same loader, no event id. The list stays live:
-// anyone marked Politician or Attorney + Endorse=Yes appears
-// automatically, Politicians first.
+// anyone marked Elected Official or Attorney + Endorse=Yes appears
+// automatically, Elected Officials first.
 function showEndorseEmbedCode() {
   _currentEmbedPreviewUrl = '/endorsements-frame';
   var labelEl = document.getElementById('evt-embed-label');
@@ -6284,7 +6288,7 @@ function contactsCsvText() {
   return [hdrs.join(',')].concat(lines).join('\\n');
 }
 function contactsExportName(ext) {
-  var base = activeRole === 'politician' ? 'politicians'
+  var base = activeRole === 'politician' ? 'elected-officials'
            : activeRole === 'attorney' ? 'attorneys'
            : activeRole === 'non-attorney' ? 'non-attorneys'
            : (activeRole && activeRole !== 'all') ? activeRole
@@ -6485,7 +6489,7 @@ function pipelineLanesHTML(d, useAlt) {
           if (r.yard_sign === 'Yes') tags.push('Yard Sign');
           if (r.endorse === 'Yes') tags.push('Endorses');
           if ((r.role||'').indexOf('Committee Member') > -1) tags.push('Committee');
-          if ((r.role||'').indexOf('Politician') > -1) tags.push('Politician');
+          if ((r.role||'').indexOf('Elected Official') > -1) tags.push('Elected Official');
           if ((r.role||'').indexOf('Attorney') > -1) tags.push('Attorney');
           var stageOpts = PIPELINE_STAGES.map(function(ps) {
             return '<option value="' + ps.key + '"' + (ps.key === s.key ? ' selected' : '') + '>' + lbl(ps) + '</option>';
@@ -7134,7 +7138,7 @@ function submitAddPerson() {
       role:       isOrg ? 'Organization'
                         : ([document.getElementById('ap-role-voter').checked ? 'Voter' : '',
                             document.getElementById('ap-role-committee').checked ? 'Committee Member' : '',
-                            document.getElementById('ap-role-politician').checked ? 'Politician' : '',
+                            document.getElementById('ap-role-politician').checked ? 'Elected Official' : '',
                             document.getElementById('ap-role-attorney').checked ? 'Attorney' : '']
                            .filter(Boolean).join(', ') || 'Voter'),
       comment:    document.getElementById('ap-comment').value.trim(),
@@ -7965,10 +7969,10 @@ function paint(d) {
   var _roles = (d.role || "").split(",").map(function(r){ return r.trim(); });
   var isVoter      = _roles.indexOf("Voter") > -1;
   var isCommittee  = _roles.indexOf("Committee Member") > -1;
-  var isPolitician = _roles.indexOf("Politician") > -1;
+  var isPolitician = _roles.indexOf("Elected Official") > -1;
   var isAttorney   = _roles.indexOf("Attorney") > -1;
   if (d.contact_type === "org") {
-    // Organizations don't carry voter/committee/politician/attorney roles — show a single tag.
+    // Organizations don't carry voter/committee/elected-official/attorney roles — show a single tag.
     document.getElementById("p-role").innerHTML =
       "<span style='display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#fff;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.32);border-radius:100px;padding:5px 13px;'>" +
       "<svg viewBox='0 0 24 24' width='12' height='12' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 21h18'/><path d='M6 21V4h9v17'/><path d='M15 9h3v12'/></svg>Organization</span>";
@@ -7977,7 +7981,7 @@ function paint(d) {
       "<div class='role-pills'>" +
       "<button class='role-pill voter" + (isVoter ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Voter'>Voter</button>" +
       "<button class='role-pill committee" + (isCommittee ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Committee Member'>Committee Member</button>" +
-      "<button class='role-pill politician" + (isPolitician ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Politician'>Politician</button>" +
+      "<button class='role-pill politician" + (isPolitician ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Elected Official'>Elected Official</button>" +
       "<button class='role-pill attorney" + (isAttorney ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Attorney'>Attorney</button>" +
       "</div>";
   }

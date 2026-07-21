@@ -363,8 +363,8 @@ app.use((req, res, next) => {
   res.set('X-Content-Type-Options', 'nosniff');
   res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.set('Strict-Transport-Security', 'max-age=15552000'); // 180d — site is HTTPS-only
-  // Clickjacking protection — but the public widget MUST be embeddable cross-origin
-  if (!req.path.startsWith('/widget-frame') && req.path !== '/embed.js') {
+  // Clickjacking protection — but the public widgets MUST be embeddable cross-origin
+  if (!req.path.startsWith('/widget-frame') && req.path !== '/endorsements-frame' && req.path !== '/embed.js') {
     res.set('X-Frame-Options', 'SAMEORIGIN');
   }
   next();
@@ -925,6 +925,22 @@ app.get('/embed.js', (req, res) => {
         }
       });
     })(nodes[i]); }
+    // Attorney endorsements wall — no per-event id; one live list for the site
+    var ends = document.querySelectorAll('.bm-endorse-embed:not([data-bm-loaded])');
+    for (var j=0;j<ends.length;j++){ (function(node){
+      node.setAttribute('data-bm-loaded','1');
+      var iframe = document.createElement('iframe');
+      iframe.src = BASE + '/endorsements-frame';
+      iframe.style.cssText = 'width:100%;border:0;overflow:hidden;display:block;min-height:480px;';
+      iframe.setAttribute('scrolling','no');
+      iframe.setAttribute('title','Attorney Endorsements');
+      node.appendChild(iframe);
+      window.addEventListener('message', function(e){
+        if(e.data && e.data.bmWidget && e.data.id==='endorsers' && e.data.height){
+          iframe.style.height = (e.data.height + 8) + 'px';
+        }
+      });
+    })(ends[j]); }
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init);
   else init();
@@ -989,6 +1005,133 @@ app.get('/api/committee', async (req, res) => {
     "SELECT first_name, last_name FROM rsvps WHERE role LIKE '%Committee Member%' ORDER BY last_name, first_name"
   );
   res.json(rows);
+});
+
+// ── Public widget: attorney endorsements ──────────────────────────────
+// Same sourcing rule as the Attorneys export: contacts who endorsed
+// (checkbox on the form, or toggled in the admin) AND carry the Attorney
+// role. Deduped by full name so repeat RSVPs never double-list anyone.
+async function attorneyEndorserNames() {
+  // LOWER() so surnames like "deLaup" sort under D regardless of DB collation
+  const rows = await dbAll(
+    "SELECT first_name, last_name FROM rsvps WHERE endorse='Yes' AND role LIKE '%Attorney%' ORDER BY LOWER(last_name), LOWER(first_name)"
+  );
+  const seen = new Set(), names = [];
+  for (const r of rows) {
+    const full = (((r.first_name || '').trim()) + ' ' + ((r.last_name || '').trim())).trim();
+    if (!full) continue;
+    const key = full.toLowerCase();
+    if (!seen.has(key)) { seen.add(key); names.push(full); }
+  }
+  return names;
+}
+
+app.get('/api/attorney-endorsers', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  try { res.json(await attorneyEndorserNames()); }
+  catch(e) { res.json([]); }
+});
+
+// Embeddable endorsements frame (public; rendered live inside an iframe).
+// Styled to match the "Stand With Blaine" widget: navy section, mint
+// eyebrow, Playfair Display heading, gold (attorney) accent rule.
+app.get('/endorsements-frame', async (req, res) => {
+  let names = [];
+  try { names = await attorneyEndorserNames(); } catch(e) { /* render empty state */ }
+  const count = names.length;
+  const sub = count > 0
+    ? `<strong>${count}</strong> members of the legal community have endorsed Blaine Benge Moncrief for Judge, Division H, 24th Judicial District Court.`
+    : `Members of the legal community standing with Blaine Benge Moncrief for Judge, Division H, 24th Judicial District Court.`;
+  const items = names.map(n => `<div class="bm-endorse-name">${escHtml(n)}</div>`).join('\n        ');
+  res.set('Cache-Control', 'public, max-age=300');
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Attorney Endorsements — Blaine Benge Moncrief</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,700;1,700&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: transparent; }
+  .bm-endorse { background: #09254f; padding: 72px 24px; position: relative; overflow: hidden; font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif; }
+  .bm-endorse-inner { max-width: 1060px; margin: 0 auto; position: relative; }
+  .bm-endorse-eyebrow { text-align: center; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: #78E0C4; font-weight: 700; margin: 0 0 12px; }
+  .bm-endorse h2 { font-family: 'Playfair Display', Georgia, serif; font-size: 36px; color: #fff; text-align: center; line-height: 1.2; margin: 0; }
+  .bm-endorse-rule { width: 44px; height: 3px; background: #d4a843; margin: 16px auto 18px; }
+  .bm-endorse-sub { text-align: center; font-size: 14px; color: rgba(255,255,255,0.65); line-height: 1.6; max-width: 640px; margin: 0 auto 36px; }
+  .bm-endorse-sub strong { color: #d4a843; font-weight: 800; }
+  .bm-endorse-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 32px 40px 36px; }
+  .bm-endorse-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .bm-endorse-search { flex: 1 1 220px; max-width: 340px; background: #fff; border: 1px solid #cbd5e1; border-radius: 3px; padding: 11px 14px; font-size: 14px; color: #0E356C; font-family: 'Montserrat', sans-serif; outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
+  .bm-endorse-search::placeholder { color: #94a3b8; }
+  .bm-endorse-search:focus { border-color: #78E0C4; box-shadow: 0 0 0 3px rgba(120,224,196,0.25); }
+  .bm-endorse-count { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #78E0C4; font-weight: 700; white-space: nowrap; }
+  .bm-endorse-cols { columns: 4 210px; column-gap: 36px; margin-top: 22px; }
+  .bm-endorse-name { break-inside: avoid; font-size: 13.5px; font-weight: 500; color: rgba(255,255,255,0.92); padding: 7px 2px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+  .bm-endorse-empty { display: none; text-align: center; font-size: 13px; color: rgba(255,255,255,0.45); padding: 32px 0 8px; }
+  @media (max-width: 600px) { .bm-endorse { padding: 56px 18px; } .bm-endorse h2 { font-size: 26px; } .bm-endorse-card { padding: 22px 20px 26px; } }
+</style>
+</head>
+<body>
+<div class="bm-endorse">
+  <div class="bm-endorse-inner">
+    <p class="bm-endorse-eyebrow">Endorsements</p>
+    <h2>Attorneys Standing with Blaine</h2>
+    <div class="bm-endorse-rule"></div>
+    <p class="bm-endorse-sub">${sub}</p>
+    <div class="bm-endorse-card">
+      <div class="bm-endorse-bar">
+        <input class="bm-endorse-search" id="bmEndorseSearch" type="text" placeholder="Search attorneys&hellip;" aria-label="Search attorneys"/>
+        <span class="bm-endorse-count" id="bmEndorseCount">${count} Attorneys</span>
+      </div>
+      <div class="bm-endorse-cols" id="bmEndorseCols">
+        ${items || ''}
+      </div>
+      <div class="bm-endorse-empty" id="bmEndorseEmpty">${count > 0 ? 'No attorneys match your search.' : 'Endorsements will be listed here soon.'}</div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var total = ${count};
+  var input = document.getElementById('bmEndorseSearch');
+  var cols  = document.getElementById('bmEndorseCols');
+  var empty = document.getElementById('bmEndorseEmpty');
+  var countEl = document.getElementById('bmEndorseCount');
+  var rows = Array.prototype.slice.call(cols.querySelectorAll('.bm-endorse-name'));
+  if (!total) { empty.style.display = 'block'; }
+  input.addEventListener('input', function(){
+    var q = this.value.trim().toLowerCase();
+    var shown = 0;
+    for (var i=0;i<rows.length;i++){
+      var hit = !q || rows[i].textContent.toLowerCase().indexOf(q) > -1;
+      rows[i].style.display = hit ? '' : 'none';
+      if (hit) shown++;
+    }
+    empty.style.display = (total && !shown) ? 'block' : 'none';
+    countEl.textContent = q ? ('Showing ' + shown + ' of ' + total) : (total + ' Attorneys');
+  });
+
+  // Auto-height reporting for the parent embed iframe (see /embed.js).
+  // Measure the content block itself, NOT documentElement.scrollHeight —
+  // scrollHeight tracks the iframe viewport once the parent sizes it,
+  // which creeps up 8px per tick (see /widget-frame).
+  var lastH = 0;
+  function postH(){
+    var c = document.querySelector('.bm-endorse');
+    var h = c ? Math.ceil(c.getBoundingClientRect().height) : 0;
+    if (h && h !== lastH){ lastH = h; parent.postMessage({ bmWidget:true, id:'endorsers', height:h }, '*'); }
+  }
+  window.addEventListener('load', postH);
+  if (window.MutationObserver) new MutationObserver(postH).observe(document.body, { subtree:true, childList:true, attributes:true });
+  setInterval(postH, 700);
+  postH();
+})();
+</script>
+</body>
+</html>`);
 });
 
 // ── Admin panel ───────────────────────────────────────────────────────
@@ -3787,6 +3930,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
         <input id="end-q" type="text" placeholder="Search&hellip;" style="width:200px;" oninput="filterFeatTable(this.value,'end-tbody')"/>
       </div>
       <button class="feat-page-btn" onclick="openAddEndorsementModal()">&#xff0b; New Endorsement</button>
+      <button class="feat-page-btn" style="background:#d4a843;" onclick="showEndorseEmbedCode()" title="Embed the live attorney endorsements list on voteforblaine.com">&lt;/&gt; Website Widget</button>
       <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);text-decoration:none;" href="/admin/export/endorsers.csv" download>&#8595; Export</a>
     </div>
   </div>
@@ -5901,10 +6045,10 @@ function saveEvent() {
     .catch(function(){ alert('Network error. Please try again.'); });
 }
 
-var _currentEmbedEventId = null;
+var _currentEmbedPreviewUrl = null;
 
 function showEmbedCode(id, title, date, time, location, fields, endTime) {
-  _currentEmbedEventId = id || null;
+  _currentEmbedPreviewUrl = id ? ('/widget-preview/' + id) : null;
   var labelEl = document.getElementById('evt-embed-label');
   var codeEl  = document.getElementById('evt-embed-code');
   if (labelEl) labelEl.textContent = title + (date ? '  —  ' + date : '');
@@ -5915,13 +6059,25 @@ function showEmbedCode(id, title, date, time, location, fields, endTime) {
   document.getElementById('evt-embed-overlay').classList.add('open');
 }
 
+// Attorney endorsements wall — same loader, no event id. The list stays
+// live: anyone marked Attorney + Endorse=Yes appears automatically.
+function showEndorseEmbedCode() {
+  _currentEmbedPreviewUrl = '/endorsements-frame';
+  var labelEl = document.getElementById('evt-embed-label');
+  var codeEl  = document.getElementById('evt-embed-code');
+  if (labelEl) labelEl.textContent = 'Attorney Endorsements — Website Widget';
+  if (codeEl) codeEl.value = '<div class="bm-endorse-embed"></div>\\n'
+    + '<scr' + 'ipt src="' + BM_CRM_BASE_URL + '/embed.js" async></scr' + 'ipt>';
+  document.getElementById('evt-embed-overlay').classList.add('open');
+}
+
 function closeEmbedModal() {
   document.getElementById('evt-embed-overlay').classList.remove('open');
 }
 
 function openWidgetPreview() {
-  if (!_currentEmbedEventId) return;
-  window.open('/widget-preview/' + _currentEmbedEventId, '_blank', 'width=900,height=800,scrollbars=yes');
+  if (!_currentEmbedPreviewUrl) return;
+  window.open(_currentEmbedPreviewUrl, '_blank', 'width=900,height=800,scrollbars=yes');
 }
 
 function copyEmbedCode() {

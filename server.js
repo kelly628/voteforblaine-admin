@@ -925,7 +925,7 @@ app.get('/embed.js', (req, res) => {
         }
       });
     })(nodes[i]); }
-    // Attorney endorsements wall — no per-event id; one live list for the site
+    // Endorsements wall (Politicians + Attorneys) — no per-event id; one live list
     var ends = document.querySelectorAll('.bm-endorse-embed:not([data-bm-loaded])');
     for (var j=0;j<ends.length;j++){ (function(node){
       node.setAttribute('data-bm-loaded','1');
@@ -933,7 +933,7 @@ app.get('/embed.js', (req, res) => {
       iframe.src = BASE + '/endorsements-frame';
       iframe.style.cssText = 'width:100%;border:0;overflow:hidden;display:block;min-height:480px;';
       iframe.setAttribute('scrolling','no');
-      iframe.setAttribute('title','Attorney Endorsements');
+      iframe.setAttribute('title','Endorsements');
       node.appendChild(iframe);
       window.addEventListener('message', function(e){
         if(e.data && e.data.bmWidget && e.data.id==='endorsers' && e.data.height){
@@ -1007,29 +1007,43 @@ app.get('/api/committee', async (req, res) => {
   res.json(rows);
 });
 
-// ── Public widget: attorney endorsements ──────────────────────────────
-// Same sourcing rule as the Attorneys export: contacts who endorsed
-// (checkbox on the form, or toggled in the admin) AND carry the Attorney
-// role. Deduped by full name so repeat RSVPs never double-list anyone.
-async function attorneyEndorserNames() {
+// ── Public widget: endorsements ───────────────────────────────────────
+// Same sourcing rule as the role exports: contacts who endorsed
+// (checkbox on the form, or toggled in the admin) AND carry the
+// Politician or Attorney role. Deduped by full name so repeat RSVPs
+// never double-list anyone; a contact tagged BOTH Politician and
+// Attorney lists once, under Politicians (the widget's first section).
+async function endorserSections() {
   // LOWER() so surnames like "deLaup" sort under D regardless of DB collation
   const rows = await dbAll(
-    "SELECT first_name, last_name FROM rsvps WHERE endorse='Yes' AND role LIKE '%Attorney%' ORDER BY LOWER(last_name), LOWER(first_name)"
+    "SELECT first_name, last_name, role FROM rsvps WHERE endorse='Yes' AND (role LIKE '%Politician%' OR role LIKE '%Attorney%') ORDER BY LOWER(last_name), LOWER(first_name)"
   );
-  const seen = new Set(), names = [];
+  const seen = new Set(), politicians = [], attorneys = [];
   for (const r of rows) {
     const full = (((r.first_name || '').trim()) + ' ' + ((r.last_name || '').trim())).trim();
     if (!full) continue;
     const key = full.toLowerCase();
-    if (!seen.has(key)) { seen.add(key); names.push(full); }
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if ((r.role || '').indexOf('Politician') > -1) politicians.push(full);
+    else attorneys.push(full);
   }
-  return names;
+  return { politicians, attorneys };
 }
 
+app.get('/api/endorsers', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  try { res.json(await endorserSections()); }
+  catch(e) { res.json({ politicians: [], attorneys: [] }); }
+});
+
+// Back-compat alias from before the widget had sections: flat array of
+// the Attorneys section (politicians excluded).
 app.get('/api/attorney-endorsers', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  try { res.json(await attorneyEndorserNames()); }
+  try { res.json((await endorserSections()).attorneys); }
   catch(e) { res.json([]); }
 });
 
@@ -1037,20 +1051,36 @@ app.get('/api/attorney-endorsers', async (req, res) => {
 // Styled to match the "Stand With Blaine" widget: navy section, mint
 // eyebrow, Playfair Display heading, gold (attorney) accent rule.
 app.get('/endorsements-frame', async (req, res) => {
-  let names = [];
-  try { names = await attorneyEndorserNames(); } catch(e) { /* render empty state */ }
-  const count = names.length;
+  let secs = { politicians: [], attorneys: [] };
+  try { secs = await endorserSections(); } catch(e) { /* render empty state */ }
+  const pc = secs.politicians.length, ac = secs.attorneys.length;
+  const count = pc + ac;
+  const who = (pc && ac) ? 'political leaders and members of the legal community'
+            : pc ? 'political leaders'
+            : 'members of the legal community';
   const sub = count > 0
-    ? `<strong>${count}</strong> members of the legal community have endorsed Blaine Benge Moncrief for Judge, Division H, 24th Judicial District Court.`
-    : `Members of the legal community standing with Blaine Benge Moncrief for Judge, Division H, 24th Judicial District Court.`;
-  const items = names.map(n => `<div class="bm-endorse-name">${escHtml(n)}</div>`).join('\n        ');
+    ? `<strong>${count}</strong> ${who} have endorsed Blaine Benge Moncrief for Judge, Division H, 24th Judicial District Court.`
+    : `Community leaders standing with Blaine Benge Moncrief for Judge, Division H, 24th Judicial District Court.`;
+  // Politicians render first, then Attorneys; a section with no names is omitted.
+  const section = (label, names) => !names.length ? '' : `
+      <div class="bm-endorse-sec">
+        <div class="bm-endorse-sec-head">
+          <span class="bm-endorse-sec-title">${label}</span>
+          <span class="bm-endorse-sec-line"></span>
+          <span class="bm-endorse-sec-count" data-total="${names.length}">${names.length}</span>
+        </div>
+        <div class="bm-endorse-cols">
+        ${names.map(n => `<div class="bm-endorse-name">${escHtml(n)}</div>`).join('\n        ')}
+        </div>
+      </div>`;
+  const sectionsHtml = section('Politicians', secs.politicians) + section('Attorneys', secs.attorneys);
   res.set('Cache-Control', 'public, max-age=300');
   res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Attorney Endorsements — Blaine Benge Moncrief</title>
+<title>Endorsements — Blaine Benge Moncrief</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,700;1,700&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1068,7 +1098,12 @@ app.get('/endorsements-frame', async (req, res) => {
   .bm-endorse-search::placeholder { color: #94a3b8; }
   .bm-endorse-search:focus { border-color: #78E0C4; box-shadow: 0 0 0 3px rgba(120,224,196,0.25); }
   .bm-endorse-count { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #78E0C4; font-weight: 700; white-space: nowrap; }
-  .bm-endorse-cols { columns: 4 210px; column-gap: 36px; margin-top: 22px; }
+  .bm-endorse-sec { margin-top: 26px; }
+  .bm-endorse-sec-head { display: flex; align-items: center; gap: 14px; }
+  .bm-endorse-sec-title { font-size: 12px; letter-spacing: 2.5px; text-transform: uppercase; color: #78E0C4; font-weight: 800; }
+  .bm-endorse-sec-line { flex: 1; height: 1px; background: rgba(255,255,255,0.12); }
+  .bm-endorse-sec-count { font-size: 11px; font-weight: 800; letter-spacing: 1px; color: #d4a843; }
+  .bm-endorse-cols { columns: 4 210px; column-gap: 36px; margin-top: 12px; }
   .bm-endorse-name { break-inside: avoid; font-size: 13.5px; font-weight: 500; color: rgba(255,255,255,0.92); padding: 7px 2px; border-bottom: 1px solid rgba(255,255,255,0.07); }
   .bm-endorse-empty { display: none; text-align: center; font-size: 13px; color: rgba(255,255,255,0.45); padding: 32px 0 8px; }
   @media (max-width: 600px) { .bm-endorse { padding: 56px 18px; } .bm-endorse h2 { font-size: 26px; } .bm-endorse-card { padding: 22px 20px 26px; } }
@@ -1078,18 +1113,16 @@ app.get('/endorsements-frame', async (req, res) => {
 <div class="bm-endorse">
   <div class="bm-endorse-inner">
     <p class="bm-endorse-eyebrow">Endorsements</p>
-    <h2>Attorneys Standing with Blaine</h2>
+    <h2>Standing with Blaine</h2>
     <div class="bm-endorse-rule"></div>
     <p class="bm-endorse-sub">${sub}</p>
     <div class="bm-endorse-card">
       <div class="bm-endorse-bar">
-        <input class="bm-endorse-search" id="bmEndorseSearch" type="text" placeholder="Search attorneys&hellip;" aria-label="Search attorneys"/>
-        <span class="bm-endorse-count" id="bmEndorseCount">${count} Attorneys</span>
+        <input class="bm-endorse-search" id="bmEndorseSearch" type="text" placeholder="Search endorsements&hellip;" aria-label="Search endorsements"/>
+        <span class="bm-endorse-count" id="bmEndorseCount">${count} Endorsers</span>
       </div>
-      <div class="bm-endorse-cols" id="bmEndorseCols">
-        ${items || ''}
-      </div>
-      <div class="bm-endorse-empty" id="bmEndorseEmpty">${count > 0 ? 'No attorneys match your search.' : 'Endorsements will be listed here soon.'}</div>
+      ${sectionsHtml}
+      <div class="bm-endorse-empty" id="bmEndorseEmpty">${count > 0 ? 'No endorsements match your search.' : 'Endorsements will be listed here soon.'}</div>
     </div>
   </div>
 </div>
@@ -1097,21 +1130,29 @@ app.get('/endorsements-frame', async (req, res) => {
 (function(){
   var total = ${count};
   var input = document.getElementById('bmEndorseSearch');
-  var cols  = document.getElementById('bmEndorseCols');
   var empty = document.getElementById('bmEndorseEmpty');
   var countEl = document.getElementById('bmEndorseCount');
-  var rows = Array.prototype.slice.call(cols.querySelectorAll('.bm-endorse-name'));
+  var secs = Array.prototype.slice.call(document.querySelectorAll('.bm-endorse-sec'));
   if (!total) { empty.style.display = 'block'; }
   input.addEventListener('input', function(){
     var q = this.value.trim().toLowerCase();
-    var shown = 0;
-    for (var i=0;i<rows.length;i++){
-      var hit = !q || rows[i].textContent.toLowerCase().indexOf(q) > -1;
-      rows[i].style.display = hit ? '' : 'none';
-      if (hit) shown++;
+    var shownTotal = 0;
+    for (var s=0;s<secs.length;s++){
+      var rows = secs[s].querySelectorAll('.bm-endorse-name');
+      var secCount = secs[s].querySelector('.bm-endorse-sec-count');
+      var shown = 0;
+      for (var i=0;i<rows.length;i++){
+        var hit = !q || rows[i].textContent.toLowerCase().indexOf(q) > -1;
+        rows[i].style.display = hit ? '' : 'none';
+        if (hit) shown++;
+      }
+      // Hide a whole section when nothing in it matches the search
+      secs[s].style.display = shown ? '' : 'none';
+      if (secCount) secCount.textContent = q ? (shown + ' of ' + secCount.getAttribute('data-total')) : secCount.getAttribute('data-total');
+      shownTotal += shown;
     }
-    empty.style.display = (total && !shown) ? 'block' : 'none';
-    countEl.textContent = q ? ('Showing ' + shown + ' of ' + total) : (total + ' Attorneys');
+    empty.style.display = (total && !shownTotal) ? 'block' : 'none';
+    countEl.textContent = q ? ('Showing ' + shownTotal + ' of ' + total) : (total + ' Endorsers');
   });
 
   // Auto-height reporting for the parent embed iframe (see /embed.js).
@@ -3577,6 +3618,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
   </button>
   <select id="role-filter" onchange="setRoleFilter(this.value)" title="Filter by role or tag" style="margin-left:auto; font-size:11px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:var(--navy); border:1px solid var(--border); border-radius:100px; padding:6px 14px; font-family:'Montserrat',sans-serif; background:var(--bg); cursor:pointer;">
     <option value="all">All Roles</option>
+    <option value="politician">Politicians Only</option>
     <option value="attorney">Attorneys Only</option>
     <option value="non-attorney">Non-Attorneys</option>
     <option value="committee">Committee Members</option>
@@ -3930,7 +3972,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
         <input id="end-q" type="text" placeholder="Search&hellip;" style="width:200px;" oninput="filterFeatTable(this.value,'end-tbody')"/>
       </div>
       <button class="feat-page-btn" onclick="openAddEndorsementModal()">&#xff0b; New Endorsement</button>
-      <button class="feat-page-btn" style="background:#d4a843;" onclick="showEndorseEmbedCode()" title="Embed the live attorney endorsements list on voteforblaine.com">&lt;/&gt; Website Widget</button>
+      <button class="feat-page-btn" style="background:#d4a843;" onclick="showEndorseEmbedCode()" title="Embed the live endorsements list (Politicians + Attorneys) on voteforblaine.com">&lt;/&gt; Website Widget</button>
       <a class="feat-page-btn" style="background:#e9edf3;color:var(--navy);text-decoration:none;" href="/admin/export/endorsers.csv" download>&#8595; Export</a>
     </div>
   </div>
@@ -4210,6 +4252,7 @@ ${isCand ? '<style>#nav-donations,#bnav-donations,#donation-section,#view-donati
       <div class="ap-check-group">
         <label class="ap-check-label"><input type="checkbox" id="ap-role-voter" style="accent-color:#78E0C4;"/> Voter</label>
         <label class="ap-check-label"><input type="checkbox" id="ap-role-committee" style="accent-color:#78E0C4;"/> Committee Member</label>
+        <label class="ap-check-label"><input type="checkbox" id="ap-role-politician" style="accent-color:#2798BD;"/> Politician</label>
         <label class="ap-check-label"><input type="checkbox" id="ap-role-attorney" style="accent-color:#d4a843;"/> Attorney</label>
       </div>
     </div>
@@ -4490,6 +4533,7 @@ function filtered() {
 // Role/tag filter for the contacts list (Attorneys, Committee, Volunteers, etc.)
 function roleMatchFn(r) {
   switch (activeRole) {
+    case 'politician':   return (r.role || '').indexOf('Politician') > -1;
     case 'attorney':     return (r.role || '').indexOf('Attorney') > -1;
     case 'non-attorney': return (r.role || '').indexOf('Attorney') === -1;
     case 'committee':    return (r.role || '').indexOf('Committee Member') > -1;
@@ -6059,13 +6103,14 @@ function showEmbedCode(id, title, date, time, location, fields, endTime) {
   document.getElementById('evt-embed-overlay').classList.add('open');
 }
 
-// Attorney endorsements wall — same loader, no event id. The list stays
-// live: anyone marked Attorney + Endorse=Yes appears automatically.
+// Endorsements wall — same loader, no event id. The list stays live:
+// anyone marked Politician or Attorney + Endorse=Yes appears
+// automatically, Politicians first.
 function showEndorseEmbedCode() {
   _currentEmbedPreviewUrl = '/endorsements-frame';
   var labelEl = document.getElementById('evt-embed-label');
   var codeEl  = document.getElementById('evt-embed-code');
-  if (labelEl) labelEl.textContent = 'Attorney Endorsements — Website Widget';
+  if (labelEl) labelEl.textContent = 'Endorsements — Website Widget';
   if (codeEl) codeEl.value = '<div class="bm-endorse-embed"></div>\\n'
     + '<scr' + 'ipt src="' + BM_CRM_BASE_URL + '/embed.js" async></scr' + 'ipt>';
   document.getElementById('evt-embed-overlay').classList.add('open');
@@ -6239,7 +6284,8 @@ function contactsCsvText() {
   return [hdrs.join(',')].concat(lines).join('\\n');
 }
 function contactsExportName(ext) {
-  var base = activeRole === 'attorney' ? 'attorneys'
+  var base = activeRole === 'politician' ? 'politicians'
+           : activeRole === 'attorney' ? 'attorneys'
            : activeRole === 'non-attorney' ? 'non-attorneys'
            : (activeRole && activeRole !== 'all') ? activeRole
            : 'contacts';
@@ -6439,6 +6485,7 @@ function pipelineLanesHTML(d, useAlt) {
           if (r.yard_sign === 'Yes') tags.push('Yard Sign');
           if (r.endorse === 'Yes') tags.push('Endorses');
           if ((r.role||'').indexOf('Committee Member') > -1) tags.push('Committee');
+          if ((r.role||'').indexOf('Politician') > -1) tags.push('Politician');
           if ((r.role||'').indexOf('Attorney') > -1) tags.push('Attorney');
           var stageOpts = PIPELINE_STAGES.map(function(ps) {
             return '<option value="' + ps.key + '"' + (ps.key === s.key ? ' selected' : '') + '>' + lbl(ps) + '</option>';
@@ -7041,9 +7088,10 @@ function setApType(t) {
 function openAddPerson() {
   ['ap-first','ap-last','ap-org-name','ap-email','ap-phone','ap-address','ap-city','ap-zip','ap-comment'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('ap-state').value = 'LA';
-  document.getElementById('ap-role-voter').checked     = false;
-  document.getElementById('ap-role-committee').checked = false;
-  document.getElementById('ap-role-attorney').checked  = false;
+  document.getElementById('ap-role-voter').checked      = false;
+  document.getElementById('ap-role-committee').checked  = false;
+  document.getElementById('ap-role-politician').checked = false;
+  document.getElementById('ap-role-attorney').checked   = false;
   document.getElementById('ap-error').style.display = 'none';
   document.getElementById('ap-submit').disabled = false;
   document.getElementById('ap-submit').textContent = 'Add to Database';
@@ -7086,6 +7134,7 @@ function submitAddPerson() {
       role:       isOrg ? 'Organization'
                         : ([document.getElementById('ap-role-voter').checked ? 'Voter' : '',
                             document.getElementById('ap-role-committee').checked ? 'Committee Member' : '',
+                            document.getElementById('ap-role-politician').checked ? 'Politician' : '',
                             document.getElementById('ap-role-attorney').checked ? 'Attorney' : '']
                            .filter(Boolean).join(', ') || 'Voter'),
       comment:    document.getElementById('ap-comment').value.trim(),
@@ -7461,6 +7510,7 @@ ${isCand ? '<style>#don-hist-card,#p-giving-block{display:none!important;}</styl
   .role-pill:hover { color: rgba(255,255,255,.6); border-color: rgba(255,255,255,.3); }
   .role-pill.active.voter { background: rgba(255,255,255,.13); color: rgba(255,255,255,.85); border-color: rgba(255,255,255,.3); }
   .role-pill.active.committee { background: var(--mint); color: var(--navy); border-color: var(--mint); }
+  .role-pill.active.politician { background: #2798BD; color: #fff; border-color: #2798BD; }
   .role-pill.active.attorney { background: #d4a843; color: #fff; border-color: #d4a843; }
   .p-cards { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
   .p-evt-list { margin-top: 8px; display: flex; flex-direction: column; gap: 5px; }
@@ -7913,11 +7963,12 @@ function paint(d) {
   refreshDistrictBadge(d.parish, d.zip);
   // Role pills — multi-select, both can be active simultaneously
   var _roles = (d.role || "").split(",").map(function(r){ return r.trim(); });
-  var isVoter     = _roles.indexOf("Voter") > -1;
-  var isCommittee = _roles.indexOf("Committee Member") > -1;
-  var isAttorney  = _roles.indexOf("Attorney") > -1;
+  var isVoter      = _roles.indexOf("Voter") > -1;
+  var isCommittee  = _roles.indexOf("Committee Member") > -1;
+  var isPolitician = _roles.indexOf("Politician") > -1;
+  var isAttorney   = _roles.indexOf("Attorney") > -1;
   if (d.contact_type === "org") {
-    // Organizations don't carry voter/committee/attorney roles — show a single tag.
+    // Organizations don't carry voter/committee/politician/attorney roles — show a single tag.
     document.getElementById("p-role").innerHTML =
       "<span style='display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#fff;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.32);border-radius:100px;padding:5px 13px;'>" +
       "<svg viewBox='0 0 24 24' width='12' height='12' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 21h18'/><path d='M6 21V4h9v17'/><path d='M15 9h3v12'/></svg>Organization</span>";
@@ -7926,6 +7977,7 @@ function paint(d) {
       "<div class='role-pills'>" +
       "<button class='role-pill voter" + (isVoter ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Voter'>Voter</button>" +
       "<button class='role-pill committee" + (isCommittee ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Committee Member'>Committee Member</button>" +
+      "<button class='role-pill politician" + (isPolitician ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Politician'>Politician</button>" +
       "<button class='role-pill attorney" + (isAttorney ? " active" : "") + "' onclick='setRole(this.dataset.r)' data-r='Attorney'>Attorney</button>" +
       "</div>";
   }
